@@ -1,0 +1,120 @@
+/* ── Tablet: 768px+ ── */
+@media (min-width: 768px) {
+  .hero-logo {
+    max-width: 240px;
+  }
+}
+
+/* ── Desktop: 1024px+ ── */
+@media (min-width: 1024px) {
+  .hero-logo {
+    max-width: 280px;
+  }
+
+  .screenshots-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .agents-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* ── Mobile: <768px ── */
+@media (max-width: 767px) {
+  /* Nav: hamburger overlay */
+  .nav-toggle {
+    display: flex;
+  }
+
+  .nav-menu {
+    display: none;
+    position: fixed;
+    top: var(--nav-height);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(10, 10, 10, 0.98);
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp-8);
+    z-index: 99;
+  }
+
+  .nav-menu.is-open {
+    display: flex;
+  }
+
+  .nav-menu a {
+    font-size: 1rem;
+    letter-spacing: 0.2em;
+  }
+
+  /* Toggle open state: X shape */
+  .nav-toggle[aria-expanded="true"] span:nth-child(1) {
+    transform: translateY(7px) rotate(45deg);
+  }
+
+  .nav-toggle[aria-expanded="true"] span:nth-child(2) {
+    opacity: 0;
+  }
+
+  .nav-toggle[aria-expanded="true"] span:nth-child(3) {
+    transform: translateY(-7px) rotate(-45deg);
+  }
+
+  /* Hero */
+  .hero-logo {
+    max-width: 200px;
+  }
+
+  /* Grids → single column */
+  .screenshots-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .agents-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* Problem: stack */
+  .problem-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Phase pills: wrap naturally (already flex-wrap) */
+  .phase-pipeline {
+    gap: var(--sp-1);
+  }
+
+  .phase-pill {
+    font-size: 0.65rem;
+    padding: var(--sp-1) var(--sp-3);
+  }
+
+  /* Trade-offs grid → single column */
+  .tradeoffs-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ── Small mobile: <480px ── */
+@media (max-width: 479px) {
+  .section-inner {
+    padding: 0 var(--sp-4);
+  }
+
+  .site-nav {
+    padding: 0 var(--sp-4);
+  }
+
+  .agents-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .install-step-header {
+    flex-direction: column;
+    gap: var(--sp-2);
+  }
+}

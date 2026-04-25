@@ -1,0 +1,331 @@
+/* ── Section label ── */
+.section-label {
+  font-size: 0.75rem;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: var(--text-secondary);
+  margin-bottom: var(--sp-4);
+}
+
+/* ── CTA Button ── */
+.cta-btn {
+  display: inline-block;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  background: transparent;
+  padding: 0.75rem 2.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+/* ── Hero section ── */
+#hero {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--sp-24) var(--sp-8);
+  background: var(--bg);
+  gap: var(--sp-6);
+}
+
+.hero-logo {
+  max-width: 280px;
+  width: 100%;
+  height: auto;
+}
+
+.hero-slogan {
+  font-size: clamp(2.5rem, 6vw, 5rem);
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+
+.hero-subtitle {
+  font-size: clamp(1rem, 2.5vw, 1.25rem);
+  color: var(--text-secondary);
+  max-width: 600px;
+}
+
+.hero-description {
+  max-width: 640px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
+.scroll-cue {
+  font-size: 1.25rem;
+  color: var(--text-secondary);
+  margin-top: var(--sp-4);
+  user-select: none;
+}
+
+/* ── Phase pills (Methodology) ── */
+.phase-pipeline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-12);
+}
+
+.phase-pill {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-2) var(--sp-4);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.phase-separator {
+  color: var(--accent);
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+/* ── Agent cards ── */
+.agent-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--sp-4);
+}
+
+.agent-abbr {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+  margin-bottom: var(--sp-2);
+}
+
+.agent-name {
+  font-size: 0.75rem;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+  margin-bottom: var(--sp-2);
+}
+
+.agent-role {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* ── Screenshot figures ── */
+.screenshots-grid figure {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.screenshots-grid figure img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.screenshots-grid figcaption {
+  padding: var(--sp-3) var(--sp-4);
+}
+
+/* ── Code blocks (Install section) ── */
+.code-wrap {
+  position: relative;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 1.25rem 1.5rem;
+  overflow-x: auto;
+}
+
+.code-wrap pre {
+  margin: 0;
+}
+
+.code-wrap code {
+  color: var(--code-text);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  white-space: pre;
+}
+
+.code-wrap code .comment {
+  color: var(--text-secondary);
+}
+
+.copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  padding: 3px 8px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.code-wrap:hover .copy-btn {
+  opacity: 1;
+}
+
+.copy-btn[data-state="copied"] {
+  color: var(--accent);
+}
+
+/* ── Install steps ── */
+.install-step {
+  margin-bottom: var(--sp-8);
+}
+
+.install-step-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.install-step-num {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.install-step-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-primary);
+}
+
+/* ── Dark Factory callout ── */
+.callout {
+  background: var(--bg-surface-2);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 1.5rem;
+  margin: var(--sp-8) 0;
+}
+
+.callout-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  margin-bottom: var(--sp-3);
+}
+
+.callout p {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
+/* ── HO badge (Why section) ── */
+.ho-badge {
+  margin-top: var(--sp-8);
+  color: var(--text-secondary);
+  font-size: 1rem;
+  font-style: italic;
+}
+
+.ho-badge .prefix {
+  color: var(--accent);
+  font-style: normal;
+  font-weight: 600;
+}
+
+.ho-badge .sub {
+  display: block;
+  font-size: 0.75rem;
+  font-style: normal;
+  margin-top: var(--sp-2);
+  letter-spacing: 0.05em;
+}
+
+/* ── Trade-offs bullets ── */
+.tradeoffs-list {
+  list-style: none;
+  margin: var(--sp-6) 0;
+}
+
+.tradeoffs-list li {
+  color: var(--text-secondary);
+  padding: var(--sp-2) 0;
+  font-size: 0.9rem;
+}
+
+.tradeoffs-list li::before {
+  content: "→ ";
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* ── Problem section ── */
+.problem-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-12);
+  align-items: center;
+}
+
+.problem-gif {
+  max-width: 480px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+/* ── Centered image block ── */
+.img-centered {
+  display: block;
+  margin: var(--sp-8) auto 0;
+  max-width: 700px;
+  width: 100%;
+  height: auto;
+}
+
+.img-caption {
+  text-align: center;
+  margin-top: var(--sp-3);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+}
+
+/* ── Focus visible ── */
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
