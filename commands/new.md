@@ -3,7 +3,7 @@ category: Workflow
 tags: [waterfall, sdd, workflow, spec-driven, multi-agent, agent-teams]
 ---
 
-Lance un nouveau besoin end-to-end (preflight, team, spawn OR).
+Starts a new end-to-end need (preflight, team, spawn OR).
 
 **Input**: `<name>` (kebab-case, optional). If omitted, PM will ask the HO to describe the need and propose 3 kebab-case names to choose from.
 

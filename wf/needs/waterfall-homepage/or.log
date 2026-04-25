@@ -1,0 +1,38 @@
+2026-04-25T18:52:06Z OR initialisé. Session 785be919. Step BOOTSTRAP:DETERMINE_NAME -> délégation à PM.
+2026-04-25T18:52:47Z BOOTSTRAP:RUN_BOOTSTRAP -> agent=pm, délégation à PM.
+2026-04-25T19:01:49Z ANO-006 corrigé: OR reprend après idle. Step COLLECT_BRANCH_TYPE toujours en attente PM. Renvoi PLEASE_COMPLETE_STEP.
+2026-04-25T19:03:39Z REQUIREMENTS:COLLECT_PRD -> spawn_request PO.
+2026-04-25T19:04:27Z PO spawné (sonnet). En attente brief_complete REQUIREMENTS:COLLECT_PRD.
+2026-04-25T19:30:57Z REQUIREMENTS:CHECKPOINT_REQ -> délégation PM pour validation HO du PRD.
+2026-04-25T19:32:06Z FUNCTIONAL_SPECS:INTERVIEW_SPECS -> brief PO pour specs fonctionnelles.
+2026-04-25T19:38:31Z VALIDATE_SPECS: couverture EX/INV→TF vérifiée (12 EX + 5 INV / 15 TF). Tous couverts. Step complété.
+2026-04-25T19:39:31Z TECHNICAL_DESIGN:GENERATE_DESIGN -> spawn TL + DS en parallèle.
+2026-04-25T19:40:29Z TL (opus) + DS (sonnet) spawnés. En attente brief_complete design.md + ui.md.
+2026-04-25T19:42:32Z HO unsolicited input: nouvelle section Trade-offs/When to use + slogan 'No more Slop!'. Dispatch PO en priorité, puis notification TL+DS.
+2026-04-25T19:43:14Z HO input #2: Dark Factory mode à mettre en avant. Dispatch PO + TL + DS.
+2026-04-25T19:44:05Z BLOCAGE: PO n'a pas amendé PRD.md/specs.md malgré 2 change requests. Relance urgente PO.
+2026-04-25T19:45:05Z HO input #3: slogan candidat 'HO must review artefacts and code'. PO déjà notifié par PM. Notification DS+TL.
+2026-04-25T19:45:37Z DS: ui.md livré. Trade-offs + slogan intégrés. Slogan placé dans #why (pas Hero). Remontée HO pour validation placement.
+2026-04-25T19:45:56Z DS: ui.md complet. Dark Factory + No more Slop! dans #why. En attente: PO brief_complete EX-014 + décision HO placement slogan.
+2026-04-25T19:46:27Z DS: slogan #3 'HO must review artefacts and code' intégré dans #why. ui.md finalisé (3 slogans + Dark Factory). En attente PO EX-014 + HO placement slogan.
+2026-04-25T19:47:31Z Divergence ordre sections specs vs ui.md. Remontée HO via PM pour arbitrage avant CHECKPOINT_DESIGN.
+2026-04-25T19:49:59Z CHECKPOINT_DESIGN: tous artefacts alignés. INV-004 corrigé. Délégation PM.
+2026-04-25T19:50:35Z CHECKPOINT_DESIGN: envoi à PM avec question hosting GitHub Pages + domaine custom.
+2026-04-25T19:55:26Z Phase REVIEW:RV_REVIEW. Spawn RV. GitHub Pages URL par défaut (pas de domaine custom v1).
+2026-04-25T19:56:11Z RV (sonnet) spawné. En attente brief_complete rv.md + verdict.
+2026-04-25T19:58:25Z REVIEW ITERATE run 1. B-001/B-002 -> PO, B-003 -> DS. Q-001 résolu. Q-002 -> PM pour URL repo.
+2026-04-25T19:59:22Z Q-001: GitHub Pages URL par défaut confirmé. Q-002: placeholder <YOUR-USERNAME>/waterfall confirmé. B-003 DS OK. Attente PO B-001+B-002.
+2026-04-25T19:59:33Z REVIEW run 1 findings résolus: B-001 PO OK, B-002 déjà OK, B-003 DS OK. Q-001+Q-002 résolus. Lancement RV run 2.
+2026-04-25T20:01:57Z B-002+B-004 corrigés dans specs.md. EX-001 + INV-004 alignés. Relance RV run final (2/2 atteint).
+2026-04-25T20:03:19Z ESCALADE RV: verdict ITERATE erroné. Vérification directe confirme EX-001 et INV-004 corrects. Contre-expertise envoyée à RV.
+2026-04-25T20:04:49Z REVIEW CONVERGE. Avancé à PLANNING:GENERATE_TASKS. Spawn TL pour taches.md.
+2026-04-25T20:08:20Z PLANNING:ASSIGN_WORKTREES -> TL briefé. dv_pool=1, toutes tâches à dv1.
+2026-04-25T20:09:35Z PLANNING:CHECKPOINT_TASKS -> délégation PM.
+2026-04-25T20:11:51Z Worktree dv1 créé: worktrees/785be919/dv1 (branch feature/waterfall-homepage-dv1). Spawn DV1 + notification PO EX-002.
+2026-04-25T20:12:58Z DV1 (sonnet) spawné. IMPLEMENTATION démarrée. En attente task_done T-001..T-012.
+2026-04-25T20:21:05Z DV_IMPLEMENT complété. Commit aab83ce. Avancé à TL_SUPERVISE. Brief TL pour review per-task.
+2026-04-25T20:23:22Z TL_SUPERVISE REJECTED: F-1 (ordre sections), F-2 (slogan double), F-3 (URL placeholder). 4 mineurs. Relais DV1.
+2026-04-25T20:25:54Z DV1 fix_done commit e52f146. F-1/F-2/F-3 + M-1/M-2/M-3 appliqués. Relance TL re-review.
+2026-04-25T20:27:18Z TL_SUPERVISE: T-001..T-012 tous APPROVED (commit e52f146). CHECKPOINT_IMPL -> PM.
+2026-04-25T20:28:29Z Merge feature/waterfall-homepage-dv1 → feature/waterfall-homepage OK. 25 fichiers, 1196 insertions.
+2026-04-25T20:29:07Z CODE_REVIEW:TL_REVIEW -> brief TL pour review globale du code mergé.

@@ -21,7 +21,7 @@ Waterfall turns a single Claude Code session into a coordinated team of agents, 
 
 Each *besoin* (work item) lives under `wf/needs/<kebab-name>/` with its own PRD, design, specs, tasks, tracking, and `.wf-state.json`. The state machine (`scripts/wf-orchestrate.sh`) is the single source of truth for what happens next; agents only advance via guarded `--complete` calls.
 
-Built on Claude Code's experimental **Agent Teams** feature.
+Built on Claude Code's experimental **[Agent Teams](https://code.claude.com/docs/fr/agent-teams)** feature.
 
 ---
 
@@ -60,7 +60,7 @@ The plugin ships:
 
 ### 1. Enable Agent Teams (required)
 
-Agent Teams is an experimental Claude Code feature. Enable it in `~/.claude/settings.json`:
+[Agent Teams](https://code.claude.com/docs/fr/agent-teams) is an experimental Claude Code feature. Enable it in `~/.claude/settings.json`:
 
 ```json
 {
