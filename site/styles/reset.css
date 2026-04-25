@@ -14,7 +14,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-img, gif, video {
+img, video {
   max-width: 100%;
   height: auto;
   display: block;
