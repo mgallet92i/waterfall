@@ -1,0 +1,17 @@
+{
+  "name": "waterfall",
+  "version": "0.1.0",
+  "description": "Multi-agent specification-driven development (SDD) framework for Claude Code. Orchestrates a team of specialized agents (PM, OR, PO, TL, DV, RV, QA, DS) through a waterfall workflow from requirements to validated implementation.",
+  "author": {
+    "name": "mgallet92i"
+  },
+  "license": "MIT",
+  "keywords": [
+    "sdd",
+    "waterfall",
+    "multi-agent",
+    "framework",
+    "orchestration",
+    "specification-driven"
+  ]
+}

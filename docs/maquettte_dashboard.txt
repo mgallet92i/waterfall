@@ -1,0 +1,15 @@
+[v2.1.111 - claude-opus-4-7[1m] - Wemby en place 🏀] [C://projets//waterfall] [feature/NO-JIRA-wf-dashboard-fixes] [1h20min] [Context: 20% of 1M]
+——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+WATERFALL : 🎯 test-fix-or  ⏱ 19min 35s
+● BOOT:INTERVIEW_SPECS — ○ REQ — ○ SPEC — ○ DESIGN — ○ REV — ○ PLAN — ○ IMPL — ○ CR — ○ VALID — ○ CLOSE
+——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+TEAM							 │ dv1									│ dv2									│ dv3		
+● or(SO 10%)   ● po(OP 15%)   	 │ ○ tache 2							│ ○ tache 4								│ ○ tache 6
+● rv(SO 5%)    ○ qa(SO 20%)	     │										│										│
+○ tl(OP 30%)   ○ dv1(SO 8%) 	 │ ✅ tache 1							│ ✅ tache 3							│ ✅ tache 5
+○ dv2(SO 12%)  ○ dv3(SO 5%)	  	 │  ...									│ ...									│ ...
+DOC 							 │ 										│										│
+● PRD 		 ○ SPECS	○ DESIGN │ 										│ 										│
+○ ACCEPTANCE ○ TASKS 	○ REVIEW │										│										│							
+○ TRACKING 	 ○ ACCEPTANCE REPORT │										│										│
+——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
