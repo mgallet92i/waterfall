@@ -176,4 +176,4 @@ See `agents/wf-or.md` Bootstrap Sequence section and `handle_init()` flag `--ses
 - **Session marker**: OR creates `$HOME/.claude/wf-session-active.<session_id>` after `--init` (session-scoped marker, required by `/waterfall:resume`). The `session_id` is `$WF_SID` resolved in step 1.bis, passed via `--session`. No `leadSessionId` or `"default"` fallback (EX-010, INV-002).
 - **Params `--team` + `--session`**: `wf-orchestrate.sh <name> --init --team wf-<name> --session "$WF_SID"` — `WF_SID` is the only source of truth for the HO sid (EX-006, ADR-001).
 
-> **JSON.stringify mandatory**: any structured payload in the `message` field of a `SendMessage` must be serialized via `JSON.stringify()`. A raw object causes `Invalid tool parameters` (strict SDK union type).
+> **IMPORTANT — SendMessage plain text obligatoire** : le paramètre `message` de `SendMessage` n'accepte que `string`. Utiliser le format plain text `clé: valeur` — jamais d'objet `{...}`, jamais `JSON.stringify()`.

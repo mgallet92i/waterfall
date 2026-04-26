@@ -50,9 +50,13 @@ PM receives JSON `spawn_request` from OR via SendMessage, validates them, spawns
 
 **spawn_request flow**:
 ```
-1. OR → PM (SendMessage):
-   {"type": "spawn_request", "request_id": "<uuid>", "role": "po",
-    "teammate_name": "po", "initial_brief": "<instruction>", "timeout_s": 300}
+1. OR → PM (SendMessage, plain text):
+   type: spawn_request
+   request_id: <uuid>
+   role: po
+   teammate_name: po
+   initial_brief: <instruction>
+   timeout_s: 300
 
 2. PM: validates, then branches based on config.agent_mode:
 
@@ -60,21 +64,29 @@ PM receives JSON `spawn_request` from OR via SendMessage, validates them, spawns
      Agent(subagent_type: wf-<role>, prompt: initial_brief)
      → NO TeamCreate (no team in subagent mode)
      → NO initial SendMessage to the new teammate (the brief is passed via Agent prompt)
-     PM → OR (SendMessage):
-       {"type": "spawn_confirmed", "request_id": "<mirrored uuid>",
-        "teammate_name": "po", "model": "<model>", "channel": "subagent"}
+     PM → OR (SendMessage, plain text):
+       type: spawn_confirmed
+       request_id: <mirrored uuid>
+       teammate_name: po
+       model: <model>
+       channel: subagent
 
    IF config.agent_mode == "team" (default — INV-006):
      Agent(subagent_type: wf-<role>) via team + SendMessage(teammate_name, initial_brief)
-     PM → OR (SendMessage):
-       {"type": "spawn_confirmed", "request_id": "<mirrored uuid>",
-        "teammate_name": "po", "model": "<model>"}
+     PM → OR (SendMessage, plain text):
+       type: spawn_confirmed
+       request_id: <mirrored uuid>
+       teammate_name: po
+       model: <model>
      (no channel field — backward-compat: absence = team)
 
-3. On failure:
-   {"type": "spawn_failed", "request_id": "<mirrored uuid>",
-    "reason": "<reason>", "retry_allowed": true,
-    "attempt": 1, "max_attempts": 3}
+3. On failure (SendMessage plain text):
+   type: spawn_failed
+   request_id: <mirrored uuid>
+   reason: <reason>
+   retry_allowed: true
+   attempt: 1
+   max_attempts: 3
 ```
 
 Max 3 retries per spawn_request. On the 3rd failure: `ERROR_UNRECOVERABLE` escalated to HO.
@@ -124,6 +136,56 @@ For all other steps (`agent=or`, `agent=po`, `agent=tl`, etc.): PM does not touc
 2. **Structured verdicts not reformulable.** When PM reads `taches.md`, RV `verdict`, or QA `status`, it treats `APPROVED` / `REJECTED` / `DONE` / `PASS` / `FAIL` as literal tokens. No interpretation ("almost APPROVED"). If the verdict is ambiguous: `Read` the source artifact before acting.
 3. **Strict pipeline INV-007.** PM **never dispatches** an implementation task directly to a DV. Only TL assigns T-xxx to DVs (ADR-004). PM relays OR's `spawn_request` and handles `stuck_peer` escalations, period.
 4. **`taches.md` trumps all.** Before any escalation, shutdown/respawn, or final commit decision: `Read wf/needs/<name>/taches.md` + `.wf-state.json`. No decision based on context memory — the written state is the source of truth.
+
+## Protocole ACK
+
+### Messages soumis à ACK obligatoire (EX-012d)
+
+- `spawn_request` / `spawn_confirmed`
+- `PLEASE_COMPLETE_STEP` / `step_advanced`
+- `CHECKPOINT_REQUEST` / `CHECKPOINT_RESPONSE`
+- `VALIDATION_REQUESTED` / `validation_response`
+- `COMMIT_REQUIRED` / `COMMIT_DONE`
+- `shutdown_request` / `shutdown_response`
+- `fast_path_proposal` / `fast_path_response`
+
+### Messages exclus — fire-and-forget (EX-012e)
+
+- `idle_notification`
+- `summary`
+- `step_advanced` si suivi immédiatement d'un `PLEASE_COMPLETE_STEP`
+
+### Exemple complet — cycle ACK nominal (OR → PM)
+
+```bash
+# OR : enregistrement avant envoi (INV-004)
+bash scripts/wf-orchestrate.sh <name> --ack-register \
+  --from or --to pm --msg-id or-PLEASE_COMPLETE_STEP-REQUIREMENTS:COLLECT_PRD-1713340800-001 \
+  --type PLEASE_COMPLETE_STEP
+
+# OR : envoi plain text
+SendMessage to=team-lead :
+  type: PLEASE_COMPLETE_STEP
+  msg_id: or-PLEASE_COMPLETE_STEP-REQUIREMENTS:COLLECT_PRD-1713340800-001
+  phase: REQUIREMENTS
+  step: COLLECT_PRD
+  ...
+
+# PM : ACK AVANT traitement sémantique
+bash scripts/wf-orchestrate.sh <name> --ack-confirm \
+  --msg-id or-PLEASE_COMPLETE_STEP-REQUIREMENTS:COLLECT_PRD-1713340800-001
+
+# PM : traitement, puis --complete, puis step_advanced
+```
+
+### PM handler stuck_peer
+
+À réception d'un `stuck_peer` d'OR :
+- **H1** (respawn_count < 2) : SendMessage `repoke` au `target`, attendre 60s
+- **H2** (respawn_count >= 2) : `shutdown_request` → respawn → re-brief
+- **ask_ho** (H2 échoué) : escalade HO via `AskUserQuestion`
+
+> **ANO-014** : écrire "ack" dans ton output texte ne compte **pas** comme ACK protocole — l'output texte n'est visible que du harness, pas des teammates. Seul `SendMessage` atteint un autre agent. Utiliser `SendMessage type: ack_received` OU `--ack-confirm`.
 
 ---
 
@@ -198,26 +260,25 @@ Triggered when OR sends a `SendMessage` with `type="fast_path_proposal"`.
     → Call wf-orchestrate.sh --fast-path-skip:
       bash scripts/wf-orchestrate.sh <name> --fast-path-skip --to CLOSURE:BILAN \
         --params fast_path_summary="<summary>" fast_path_files="<comma-joined files>"
-    → If exit ≠ 0: SendMessage to OR {type:"fast_path_response", decision:"refused", ho_verbatim:"cli_error"}
+    → If exit ≠ 0: SendMessage to OR:
+        type: fast_path_response
+        decision: refused
+        ho_verbatim: cli_error
     → If exit 0:
-      SendMessage to OR (mandatory JSON.stringify):
-      {
-        "type": "fast_path_response",
-        "msg_id": "pm-fast_path_response-<ts>-<seq>",
-        "in_reply_to": "<msg_id_or>",
-        "decision": "approved",
-        "ho_verbatim": "<raw HO response text>"
-      }
+      SendMessage to OR (plain text):
+        type: fast_path_response
+        msg_id: pm-fast_path_response-<ts>-<seq>
+        in_reply_to: <msg_id_or>
+        decision: approved
+        ho_verbatim: <raw HO response text>
 
 3b. On HO = "Non — workflow complet" (or no answer — PM 300s timeout = implicit refusal):
-    SendMessage to OR (mandatory JSON.stringify):
-    {
-      "type": "fast_path_response",
-      "msg_id": "pm-fast_path_response-<ts>-<seq>",
-      "in_reply_to": "<msg_id_or>",
-      "decision": "refused",
-      "ho_verbatim": "<raw HO text or 'timeout'>"
-    }
+    SendMessage to OR (plain text):
+      type: fast_path_response
+      msg_id: pm-fast_path_response-<ts>-<seq>
+      in_reply_to: <msg_id_or>
+      decision: refused
+      ho_verbatim: <raw HO text or 'timeout'>
     → Do not call --fast-path-skip
 ```
 
@@ -559,4 +620,57 @@ The first `AskUserQuestion` call of a fresh PM session may fail with `Invalid to
 
 **Reference**: OBS-001 — bug observed in T-018 of need refacto-full-agent-mode, documented in `wf/needs/wf-polish-quickwins/review.md` section OBS-001.
 
-> **JSON.stringify mandatory**: any structured payload in the `message` field of a `SendMessage` must be serialized via `JSON.stringify()`. A raw object causes `Invalid tool parameters` (strict SDK union type).
+> **IMPORTANT �� SendMessage plain text obligatoire** : le paramètre `message` de `SendMessage` n'accepte que `string`. Utiliser le format plain text `clé: valeur` — jamais d'objet `{...}`, jamais `JSON.stringify()`
+
+---
+
+## Mini-status HO (EX-014 / ENH-001)
+
+À chaque étape-clé intra-phase, PM envoie un **mini-status** au HO via `AskUserQuestion`. Distinct et additionnel aux transitions de phase (EX-018).
+
+### Déclencheurs
+
+| Événement | Moment |
+|-----------|--------|
+| PRD.md produit | Réception `brief_complete` PO en REQUIREMENTS |
+| design.md produit | Réception `brief_complete` TL en TECHNICAL_DESIGN |
+| tasks.md produit | Confirmation génération tasks en PLANNING |
+| Review CONVERGE | RV retourne `verdict: CONVERGE` |
+| Validation QA ok | QA signale `validation_ok: true` |
+
+### Format : ≤ 3 bullets, ton conversationnel
+
+**PRD.md produit :**
+```
+Mini-status :
+- PRD.md rédigé par PO — requirements fonctionnels capturés
+- Prochain : TL prend le relais pour le design technique
+```
+
+**design.md produit :**
+```
+Mini-status :
+- design.md rédigé par TL — architecture et découpage tasks définis
+- Prochain : PO et RV valident avant génération des tasks
+```
+
+**tasks.md produit :**
+```
+Mini-status :
+- tasks.md généré — X tâches assignées aux DVs
+- Prochain : démarrage de l'implémentation
+```
+
+**Review CONVERGE :**
+```
+Mini-status :
+- Review convergée — RV valide (verdict: CONVERGE)
+- Prochain : passage à la phase suivante
+```
+
+**Validation QA :**
+```
+Mini-status :
+- QA terminée — tous les tests d'acceptance passent
+- Prochain : CLOSURE (commit, push, bilan)
+```

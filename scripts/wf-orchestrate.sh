@@ -890,7 +890,12 @@ handle_complete() {
           [[ "$recv_key" == "$valid_key" ]] && found=1 && break
         done
         if [[ $found -eq 0 ]]; then
-          printf '{"ok":false,"error":"Unknown param: %s","code":"UNKNOWN_PARAM"}\n' "$recv_key"
+          local expected_pipe
+          expected_pipe=$(echo "$valid_params_str" | tr ' ' '|')
+          local expected_json
+          expected_json=$(echo "$valid_params_str" | tr ' ' '\n' | jq -Rc . | jq -sc .)
+          printf '{"ok":false,"error":"Unknown param: %s. Expected: %s","code":"UNKNOWN_PARAM","expected":%s}\n' \
+            "$recv_key" "$expected_pipe" "$expected_json"
           exit 1
         fi
       done
@@ -955,11 +960,13 @@ handle_complete() {
     if [[ ! -f "$state_file" ]]; then
       emit_error "State file not found at $state_file — did --init run?" "BOOTSTRAP_MISSING"
     fi
-    log "RUN_BOOTSTRAP confirmed, advancing to STORE_PATH"
+    log "RUN_BOOTSTRAP confirmed, chaining NOOP to COLLECT_CARD_NUM"
     local state_json
     state_json=$(read_state "$state_file")
-    # Advance phase/step to STORE_PATH
-    _wf_advance_state "$state_file" "$state_json" "BOOTSTRAP" "RUN_BOOTSTRAP" "BOOTSTRAP" "STORE_PATH" "in_progress" "false" "" ""
+    # Advance RUN_BOOTSTRAP → STORE_PATH (silent intermediate)
+    _wf_advance_state "$state_file" "$state_json" "BOOTSTRAP" "RUN_BOOTSTRAP" "BOOTSTRAP" "STORE_PATH" "in_progress" "false" "" "" > /dev/null
+    # EX-006: auto-advance STORE_PATH (NOOP) → COLLECT_CARD_NUM without emitting PLEASE_COMPLETE_STEP
+    _wf_chain_noop "$name" "$state_file"
     return
   fi
 
@@ -1169,6 +1176,7 @@ ENDJS
   # ADR-001 Option C: audit scope at CLOSURE:CLEANUP (just before ARCHIVE)
   if [[ "$current_phase" == "CLOSURE" ]] && [[ "$current_step" == "CLEANUP" ]]; then
     _wf_audit_scope "$name"
+    _wf_cleanup_markers "$name"
   fi
 
   _wf_advance_state \
@@ -1178,6 +1186,28 @@ ENDJS
     "$new_status" "$should_stop" \
     "$incr_review" "$incr_cr" \
     "$escalate_action" "$extra_card_num" "$extra_branch_type" "$extra_branch" "$extra_team"
+}
+
+# EX-006 (ANO-005) — Auto-advance NOOP steps after RUN_BOOTSTRAP, bounded to BOOTSTRAP.
+# STORE_PATH is NOOP: no PM interaction needed. Advances silently to COLLECT_CARD_NUM.
+# Logs each auto-advance in or.log.
+_wf_chain_noop() {
+  local name="$1"
+  local state_file="$2"
+  local or_log="$PROJECT_ROOT/wf/needs/$name/or.log"
+  local ts
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  # Auto-advance STORE_PATH → COLLECT_CARD_NUM (NOOP step)
+  local sp_state_json
+  sp_state_json=$(read_state "$state_file")
+  local sp_phase sp_step
+  sp_phase=$(normalize_phase "$(get_field "$sp_state_json" "phase")")
+  sp_step=$(normalize_step "$(get_field "$sp_state_json" "step")")
+  if [[ "$sp_phase" == "BOOTSTRAP" ]] && [[ "$sp_step" == "STORE_PATH" ]]; then
+    printf '%s INFO NOOP_AUTO_ADVANCE BOOTSTRAP:STORE_PATH -> BOOTSTRAP:COLLECT_CARD_NUM (no PLEASE_COMPLETE_STEP emitted)\n' "$ts" >> "$or_log"
+    _wf_advance_state "$state_file" "$sp_state_json" "BOOTSTRAP" "STORE_PATH" "BOOTSTRAP" "COLLECT_CARD_NUM" "in_progress" "false" "" ""
+  fi
 }
 
 # Write state transition and emit result JSON
@@ -1301,10 +1331,31 @@ ENDJS
 # ─────────────────────────────────────────────────────────────────────────────
 
 _wf_cleanup_markers() {
-  local sid="$1"
-  [[ -z "$sid" ]] && return 0
-  rm -f "$HOME/.claude/wf-session-active.$sid" 2>/dev/null
-  log "Markers cleaned for session_id=$sid"
+  local name="$1"
+  [[ -z "$name" ]] && return 0
+  local or_log="$PROJECT_ROOT/wf/needs/$name/or.log"
+  local ts
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+  # Supprimer tous les markers pointant vers ce besoin (contenu = nom du besoin)
+  for marker_file in "$HOME/.claude/wf-session-active."* ; do
+    [[ -f "$marker_file" ]] || continue
+    local content
+    content=$(cat "$marker_file" 2>/dev/null || true)
+    if [[ "$content" == "$name" ]]; then
+      rm -f "$marker_file"
+      echo "$ts CLEANUP_MARKER deleted=$marker_file reason=need_closed" >> "$or_log" 2>/dev/null || true
+      log "Marker deleted: $marker_file (was pointing to $name)"
+    fi
+  done
+
+  # Toujours supprimer wf-session-active.default s'il existe (violation INV-002)
+  local default_marker="$HOME/.claude/wf-session-active.default"
+  if [[ -f "$default_marker" ]]; then
+    rm -f "$default_marker"
+    echo "$ts CLEANUP_MARKER deleted=$default_marker reason=inv_002_violation" >> "$or_log" 2>/dev/null || true
+    log "Marker default deleted (INV-002 violation)"
+  fi
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1406,9 +1457,7 @@ handle_abort() {
     "" "" "" "" "" "$reason"
 
   # Cleanup: remove scoped session markers, plan files, worktrees
-  local abort_session_id
-  abort_session_id=$(get_session_id "$state_json")
-  _wf_cleanup_markers "$abort_session_id"
+  _wf_cleanup_markers "$name"
   rm -f "$HOME/.claude/plans/"*.md 2>/dev/null
 
   # Cleanup DV worktrees if any

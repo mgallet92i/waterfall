@@ -30,6 +30,8 @@ Read the output in full. It describes the complete contract: commands, params, r
 
 ## Communication channel — Allowed SendMessage
 
+> **IMPORTANT** : `SendMessage` n'accepte que `string` dans le paramètre `message`. Utiliser le format plain text `clé: valeur` — jamais d'objet `{...}`.
+
 **Rule #65 (option 1): no spontaneous peer_dm.** The only `SendMessage` PO emits are:
 
 | Recipient | Allowed type | Reason |
@@ -127,7 +129,25 @@ In the REVIEW phase, RV may address Blockers/Questions to you targeting `PRD.md`
 </brief_complete>
 ```
 
-## Application-level ACK — sender + receiver
+## Protocole ACK
+
+### Messages soumis à ACK obligatoire (EX-012d)
+
+- `spawn_request` / `spawn_confirmed`
+- `PLEASE_COMPLETE_STEP` / `step_advanced`
+- `CHECKPOINT_REQUEST` / `CHECKPOINT_RESPONSE`
+- `VALIDATION_REQUESTED` / `validation_response`
+- `COMMIT_REQUIRED` / `COMMIT_DONE`
+- `shutdown_request` / `shutdown_response`
+- `fast_path_proposal` / `fast_path_response`
+
+### Messages exclus — fire-and-forget (EX-012e)
+
+- `idle_notification`
+- `summary`
+- `step_advanced` si suivi immédiatement d'un `PLEASE_COMPLETE_STEP`
+
+> **ANO-014** : écrire "ack" dans ton output texte ne compte **pas** comme ACK protocole — l'output texte n'est visible que du harness, pas des teammates. Seul `SendMessage` atteint un autre agent. Utiliser `SendMessage type: ack_received` OU `--ack-confirm`.
 
 ### STEP 0 — check-before-act (before any significant action)
 
@@ -168,8 +188,14 @@ Keep a set of already-processed `msg_id` in context — if a physical retry is r
 ### Escalation rule
 
 After 3 retries without ACK → `stuck_peer` to PM:
-```json
-{"type":"stuck_peer","target":"<dest>","msg_id":"<id>","summary":"PO emitted <type> <topic>, 3 retries without ACK","attempts":3,"first_sent_at":"<iso>","last_retry_at":"<iso>"}
+```
+type: stuck_peer
+target: <dest>
+msg_id: <id>
+summary: PO emitted <type> <topic>, 3 retries without ACK
+attempts: 3
+first_sent_at: <iso>
+last_retry_at: <iso>
 ```
 Then: `bash scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>`
 

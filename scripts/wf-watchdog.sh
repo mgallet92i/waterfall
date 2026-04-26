@@ -13,7 +13,7 @@ if [[ -z "$name" ]]; then
 fi
 shift
 
-threshold=10
+threshold=2
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --timeout)
@@ -157,6 +157,58 @@ now_epoch="$(date +%s)"
 elapsed_s=$(( now_epoch - last_epoch ))
 elapsed_min=$(( elapsed_s / 60 ))
 
+# ─── EX-007/EX-009: Detect OR idle post step_advanced (seuil 120s) ──────────
+# Si le dernier step_advanced dans or.log date de > 120s
+# ET aucun PLEASE_COMPLETE_STEP ne lui est postérieur → alert idle_post_step_advanced
+
+or_log="$need_dir/or.log"
+idle_post_step_advanced=false
+
+if [[ -f "$or_log" ]]; then
+  # Dernière ligne contenant step_advanced
+  last_sa_line="$(grep 'step_advanced' "$or_log" | tail -1)"
+  # Dernière ligne contenant PLEASE_COMPLETE_STEP
+  last_pcs_line="$(grep 'PLEASE_COMPLETE_STEP' "$or_log" | tail -1)"
+
+  if [[ -n "$last_sa_line" ]]; then
+    # Extraire timestamp ISO depuis la ligne (format {"ts":"<iso>",...} ou [<iso>] ...)
+    last_sa_ts="$(echo "$last_sa_line" | grep -oP '"ts"\s*:\s*"\K[^"]+' | head -1)"
+    if [[ -z "$last_sa_ts" ]]; then
+      last_sa_ts="$(echo "$last_sa_line" | grep -oP '\[\K[^\]]+' | head -1)"
+    fi
+
+    if [[ -n "$last_sa_ts" ]]; then
+      last_sa_epoch="$(date -d "$last_sa_ts" +%s 2>/dev/null || true)"
+
+      if [[ -n "$last_sa_epoch" ]]; then
+        elapsed_since_sa=$(( now_epoch_early - last_sa_epoch ))
+
+        if [[ "$elapsed_since_sa" -gt 120 ]]; then
+          # Vérifier si un PLEASE_COMPLETE_STEP est postérieur au step_advanced
+          pcs_after=false
+          if [[ -n "$last_pcs_line" ]]; then
+            last_pcs_ts="$(echo "$last_pcs_line" | grep -oP '"ts"\s*:\s*"\K[^"]+' | head -1)"
+            if [[ -z "$last_pcs_ts" ]]; then
+              last_pcs_ts="$(echo "$last_pcs_line" | grep -oP '\[\K[^\]]+' | head -1)"
+            fi
+            if [[ -n "$last_pcs_ts" ]]; then
+              last_pcs_epoch="$(date -d "$last_pcs_ts" +%s 2>/dev/null || true)"
+              if [[ -n "$last_pcs_epoch" && "$last_pcs_epoch" -gt "$last_sa_epoch" ]]; then
+                pcs_after=true
+              fi
+            fi
+          fi
+
+          if ! $pcs_after; then
+            idle_post_step_advanced=true
+            idle_post_sa_elapsed="$elapsed_since_sa"
+          fi
+        fi
+      fi
+    fi
+  fi
+fi
+
 # ─── T-003/T-002: Compute heartbeat_stale + history_stagnant ─────────────────
 
 heartbeat_stale=false
@@ -195,7 +247,16 @@ jq -n \
 
 # ─── T-004: Emit structured JSON watchdog.alert ──────────────────────────────
 
-if $heartbeat_stale || $history_stagnant; then
+if $idle_post_step_advanced; then
+  # EX-007/EX-009 — OR idle after step_advanced (priority alert)
+  jq -cn \
+    --arg ts "$now_iso" \
+    --arg role "or" \
+    --arg reason "idle_post_step_advanced" \
+    --argjson elapsed "${idle_post_sa_elapsed:-0}" \
+    '{"ts":$ts,"role":$role,"reason":$reason,"elapsed_sec":$elapsed}' \
+    > "$alert_file"
+elif $heartbeat_stale || $history_stagnant; then
   # Compute reason
   if $heartbeat_stale && $history_stagnant; then
     reason="BOTH"

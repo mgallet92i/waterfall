@@ -36,3 +36,4 @@
 2026-04-25T20:27:18Z TL_SUPERVISE: T-001..T-012 tous APPROVED (commit e52f146). CHECKPOINT_IMPL -> PM.
 2026-04-25T20:28:29Z Merge feature/waterfall-homepage-dv1 → feature/waterfall-homepage OK. 25 fichiers, 1196 insertions.
 2026-04-25T20:29:07Z CODE_REVIEW:TL_REVIEW -> brief TL pour review globale du code mergé.
+2026-04-25T20:52:24Z INFO AUDIT_SCOPE all_files_in_scope

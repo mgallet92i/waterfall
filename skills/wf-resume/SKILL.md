@@ -185,4 +185,4 @@ If disagreement detected → OR returns `NEED_PM_DECISION` with details, PM asks
 - **One question at a time** to HO (need selection, worktree cleanup)
 - **Agent Teams model only** — no legacy subagent model. Use `TeamCreate` + `SendMessage` exclusively.
 
-> **JSON.stringify mandatory**: any structured payload in the `message` field of a `SendMessage` must be serialized via `JSON.stringify()`. A raw object causes `Invalid tool parameters` (strict SDK union type).
+> **IMPORTANT — SendMessage plain text obligatoire** : le paramètre `message` de `SendMessage` n'accepte que `string`. Utiliser le format plain text `clé: valeur` — jamais d'objet `{...}`, jamais `JSON.stringify()`.

@@ -76,6 +76,10 @@ export WF_REVIEW_ARTIFACTS WF_REVIEW_CODE
 export WF_MODEL_PM WF_MODEL_OR WF_MODEL_PO WF_MODEL_TL
 export WF_MODEL_RV WF_MODEL_QA WF_MODEL_DV WF_MODEL_DS
 
+# EX-001 — Session ID (INV-001: jamais synthétique, vide hors Claude Code)
+WF_SID="${CLAUDE_SESSION_ID:-}"
+export WF_SID
+
 # --- Markdown recap (stdout, visible in tool result) ---
 if (( ${#errors[@]} > 0 )); then
   echo "## ❌ Invalid waterfall config"
@@ -99,6 +103,7 @@ cat <<EOF
 - **language**: $WF_LANGUAGE  _(auto-detected from \$LANG; override via env WF_LANGUAGE)_
 - **models**: pm=$WF_MODEL_PM, or=$WF_MODEL_OR, po=$WF_MODEL_PO, tl=$WF_MODEL_TL, rv=$WF_MODEL_RV, qa=$WF_MODEL_QA, dv=$WF_MODEL_DV, ds=$WF_MODEL_DS
 - **review_loops**: artifacts=$WF_REVIEW_ARTIFACTS, code=$WF_REVIEW_CODE
+- **sid**: ${WF_SID:-non défini}
 
 > To modify: edit \`.wf-config.json\` at the root (schema: \`.wf-config.example.md\`).
 EOF

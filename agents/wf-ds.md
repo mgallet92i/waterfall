@@ -60,8 +60,14 @@ Keep a set of already-processed `msg_id` in context — if a physical retry is r
 ### Escalation rule
 
 After 3 retries without ACK → `stuck_peer` to PM:
-```json
-{"type":"stuck_peer","target":"<dest>","msg_id":"<id>","summary":"DS emitted <type> <topic>, 3 retries without ACK","attempts":3,"first_sent_at":"<iso>","last_retry_at":"<iso>"}
+```
+type: stuck_peer
+target: <dest>
+msg_id: <id>
+summary: DS emitted <type> <topic>, 3 retries without ACK
+attempts: 3
+first_sent_at: <iso>
+last_retry_at: <iso>
 ```
 Then: `bash scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>`
 
@@ -83,6 +89,8 @@ DS is spawned **only** if the frontmatter of `PRD.md` contains `has_ui: true`.
 - You only work on needs with a UI dimension. Pure backend needs are invisible to you.
 
 ## Communication channel — Allowed SendMessage (obs #65)
+
+> **IMPORTANT** : `SendMessage` n'accepte que `string` dans le paramètre `message`. Utiliser le format plain text `clé: valeur` — jamais d'objet `{...}`.
 
 **No spontaneous peer_dm.** The only `SendMessage` DS emits are:
 

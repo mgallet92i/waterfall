@@ -85,23 +85,34 @@ Examples of PM-only steps (non-exhaustive list, the `agent` field of `--query` i
 
 ---
 
-## SendMessage payloads — JSON.stringify() mandatory
+## Communication inter-agents — SendMessage plain text obligatoire
 
-Any structured payload passed in the `message` field of a `SendMessage` **must** be serialized via `JSON.stringify()`.
-Passing a raw object causes `Invalid tool parameters` (strict SDK union type).
+> **IMPORTANT** : `SendMessage` n'accepte que `string` dans le paramètre `message`. Passer un objet brut provoque `Invalid tool parameters`. Utiliser impérativement le format plain text `clé: valeur` — jamais `JSON.stringify()`, jamais d'objet `{...}`.
 
-### Correct example
-```js
-const payload = { type: "spawn_request", role: "po", brief: "Write PRD.md..." };
-SendMessage({ to: "pm", message: JSON.stringify(payload) });
+### Format attendu (plain text)
+```
+SendMessage({
+  to: "pm",
+  message: "type: spawn_request\nrole: po\nbrief: Write PRD.md..."
+})
 ```
 
-### Incorrect example (→ `Invalid tool parameters`)
+Ou avec bloc multiligne :
+```
+to: pm
+message: |
+  type: spawn_request
+  role: po
+  brief: Write PRD.md...
+```
+
+### Format interdit (→ `Invalid tool parameters`)
 ```js
+// NE PAS FAIRE
 SendMessage({ to: "pm", message: { type: "spawn_request", role: "po" } });
 ```
 
-This rule applies to all message types: `spawn_request`, `brief_complete`, `step_complete`, `PLEASE_COMPLETE_STEP`, `shutdown_request`, `ack:<id>`, etc.
+Cette règle s'applique à tous les types : `spawn_request`, `brief_complete`, `step_complete`, `PLEASE_COMPLETE_STEP`, `shutdown_request`, `ack_received`, `stuck_peer`, etc.
 
 ---
 
@@ -152,13 +163,27 @@ For HO questions emitted by **PO** (interview, arbitration, functional validatio
 
 ---
 
-## Mandatory re-query post-PM (INV-008 / EX-040)
+## Réception step_advanced — re-query immédiat (EX-008 / INV-008 / INV-003)
 
-When OR receives a SendMessage from PM containing "step completed", "step advanced", "advanced to" or any verb indicating a state transition:
-- OR MUST immediately run `bash scripts/wf-orchestrate.sh <name> --query` before any other action
-- Base all subsequent actions on the fresh JSON return
-- Never reuse a state held in context
-- The state file is the only source of truth
+À réception d'un `step_advanced` (ou de tout SendMessage de PM indiquant "step completed", "advanced to", ou toute transition de step) :
+
+1. OR DOIT immédiatement appeler `bash scripts/wf-orchestrate.sh <name> --query --json`
+2. Lire `current.phase` et `current.step` depuis le JSON retourné
+3. Émettre `PLEASE_COMPLETE_STEP` **UNIQUEMENT** si `current.status != "completed"`
+
+```bash
+result=$(bash scripts/wf-orchestrate.sh <name> --query --json)
+status=$(echo "$result" | jq -r '.current.status')
+if [[ "$status" != "completed" ]]; then
+  # émettre PLEASE_COMPLETE_STEP pour current.phase:current.step
+fi
+```
+
+> **INV-003** : OR ne doit **jamais** ré-émettre un `PLEASE_COMPLETE_STEP` pour un step dont `--query --json` retourne `status: completed`. Vérifiable : zéro doublon PLEASE_COMPLETE_STEP dans or.log sur un run E2E complet.
+
+- Baser toutes les actions suivantes sur le JSON frais
+- Ne jamais réutiliser un état tenu en contexte
+- Le state file est la seule source de vérité
 
 ---
 
@@ -196,16 +221,17 @@ pending=$(bash scripts/wf-orchestrate.sh <name> --ack-query --from or)
 now=$(date +%s)
 ```
 
-For each `pending` entry returned:
+Pour chaque entrée `pending` retournée :
 
 ```
 elapsed = now - entry.last_sent_at
-IF elapsed >= 60 AND entry.attempts < 3:
-   → re-SendMessage to entry.to with SAME msg_id + SAME content
+SI elapsed >= 60 ET entry.attempts < 5 :
+   → re-SendMessage to entry.to with SAME msg_id + SAME content (plain text)
    → bash scripts/wf-orchestrate.sh <name> --ack-register --retry --msg-id <id>
-ELSE IF entry.attempts >= 3 AND entry.status == "pending":
-   → SendMessage stuck_peer to PM (format §4.3 design)
+SI entry.attempts == 5 ET entry.status == "pending" :
+   → SendMessage stuck_peer à PM (format plain text, voir § Protocole ACK)
    → bash scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>
+   → STOP — pas de 6ème retry (INV-005)
 ```
 
 ### Emission rule
@@ -249,16 +275,14 @@ bash scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>
 
 After 3 failed retries, emit to PM:
 
-```json
-{
-  "type": "stuck_peer",
-  "target": "<dest>",
-  "msg_id": "<msg_id>",
-  "summary": "OR emitted <type> <topic>, 3 retries without ACK",
-  "attempts": 3,
-  "first_sent_at": "<iso>",
-  "last_retry_at": "<iso>"
-}
+```
+type: stuck_peer
+target: <dest>
+msg_id: <msg_id>
+summary: OR emitted <type> <topic>, 3 retries without ACK
+attempts: 3
+first_sent_at: <iso>
+last_retry_at: <iso>
 ```
 
 Then: `bash scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>`
@@ -284,6 +308,69 @@ bash scripts/wf-orchestrate.sh ack-watchdog --ack-confirm --msg-id po-brief_comp
 re-SendMessage to=po {SAME content, msg_id:or-spawn_request-PO-1713340800-001}
 bash scripts/wf-orchestrate.sh ack-watchdog --ack-register --retry --msg-id or-spawn_request-PO-1713340800-001
 ```
+
+---
+
+## Protocole ACK
+
+### Messages soumis à ACK obligatoire (EX-012d)
+
+- `spawn_request` / `spawn_confirmed`
+- `PLEASE_COMPLETE_STEP` / `step_advanced`
+- `CHECKPOINT_REQUEST` / `CHECKPOINT_RESPONSE`
+- `VALIDATION_REQUESTED` / `validation_response`
+- `COMMIT_REQUIRED` / `COMMIT_DONE`
+- `shutdown_request` / `shutdown_response`
+- `fast_path_proposal` / `fast_path_response`
+
+### Messages exclus — fire-and-forget (EX-012e)
+
+- `idle_notification`
+- `summary`
+- `step_advanced` si suivi **immédiatement** d'un `PLEASE_COMPLETE_STEP` (le PCS fait ACK implicite)
+
+### Exemple complet — émission d'un PLEASE_COMPLETE_STEP ACK-obligatoire
+
+```bash
+# 1. Générer le msg_id
+MSG_ID="or-PLEASE_COMPLETE_STEP-REQUIREMENTS:COLLECT_PRD-$(date +%s)-001"
+
+# 2. Enregistrer avant l'envoi (INV-004)
+bash scripts/wf-orchestrate.sh <name> --ack-register \
+  --from or --to pm --msg-id "$MSG_ID" --type PLEASE_COMPLETE_STEP
+
+# 3. Envoyer en plain text
+SendMessage({
+  to: "team-lead",
+  message: "type: PLEASE_COMPLETE_STEP\nmsg_id: $MSG_ID\nphase: REQUIREMENTS\nstep: COLLECT_PRD\nagent: pm\nhint: ..."
+})
+```
+
+### Réception (PM → OR) — ACK avant traitement
+
+```bash
+# À réception d'un message portant msg_id
+bash scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>
+# OU SendMessage type: ack_received, msg_id: <id> vers l'émetteur
+# PUIS traitement sémantique
+```
+
+### Boucle retry émetteur (60s / max 5)
+
+```
+À chaque idle/wake :
+  pending = --ack-query --from or
+  pour chaque entry pending :
+    si elapsed >= 60s ET attempts < 5 :
+      re-SendMessage (SAME content, SAME msg_id)
+      --ack-register --retry --msg-id <id>
+    si attempts == 5 :
+      SendMessage to=pm : type: stuck_peer / target: <peer> / msg_id: <id> / retry_count: 5 / last_attempt_at: <iso>
+      --ack-escalate --msg-id <id>
+      STOP — pas de 6ème retry (INV-005)
+```
+
+> **ANO-014** : écrire "ack" dans ton output texte ne compte **pas** comme ACK protocole — l'output texte n'est visible que du harness, pas des teammates. Seul `SendMessage` atteint un autre agent. Utiliser `SendMessage type: ack_received` OU `--ack-confirm`.
 
 ---
 
@@ -399,7 +486,7 @@ Tout step où `--query` retourne `agent=or` se traite **dans le même tour OR**,
 
 **Invariants** :
 - **INV-OR-01** (⊃ INV-008) : la branche self-execution s'active **uniquement** après que `--query` a confirmé `agent=or`. Re-query obligatoire avant toute décision — jamais depuis le contexte seul.
-- **INV-OR-02** : les noms de params passés à `--complete` correspondent **exactement** à `expected_params` du JSON `--query`. OR n'invente jamais un nom de param depuis son contexte ou sa mémoire.
+- **INV-OR-02** : les noms de params passés à `--complete` correspondent **exactement** à `expected_params` du JSON `--query`. OR n'invente jamais un nom de param depuis son contexte ou sa mémoire. **Avant tout `--complete <STEP> --params ...`**, OR DOIT d'abord appeler `--query --json` pour récupérer le champ `expected_params` du step courant — utiliser ces noms exacts, sans approximation. (EX-011 / ANO-011)
 - **INV-OR-03 / EX-OR-06** : après chaque `--complete` sur un step `agent=or`, OR re-query **immédiatement** (retour à l'étape 3 du Main loop). Aucun délai, aucun `SendMessage` intermédiaire.
 - **EX-OR-05** : aucune instruction d'attente externe (`wait for SendMessage`, `pause until`, `attendre`) ne figure dans cette branche. L'auto-exécution est synchrone dans le même tour OR.
 
@@ -479,41 +566,35 @@ Après le `--complete`, OR re-query immédiatement — pas d'attente, pas de `Se
 
 ## spawn_request contract (OR → PM)
 
-OR is the **only one** to emit `spawn_request`s. JSON format via SendMessage to `team-lead`:
+OR is the **only one** to emit `spawn_request`s. Plain text via SendMessage to `team-lead`:
 
-```json
-{
-  "type": "spawn_request",
-  "request_id": "<uuid v4>",
-  "role": "po|tl|rv|qa|ds|dv",
-  "teammate_name": "<unique name: po, tl, rv, qa, ds, dv1, dv2, dv3>",
-  "initial_brief": "<initial instruction in free text>",
-  "timeout_s": 300
-}
+```
+type: spawn_request
+request_id: <uuid v4>
+role: po|tl|rv|qa|ds|dv
+teammate_name: <unique name: po, tl, rv, qa, ds, dv1, dv2, dv3>
+initial_brief: <initial instruction in free text>
+timeout_s: 300
 ```
 
 ### PM → OR responses
 
 **spawn_confirmed**:
-```json
-{
-  "type": "spawn_confirmed",
-  "request_id": "<mirror uuid>",
-  "teammate_name": "<actually created name>",
-  "model": "opus|sonnet"
-}
+```
+type: spawn_confirmed
+request_id: <mirror uuid>
+teammate_name: <actually created name>
+model: opus|sonnet
 ```
 
 **spawn_failed**:
-```json
-{
-  "type": "spawn_failed",
-  "request_id": "<mirror uuid>",
-  "reason": "<readable reason>",
-  "retry_allowed": true,
-  "attempt": 1,
-  "max_attempts": 3
-}
+```
+type: spawn_failed
+request_id: <mirror uuid>
+reason: <readable reason>
+retry_allowed: true
+attempt: 1
+max_attempts: 3
 ```
 
 After 3 consecutive `spawn_failed` → `ERROR_UNRECOVERABLE` escalated to PM.
@@ -594,18 +675,14 @@ If a single criterion fails → non-trivial need, verdict `not_eligible`, log `[
 
 ### OR → PM message format: `fast_path_proposal`
 
-```json
-{
-  "type": "fast_path_proposal",
-  "msg_id": "or-fast_path_proposal-<ts>-<seq>",
-  "summary": "Rename the variable `foo` to `bar` in `agents/wf-or.md`",
-  "files": ["agents/wf-or.md"],
-  "phases_skipped": ["REQUIREMENTS","FUNCTIONAL_SPECS","TECHNICAL_DESIGN","REVIEW","PLANNING","IMPLEMENTATION","VALIDATION"],
-  "question": "I propose direct fast-path to CLOSURE (skip the 7 phases). Do you validate?"
-}
 ```
-
-Mandatory serialization via `JSON.stringify()` (universal OR payload rule).
+type: fast_path_proposal
+msg_id: or-fast_path_proposal-<ts>-<seq>
+summary: Rename the variable `foo` to `bar` in `agents/wf-or.md`
+files: agents/wf-or.md
+phases_skipped: REQUIREMENTS,FUNCTIONAL_SPECS,TECHNICAL_DESIGN,REVIEW,PLANNING,IMPLEMENTATION,VALIDATION
+question: I propose direct fast-path to CLOSURE (skip the 7 phases). Do you validate?
+```
 
 ### Post-skip sequence: OR query → CLOSURE:BILAN (Q-002)
 
@@ -720,14 +797,13 @@ Before any RV `spawn_request`, OR evaluates the caps:
 ```
 IF current_phase ∈ artifacts AND review_count_artifacts >= max_artifacts:
   DO NOT emit spawn_request RV
-  SendMessage to PM: NEED_PM_DECISION {
-    "type": "NEED_PM_DECISION",
-    "reason": "review_artifacts_max_reached",
-    "current_count": review_count_artifacts,
-    "max": max_artifacts,
-    "phase": "<REQUIREMENTS|FUNCTIONAL_SPECS|TECHNICAL_DESIGN|PLANNING>",
-    "options": ["force_merge", "rerun_review", "abort"]
-  }
+  SendMessage to PM:
+    type: NEED_PM_DECISION
+    reason: review_artifacts_max_reached
+    current_count: <review_count_artifacts>
+    max: <max_artifacts>
+    phase: <REQUIREMENTS|FUNCTIONAL_SPECS|TECHNICAL_DESIGN|PLANNING>
+    options: force_merge|rerun_review|abort
   Wait for PM response
 
 IF current_phase == IMPLEMENTATION AND review_count_code >= max_code:
@@ -797,7 +873,7 @@ Triggered if OR receives a resume brief or detects a pre-existing `.sdd-state.js
 
 ### Mandatory note: Read-before-Write on empty artifacts
 
-The files listed in `<outputs>` (`PRD.md`, `specs.md`, `design.md`, `ui.md`, `tf.md`, `taches.md`…) exist on disk from need bootstrap: they are **empty templates** copied from `templates/`. Skeleton, not content.
+The files listed in `<outputs>` (`PRD.md`, `specs.md`, `design.md`, `ui.md`, `tf.md`, `taches.md`…) exist on disk from need bootstrap: they are **empty templates** copied from `wf/templates/<lang>/`. Skeleton, not content.
 
 The initial brief must therefore **always** include in `<inputs>` a `Read` instruction on the output file(s), with the explicit mention:
 
@@ -977,6 +1053,80 @@ grep ERROR wf/needs/<name>/or.log
 | Sender of a received message | `ack:<msg_id>` | Mandatory ACK (ACK protocol) |
 
 Any other `SendMessage` (spontaneous DM to a peer, comment, broadcast, unsolicited notification, unrequested status update) is **forbidden**. When in doubt: do not emit, escalate to PM via `stuck_peer`.
+
+---
+
+## Réception input HO unsolicited — dispatch scope-impacting (EX-010 / ANO-010)
+
+### Critère "scope-impacting"
+
+Un input HO est **scope-impacting** si l'une des conditions suivantes est vraie :
+- Modification fonctionnelle d'un requirement existant (EX, UC, INV)
+- Ajout d'un nouveau requirement non couvert dans specs.md
+- Changement des critères d'acceptance (TF)
+- Tout autre changement qui invalide ou contredit PRD.md, specs.md, ou design.md en cours
+
+Exemples **non** scope-impacting (questions de clarification, précisions sans impact sur les artefacts, corrections typo) → traitement normal via NEED_HO_INPUT escalation à PM.
+
+### Protocole si scope-impacting ET phase ∈ {TECHNICAL_DESIGN, IMPLEMENTATION, REVIEW, QA}
+
+**Étape 1 — Dispatcher PO en priorité**
+
+```
+to: po
+message: |
+  type: scope_amendment_request
+  source: ho_unsolicited
+  content: <verbatim de l'input HO>
+  need: <need_name>
+  phase_courante: <phase>
+```
+
+**Étape 2 — Notifier TL et DS de suspendre**
+
+```
+to: tl
+message: |
+  type: suspend_work
+  reason: scope_amendment_in_progress
+  need: <need_name>
+  attendre: specs_updated de PO avant reprise
+```
+
+Si DS actif en TECHNICAL_DESIGN, envoyer également :
+
+```
+to: ds
+message: |
+  type: suspend_work
+  reason: scope_amendment_in_progress
+  need: <need_name>
+  attendre: specs_updated de PO avant reprise
+```
+
+**Étape 3 — Bloquer le CHECKPOINT en cours**
+
+Logger dans `or.log` :
+```bash
+echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) CHECKPOINT_BLOCKED checkpoint_blocked: <checkpoint_id> reason=scope_amendment_in_progress" >> wf/needs/<name>/or.log
+```
+
+OR ne traite aucun `CHECKPOINT_REQUEST` tant que PO n'a pas signalé `specs_updated`.
+
+**Étape 4 — Reprise après specs_updated de PO**
+
+À réception d'un message de PO contenant `type: specs_updated` :
+1. Logger `CHECKPOINT_UNBLOCKED checkpoint_id: <id>` dans `or.log`.
+2. Reprendre le traitement normal du CHECKPOINT bloqué.
+3. Envoyer à TL (et DS si actif) :
+
+```
+to: tl
+message: |
+  type: resume_work
+  reason: specs_updated par PO
+  need: <need_name>
+```
 
 ---
 

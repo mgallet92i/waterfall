@@ -66,8 +66,14 @@ Keep a set of already-processed `msg_id` in context — if a physical retry is r
 ### Escalation rule
 
 After 3 retries without ACK → `stuck_peer` to PM:
-```json
-{"type":"stuck_peer","target":"<dest>","msg_id":"<id>","summary":"DV emitted <type> <topic>, 3 retries without ACK","attempts":3,"first_sent_at":"<iso>","last_retry_at":"<iso>"}
+```
+type: stuck_peer
+target: <dest>
+msg_id: <id>
+summary: DV emitted <type> <topic>, 3 retries without ACK
+attempts: 3
+first_sent_at: <iso>
+last_retry_at: <iso>
 ```
 Then: `bash scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>`
 
@@ -81,6 +87,8 @@ bash scripts/wf-orchestrate.sh <name> --ack-register --from dv --to tl \
 ---
 
 ## Communication channel — Allowed SendMessage (obs #65)
+
+> **IMPORTANT** : `SendMessage` n'accepte que `string` dans le paramètre `message`. Utiliser le format plain text `clé: valeur` — jamais d'objet `{...}`.
 
 **No spontaneous peer_dm.** The only `SendMessage` DV emits are:
 

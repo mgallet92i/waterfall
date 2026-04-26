@@ -46,7 +46,8 @@
       "Bash(bash scripts/wf-orchestrate.sh config-wiring --complete CLOSURE:CLEANUP)",
       "Bash(bash scripts/wf-orchestrate.sh config-wiring --query)",
       "Bash(touch __TRACKED_VAR__/.claude/wf-session-active.f8a50663-b203-427b-a650-955917d76ac4)",
-      "Bash(bash scripts/wf-orchestrate.sh or-stall-on-or-steps --query)"
+      "Bash(bash scripts/wf-orchestrate.sh or-stall-on-or-steps --query)",
+      "Skill(waterfall:wf-new)"
     ]
   }
 }

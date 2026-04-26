@@ -42,15 +42,12 @@ If the file is missing or corrupted: continue with an empty teammates list (R4 f
 
 ## Step 3 — Send shutdown_request to each teammate
 
-For each active teammate identified in step 2, send via `SendMessage`:
-```json
-{
-  "to": "<teammate_name>",
-  "message": {
-    "type": "shutdown_request",
-    "request_id": "wf-quit-<session_id>"
-  }
-}
+For each active teammate identified in step 2, send via `SendMessage` (plain text):
+```
+to: <teammate_name>
+message: |
+  type: shutdown_request
+  request_id: wf-quit-<session_id>
 ```
 
 Send messages in parallel if possible. Do not wait for a response (`shutdown_response`) — the shutdown is unilateral.

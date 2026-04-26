@@ -21,9 +21,49 @@ bash scripts/wf-orchestrate.sh --help
 
 Read the output in full. It describes the complete contract: commands, params, routing, error codes, golden rules. This step is **mandatory** — skipping `--help` causes identity or param errors that are hard to debug.
 
-## SendMessage payloads — JSON.stringify() mandatory
+## Communication inter-agents — SendMessage plain text obligatoire
 
-Every structured payload in the `message` field of a `SendMessage` must be serialized via `JSON.stringify()` — a raw object causes `Invalid tool parameters`. See `agents/wf-or.md §SendMessage payloads` for full examples.
+> **IMPORTANT** : `SendMessage` n'accepte que `string` dans le paramètre `message`. Passer un objet brut provoque `Invalid tool parameters`. Utiliser le format plain text `clé: valeur` — jamais d'objet `{...}`. Voir `agents/wf-or.md §Communication inter-agents` pour les exemples complets.
+
+## Protocole ACK
+
+### Messages soumis à ACK obligatoire (EX-012d)
+
+- `spawn_request` / `spawn_confirmed`
+- `PLEASE_COMPLETE_STEP` / `step_advanced`
+- `CHECKPOINT_REQUEST` / `CHECKPOINT_RESPONSE`
+- `VALIDATION_REQUESTED` / `validation_response`
+- `COMMIT_REQUIRED` / `COMMIT_DONE`
+- `shutdown_request` / `shutdown_response`
+- `fast_path_proposal` / `fast_path_response`
+
+### Messages exclus — fire-and-forget (EX-012e)
+
+- `idle_notification`
+- `summary`
+- `step_advanced` si suivi immédiatement d'un `PLEASE_COMPLETE_STEP`
+
+### PM receveur — ACK avant traitement
+
+À réception de tout message portant un `msg_id` :
+
+```bash
+# 1. Confirmer l'ACK AVANT traitement sémantique
+bash scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>
+# OU envoyer un SendMessage ack_received à l'émetteur :
+# type: ack_received
+# msg_id: <id>
+```
+
+### PM handler stuck_peer (H1/H2/ask_ho)
+
+À réception d'un `stuck_peer` d'OR :
+- Lire `target`, `msg_id`, `retry_count`, `last_attempt_at`
+- **H1** (respawn_count < 2) : SendMessage `repoke` au `target`, attendre réponse 60s
+- **H2** (respawn_count >= 2) : `shutdown_request` → respawn → re-brief
+- **ask_ho** (H2 a déjà échoué) : escalade HO via `AskUserQuestion`
+
+> **ANO-014** : écrire "ack" dans ton output texte ne compte **pas** comme ACK protocole — l'output texte n'est visible que du harness, pas des teammates. Seul `SendMessage` atteint un autre agent. Utiliser `SendMessage type: ack_received` OU `--ack-confirm`.
 
 ## Bootstrap — Spawn with configured models
 
@@ -560,6 +600,13 @@ The rules above reuse the existing heuristics without rewriting them:
 
 ```
 function decide(scan_result):
+  # Priority 0 — idle_post_step_advanced (EX-007/EX-009)
+  # Lire watchdog.alert : si reason == "idle_post_step_advanced" → repoke OR immédiatement
+  alert = read_json("wf/needs/<name>/watchdog.alert")
+  if alert and alert.reason == "idle_post_step_advanced":
+    return { type: "idle_post_step_advanced", target: "or",
+             age_seconds: alert.elapsed_sec, role: "or" }
+
   # Priority 1 — ack_expired
   expired = max_by(age, [e for e in scan_result.acks_pending if e.elapsed_seconds > 180])
   if expired:
@@ -728,6 +775,21 @@ blocked_on: <peer name> or "none"
 ```
 
 Simple extraction via grep/sed or jq if OR replies in structured JSON. Only `working` and `blocked_on` are decisional for routing.
+
+### Handler idle_post_step_advanced (EX-007/EX-009)
+
+Si `decide` retourne `type: idle_post_step_advanced` (lu depuis `watchdog.alert`) :
+
+```
+1. Log: {"ts":"...","tag":"[WATCHDOG]","event":"idle_post_step_advanced_detected","target":"or","elapsed_sec":<N>}
+2. SendMessage(
+     to:      "or",
+     summary: "watchdog repoke OR — idle post step_advanced",
+     message: "type: watchdog_repoke\nreason: idle_post_step_advanced\nelapsed_sec: <N>\naction: re-query --json et émettre PLEASE_COMPLETE_STEP si status != completed"
+   )
+3. Vider watchdog.alert (ou le supprimer)
+4. Mettre status=ALERT dans wf-watchdog-status.json
+```
 
 ### Consolidated decision table
 
@@ -1093,6 +1155,69 @@ grep 'loop_stopped_phase_closed' wf/needs/<name>/or.log
 ## [OBSERVATION] protocol
 
 Any agent can log an observation at any time in `tracking.md` or its main artifact. Format: `[OBS-xxx] <ISO date> — <description>`. PM logs its own observations in `tracking.md`. OR will consolidate them in `bilan.md` at step `CLOSURE:BILAN`.
+
+---
+
+## Mini-status HO (EX-014 / ENH-001)
+
+À chaque étape-clé intra-phase, PM envoie un **mini-status** au HO via `AskUserQuestion`. Ce mini-status est **distinct** et **additionnel** aux messages de transition de phase.
+
+### Déclencheurs
+
+| Événement | Moment |
+|-----------|--------|
+| PRD.md produit par PO | Dès réception du `brief_complete` de PO en phase REQUIREMENTS |
+| design.md produit par TL | Dès réception du `brief_complete` de TL en phase TECHNICAL_DESIGN |
+| tasks.md produit par TL | Dès réception de la confirmation de génération des tâches en phase PLANNING |
+| Fin de review CONVERGE | Dès que RV retourne `verdict: CONVERGE` (phase REVIEW) |
+| Fin de validation QA | Dès que QA signale `validation_ok: true` (phase VALIDATION) |
+
+### Format
+
+- **≤ 3 bullets**
+- Ton conversationnel, direct
+- Structure : artefact/action terminé + auteur + prochaine étape
+
+### Exemples concrets
+
+**PRD.md produit :**
+```
+Mini-status :
+- PRD.md rédigé par PO — requirements fonctionnels capturés
+- Prochain : TL prend le relais pour le design technique
+```
+
+**design.md produit :**
+```
+Mini-status :
+- design.md rédigé par TL — architecture et découpage tasks définis
+- Prochain : PO et RV valident le design avant de générer les tasks
+```
+
+**tasks.md produit :**
+```
+Mini-status :
+- tasks.md généré — X tâches assignées aux DVs
+- Prochain : démarrage de l'implémentation
+```
+
+**Fin de review CONVERGE :**
+```
+Mini-status :
+- Review convergée — RV valide le travail (verdict: CONVERGE)
+- Prochain : passage à la phase suivante
+```
+
+**Fin de validation QA :**
+```
+Mini-status :
+- QA terminée — tous les tests d'acceptance passent
+- Prochain : CLOSURE (commit, push, bilan)
+```
+
+### Règle de non-duplication (EX-018)
+
+Le mini-status ne remplace pas et ne fusionne pas avec le message de transition de phase. Les deux sont émis : d'abord le mini-status (intra-phase), puis la transition (inter-phase) selon le contrat EX-018 existant.
 
 ---
 

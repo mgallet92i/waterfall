@@ -38,3 +38,11 @@
 2026-04-25T20:42:52Z allow need=waterfall-homepage step=VALIDATION:HO_VALIDATE agent_type=pm expected=pm
 2026-04-25T20:43:40Z allow need=waterfall-homepage step=VALIDATION:CHECKPOINT_VALID agent_type=pm expected=pm
 2026-04-25T20:43:55Z allow need=waterfall-homepage step=CLOSURE:CLEANUP_WORKTREES agent_type=pm expected=pm
+2026-04-25T20:46:36Z allow need=waterfall-homepage step=CLOSURE:COMMIT agent_type=pm expected=pm
+2026-04-25T20:46:56Z allow need=waterfall-homepage step=CLOSURE:COMMIT agent_type=pm expected=pm
+2026-04-25T20:48:23Z allow need=waterfall-homepage step=CLOSURE:PUSH agent_type=pm expected=pm
+2026-04-25T20:48:48Z allow need=waterfall-homepage step=CLOSURE:PR_CREATE agent_type=pm expected=pm
+2026-04-25T20:49:34Z allow need=waterfall-homepage step=CLOSURE:HO_MERGE agent_type=pm expected=pm
+2026-04-25T20:49:58Z allow need=waterfall-homepage step=CLOSURE:BILAN agent_type=or expected=or
+2026-04-25T20:50:07Z allow need=waterfall-homepage step=CLOSURE:LOG_AUDIT agent_type=or expected=or
+2026-04-25T20:52:19Z allow need=waterfall-homepage step=CLOSURE:CLEANUP agent_type=pm expected=pm

@@ -19,9 +19,9 @@ bash scripts/wf-orchestrate.sh --help
 
 Read the output in full. It describes the complete contract: commands, params, routing, error codes, golden rules. This step is **mandatory** — skipping `--help` causes identity or param errors that are hard to debug.
 
-## SendMessage payloads — JSON.stringify() mandatory
+## Communication inter-agents — SendMessage plain text obligatoire
 
-Every structured payload in the `message` field of a `SendMessage` must be serialized via `JSON.stringify()` — a raw object causes `Invalid tool parameters`. See `agents/wf-or.md §SendMessage payloads` for full examples.
+> **IMPORTANT** : `SendMessage` n'accepte que `string` dans le paramètre `message`. Passer un objet brut provoque `Invalid tool parameters`. Utiliser le format plain text `clé: valeur` — jamais d'objet `{...}`. Voir `agents/wf-or.md §Communication inter-agents` pour les exemples complets.
 
 ## Application-level ACK — sender + receiver
 
@@ -64,8 +64,14 @@ Keep in context a set of `msg_id`s already processed — if a physical retry is 
 ### Escalation rule
 
 After 3 retries without ACK → `stuck_peer` to PM:
-```json
-{"type":"stuck_peer","target":"<dest>","msg_id":"<id>","summary":"TL emitted <type> <topic>, 3 retries without ACK","attempts":3,"first_sent_at":"<iso>","last_retry_at":"<iso>"}
+```
+type: stuck_peer
+target: <dest>
+msg_id: <id>
+summary: TL emitted <type> <topic>, 3 retries without ACK
+attempts: 3
+first_sent_at: <iso>
+last_retry_at: <iso>
 ```
 Then: `bash scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>`
 
