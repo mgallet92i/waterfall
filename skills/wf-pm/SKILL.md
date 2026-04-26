@@ -224,9 +224,30 @@ Triggered by `/waterfall:new`:
    - STATUS_REPORT          → relay to HO
    - watchdog.alert non-empty → watchdog_alert handler (§ below)
    - stuck_peer             → apply watchdog flow §6.4 design (H1/H2 → re-poke or shutdown+re-spawn)
+   - brief_complete / step_complete from non-OR/PM agent (po, tl, rv, qa, ds, dv*) → MISROUTED_TO_PM handler (§ below)
 3. Run the corresponding handler
 4. Back to step 1
 ```
+
+### MISROUTED_TO_PM
+
+Specialized agents (PO, TL, RV, QA, DS, DV*) MUST notify OR — not PM — when they finish a step (brief_complete / step_complete). When this contract is violated and PM receives such a notification, PM **never stays silent**: it auto-relays to OR so the workflow does not stall.
+
+```
+1. Detect: SendMessage from agent ∈ {po, tl, rv, qa, ds, dv, dv1, dv2, dv3}
+   with type ∈ {brief_complete, step_complete}.
+2. SendMessage to=or:
+     type: relay_brief_complete   (or relay_step_complete)
+     from: <agent>
+     original_summary: <verbatim summary from agent>
+     note: agent <agent> notified PM instead of OR — auto-relayed.
+3. Log:
+     bash C:/projets/waterfall/scripts/wf-orchestrate.sh <name> --log \
+       --msg "pm_relay:{from:<agent>,type:brief_complete,reason:misrouted_to_pm}"
+4. No HO interaction. No silence. No request to the agent to re-send.
+```
+
+This is a complementary safety net to the team-membership guard in `wf-orchestrate.sh --query`: the guard prevents OR from messaging absent teammates; this handler prevents PM from sitting on a notification meant for OR.
 
 ---
 

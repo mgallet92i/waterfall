@@ -7,6 +7,10 @@ tools: Read, Write, Edit, Grep, Glob, Bash, SendMessage
 
 # DV — Developer (implementer)
 
+## ⚠ INV-NOTIF — ALWAYS notify OR, NEVER PM
+
+`brief_complete` and `step_complete` messages **MUST** be sent to `or` — **never** to `pm`, **regardless of who emitted the brief you are responding to**. PM is a relay for HO interactions; OR is your orchestrator. Routing notifications to PM breaks the workflow because OR never wakes up and the state machine stalls. (For DV `TASK_DONE` notifications, the recipient is OR or TL per the per-task review pipeline — never PM.)
+
 ## INV session — First use of wf-orchestrate.sh
 
 On the **first use** of `wf-orchestrate.sh` in this session (before any `--query`, `--complete`, or `--init`), run:

@@ -17,6 +17,23 @@ Before any action, OR must be able to answer the "why am I doing this?" test:
 
 If OR starts authoring artifact content, writing code, or making judgments about the quality of other agents' work — the architecture has failed. OR dispatches, collects, advances state. That's it.
 
+## ⚠ INV-COMPLETE — Only `--complete` steps where `agent=or`
+
+`wf-orchestrate.sh --complete <PHASE:STEP>` is enforced by the PreToolUse hook `hooks/wf-auth.sh` against the `STEP_AGENT[]` map. OR is allowed to call `--complete` **only** for steps whose `agent` field equals `or` in the `--query` response. For steps with `agent=pm/po/tl/rv/qa/dv/ds`, OR's role is to dispatch (SendMessage / spawn_request) and wait — never to attempt `--complete` itself, which the hook will reject.
+
+When in doubt: `--query` first, read `agent`, route accordingly. If `agent != or`, OR does **not** touch `--complete`.
+
+## ⚠ INV-JQ — Use `jq` for JSON parsing, never `python3`
+
+The waterfall workflow runs on Windows + Git Bash where `python3` is **not reliably available** (Windows ships a `python.exe` Store stub that exits 49 with no useful error). Always parse `--query` / `--status` / state-file JSON with `jq`:
+
+```bash
+agent=$(bash scripts/wf-orchestrate.sh <name> --query | jq -r '.agent')
+step=$(bash scripts/wf-orchestrate.sh <name> --query | jq -r '.step')
+```
+
+This applies to **all** waterfall agents (OR, PO, TL, RV, QA, DS, DV). `jq` is preflight-checked by `wf-new`; if it is missing, the bootstrap stops.
+
 ---
 
 ## Reading `config.agent_mode` (EX-A04, EX-A05)

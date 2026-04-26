@@ -803,6 +803,32 @@ switch(phase) {
 
 const expectedParams = JSON.parse(process.env._WF_QUERY_EXPECTED_PARAMS || '[]');
 
+// Team-membership guard (ADR-004 enforcement) — prevents OR from SendMessage'ing
+// to a teammate that has never been spawned. If the responsible agent is a non-OR/PM
+// role and absent from the team config, the query annotates the hint and sets
+// must_spawn_first=true so OR knows to emit a spawn_request to PM first.
+if (agent && !['pm', 'or'].includes(agent)) {
+  try {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const os = await import('node:os');
+    const teamName = state.team_name || ('wf-' + name);
+    const cfgPath = path.join(os.homedir(), '.claude', 'teams', teamName, 'config.json');
+    if (fs.existsSync(cfgPath)) {
+      const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+      const members = (cfg.members || []).map(m => m.name);
+      if (!members.includes(agent)) {
+        params.must_spawn_first = true;
+        params.spawn_hint = `Teammate "${agent}" is not in team "${teamName}" (members: ${members.join(', ') || 'none'}). OR must emit a spawn_request to PM (role=${agent}, teammate_name=${agent}) and wait for spawn_confirmed before any SendMessage to ${agent}.`;
+        params.hint = (params.hint ? params.hint + ' ' : '') + '⚠ ' + params.spawn_hint;
+      }
+    }
+  } catch (e) {
+    // Soft-fail: if guard cannot be evaluated, do not block the query.
+    params.spawn_guard_error = String(e.message || e);
+  }
+}
+
 const result = {
   phase,
   step,

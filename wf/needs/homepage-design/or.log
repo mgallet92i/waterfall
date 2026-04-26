@@ -1,0 +1,15 @@
+2026-04-26T14:08:07Z INFO NOOP_AUTO_ADVANCE BOOTSTRAP:STORE_PATH -> BOOTSTRAP:COLLECT_CARD_NUM (no PLEASE_COMPLETE_STEP emitted)
+2026-04-26T14:08:17Z HO input: refaire le schéma cycle V pour coller à site-assets/v-model.jpg — à capturer dans le PRD lors de REQUIREMENTS
+2026-04-26T14:11:23Z REQUIREMENTS:COLLECT_PRD — spawn PO pour collecter le besoin HO. Input connu: ajustements homepage waterfall (claude-design/site/), point précis: refaire schéma cycle V selon site-assets/v-model.jpg
+2026-04-26T14:19:20Z FUNCTIONAL_SPECS:INTERVIEW_SPECS — brief PO pour interview specs. Artifacts attendus: specs.md, acceptance.md
+2026-04-26T14:27:00Z FUNCTIONAL_SPECS:VALIDATE_SPECS OK — 7 EX couverts (EX-007 COULD non couvert, acceptable), 3 INV couverts. CHECKPOINT_FUNC transmis à PM.
+2026-04-26T14:28:01Z TECHNICAL_DESIGN:GENERATE_DESIGN — must_spawn_first=true pour tl. spawn_request envoyé à PM.
+2026-04-26T14:33:07Z TECHNICAL_DESIGN:CHECKPOINT_DESIGN — design.md validé OR. Transmis à PM pour présentation HO.
+2026-04-26T14:37:48Z REVIEW CONVERGE — CHECK_EXIT ok. Avancé en PLANNING:GENERATE_TASKS. Brief TL en cours.
+2026-04-26T14:44:19Z IMPLEMENTATION:DV_IMPLEMENT — spawn_request dv1 envoyé à PM. 6 tâches séquentielles T-001..T-006. work_dir: worktrees/f6f48481/dv1
+2026-04-26T14:52:50Z IMPLEMENTATION:CHECKPOINT_IMPL — T-001..T-006 DONE + TL APPROVED. Transmis à PM pour checkpoint HO.
+2026-04-26T17:07:57Z CODE_REVIEW CONVERGE — 0 BLOCKER, 0 MAJOR, 2 MINOR cosmétiques. Avancé en VALIDATION:PO_VALIDATE.
+2026-04-26T17:16:07Z HO feedback reçu via TL : 4 retours post-QA. Retours 1+2+3 dépassent le périmètre du need (INV-002 cassé, EX-001/002 révisés). Arbitrage HO requis : boucle TECHNICAL_DESIGN (option A) ou nouveau need (option B) ou quickwin hors waterfall (option C).
+2026-04-26T17:19:49Z HO reject — décision OR: option A (scope élargi). R-1+R-2+R-3+R-4+R-5 tous traités dans ce need. INV-002 à réécrire. Brief dv1 en cours, TL met à jour specs+design.
+2026-04-26T17:20:16Z HO arbitrage: option C — fix quickwin hors Waterfall. Boucle QA → HO_VALIDATE → CLOSURE proprement.
+2026-04-26T17:34:56Z Iter 2 hors-workflow terminé et reviewé par TL. R-1..R-5 implémentés dans claude-design/site/. app.js modifié (1 ligne retirée). Doc specs+design en iter 2. PM peut commiter.
