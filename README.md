@@ -91,6 +91,42 @@ bash scripts/wf-statusline-apply.sh off  # restores the backup
 
 If you already have a `statusLine.command`, the original output is printed first and the `wf` block is appended on a new line.
 
+### 4. `.wf-config.json` — workflow tuning
+
+Drop a `.wf-config.json` at your repo root to tune model choice, review loops, watchdog cadence, etc. The file is optional — defaults apply when missing. Values are validated at every `/waterfall:new` / `/waterfall:resume`; an invalid value stops the bootstrap with an explicit error.
+
+A reference example is shipped at the plugin root: [`.wf-config.example.md`](./.wf-config.example.md).
+
+| Param | Description | Default | Allowed values |
+|---|---|---|---|
+| `models.pm` | Model for **PM** (project manager, team lead, HO relay) | `sonnet` | `opus`, `sonnet`, `haiku` |
+| `models.or` | Model for **OR** (orchestrator, state machine driver) | `sonnet` | `opus`, `sonnet`, `haiku` |
+| `models.po` | Model for **PO** (PRD, specs, acceptance) | `sonnet` | `opus`, `sonnet`, `haiku` |
+| `models.tl` | Model for **TL** (tech design, code review, DV pool mgmt) | `opus` | `opus`, `sonnet`, `haiku` |
+| `models.rv` | Model for **RV** (cross-reviewer of PO/TL/DS artifacts) | `opus` | `opus`, `sonnet`, `haiku` |
+| `models.qa` | Model for **QA** (functional test plan execution) | `sonnet` | `opus`, `sonnet`, `haiku` |
+| `models.dv` | Model for **DV** (implementation + unit tests) | `sonnet` | `opus`, `sonnet`, `haiku` |
+| `models.ds` | Model for **DS** (UI/UX, only if `has_ui:true`) | `haiku` | `opus`, `sonnet`, `haiku` |
+| `review_loops.artifacts` | Max RV cycles on artifacts (PRD, specs, design, ui) | `2` | integer ≥ 1 |
+| `review_loops.code` | Max TL cycles on delivered code | `3` | integer ≥ 1 |
+| `watchdog.interval` | Watchdog cron cadence (PM wakeup to detect STUCK agents) | `3min` | `off`, `3min`, `5min`, `10min` |
+| `agent_mode` | Agent spawn mechanism | `team` | `team` (Agent Teams + inter-agent SendMessage), `subagent` (Agent tool, no inter-agent messaging) |
+| `dark_factory` | Autonomy mode for checkpoints | `off` | `on` (auto-validate, log decision), `off` (escalate to HO via AskUserQuestion) |
+| `statusline` | Waterfall statusline state — managed by `scripts/wf-statusline-apply.sh`, do not edit manually | `false` | `true`, `false` |
+
+**Example** (`.wf-config.json` at repo root):
+
+```json
+{
+  "models": { "pm": "sonnet", "or": "sonnet", "po": "sonnet", "tl": "opus", "rv": "sonnet", "qa": "sonnet", "dv": "sonnet", "ds": "sonnet" },
+  "review_loops": { "artifacts": 2, "code": 3 },
+  "watchdog": { "interval": "3min" },
+  "agent_mode": "team",
+  "dark_factory": "off",
+  "statusline": false
+}
+```
+
 ---
 
 ## Usage
