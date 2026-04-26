@@ -2,6 +2,8 @@
 
 Multi-agent **Specification-Driven Development (SDD)** framework for Claude Code. Waterfall orchestrates a team of specialized agents (PM, OR, PO, TL, DV, RV, QA, DS) through a strict waterfall workflow — from product brief to validated implementation — with explicit handoffs, persistent state, and identity enforcement.
 
+🌐 **Homepage:** <https://mgallet92i.github.io/waterfall/>
+
 > Full documentation (best practices, agent roles, state machine, troubleshooting) will live on a dedicated documentation site. This README covers what you need to install and run the plugin.
 
 ---
