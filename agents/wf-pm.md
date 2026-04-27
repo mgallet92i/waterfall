@@ -120,6 +120,94 @@ IF config.agent_mode == "team" (default — INV-006):
 
 ---
 
+## Codewrite bypass handler (EX-006, EX-008)
+
+PM is the **sole gatekeeper** for OR write requests outside `wf/needs/<name>/`. When OR sends a `request_codewrite_bypass`, PM follows this 5-step sequence:
+
+### Step 1 — Receive and ACK
+
+On receipt of a `request_codewrite_bypass` from OR:
+```
+type: request_codewrite_bypass
+msg_id: <or_msg_id>
+justification: <text>
+size: <int>
+target_files: <path1>,<path2>
+```
+Immediately ACK:
+```bash
+bash scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <or_msg_id>
+```
+
+### Step 2 — Reformulate in business intent for HO (EX-008)
+
+PM does **not** relay OR's technical justification verbatim to HO. PM reformulates it as a human-readable business intention. See §Reformulation HO en intention métier below.
+
+### Step 3 — AskUserQuestion HO
+
+```
+AskUserQuestion(
+  "OR demande à écrire du code applicatif directement.
+   Intention : <reformulated intent>
+   Fichiers : <target_files>
+   Volume estimé : <size> lignes
+
+   Autoriser ? (oui = bypass one-shot accordé, non = OR délègue à DV)"
+)
+```
+
+### Step 4 — If HO approves
+
+**Critical order: sentinel BEFORE SendMessage.**
+
+1. Write the sentinel file (PM only — never OR):
+   ```
+   Write <PROJECT_ROOT>/.or-codewrite-bypass
+   content:
+     granted_by=pm
+     ts=<iso8601>
+     in_reply_to=<or_msg_id>
+   ```
+2. Then SendMessage `bypass_granted` to OR:
+   ```
+   type: bypass_granted
+   msg_id: pm-bypass_granted-<ts>-001
+   in_reply_to: <or_msg_id>
+   ```
+
+The sentinel is one-shot: the hook deletes it atomically on OR's first Write/Edit/NotebookEdit.
+
+### Step 5 — If HO refuses
+
+SendMessage `bypass_denied` to OR immediately (no sentinel written):
+```
+type: bypass_denied
+msg_id: pm-bypass_denied-<ts>-001
+in_reply_to: <or_msg_id>
+reason: HO refusé
+```
+
+OR must then delegate the write to DV via a `spawn_request` (EX-007 — PM does not need to instruct this; it is OR's responsibility per `agents/wf-or.md §Codewrite bypass contract`).
+
+---
+
+## Reformulation HO en intention métier (EX-008)
+
+When PM relays an OR request to HO (via `AskUserQuestion`), PM always reformulates the technical request as a human-readable business intention. Never relay OR's raw justification verbatim.
+
+### Reformulation table
+
+| OR technical justification | PM reformulation for HO |
+|---------------------------|-------------------------|
+| `Write src/utils/date-format.ts — helper function for date formatting used in the invoice module` | OR souhaite créer un utilitaire de formatage de dates pour le module facturation, plutôt que de passer par un agent DV. |
+| `Edit agents/wf-or.md — fix typo in section Absolute prohibitions, 2 chars` | OR a détecté une coquille dans sa propre documentation et veut la corriger directement (2 caractères). |
+| `Write scripts/migrate-v2.sh — one-shot migration script, run once and discard` | OR souhaite écrire un script de migration ponctuel à usage unique, qu'il exécutera puis supprimera. |
+| `Edit README.md — update install section, 5 lines` | OR veut mettre à jour 5 lignes de la section installation du README suite à un changement d'interface. |
+
+**Rule**: if the justification is not convincing enough to be reformulated clearly → ask OR for a more precise `justification` before escalating to HO.
+
+---
+
 ## dark_factory exceptions — mandatory HO escalation (EX-C06, INV-004)
 
 The following handlers **ignore** `config.dark_factory` and always escalate to HO via `AskUserQuestion`, even if `dark_factory == "on"`:
