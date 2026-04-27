@@ -64,8 +64,8 @@ The script emits a **markdown summary** of the resolved config on stdout (visibl
 
 ```bash
 # Copy templates by language (WF_LANGUAGE auto-detected from $LANG by wf-read-config.sh)
-TEMPLATES_SRC="wf/templates/${WF_LANGUAGE}"
-[[ ! -d "$TEMPLATES_SRC" ]] && TEMPLATES_SRC="wf/templates/en"
+TEMPLATES_SRC="${CLAUDE_PLUGIN_ROOT}/wf/templates/${WF_LANGUAGE}"
+[[ ! -d "$TEMPLATES_SRC" ]] && TEMPLATES_SRC="${CLAUDE_PLUGIN_ROOT}/wf/templates/en"
 cp "$TEMPLATES_SRC"/*.md "wf/needs/<name>/"
 ```
 

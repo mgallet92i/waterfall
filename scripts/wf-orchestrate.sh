@@ -682,7 +682,7 @@ if (state.branch) params.branch = state.branch;
 switch(phase) {
   case 'BOOTSTRAP':
     if (step === 'DETERMINE_NAME') params.hint = 'PM: validate the kebab-case name provided as argument, or AskUserQuestion to describe the need then propose 3 kebab-case names. No artifact produced — the name is stored in state.';
-    if (step === 'RUN_BOOTSTRAP') params.hint = 'PM: create wf/needs/<name>/ by copying templates from wf/templates/. Write initial .wf-state.json. Complete when directory and state file exist.';
+    if (step === 'RUN_BOOTSTRAP') params.hint = 'PM: create wf/needs/<name>/ by copying templates from ${CLAUDE_PLUGIN_ROOT}/wf/templates/${WF_LANGUAGE} (fallback: ${CLAUDE_PLUGIN_ROOT}/wf/templates/en). Write initial .wf-state.json. Complete when directory and state file exist.';
     if (step === 'STORE_PATH') params.hint = 'PM: NOOP — complete immediately. The need_dir is already recorded in .wf-state.json by RUN_BOOTSTRAP. No parameter required.';
     if (step === 'COLLECT_CARD_NUM') params.hint = 'PM: AskUserQuestion: "Card number? (e.g. JIRA, WRIKE, Trello, ... ticket id) — or \'none\'". Complete with --params card_num=<id> or card_num=null.';
     if (step === 'COLLECT_BRANCH_TYPE') params.hint = 'PM: AskUserQuestion: "Is this need a feature or a hotfix?" (options: feature, hotfix). Complete with --params branch_type=feature or branch_type=hotfix.';
@@ -694,7 +694,7 @@ switch(phase) {
     break;
   case 'REQUIREMENTS':
     if (step === 'COLLECT_PRD') params.hint = 'PO: use AskUserQuestion to collect the need from HO (context, problem, goal, actors, out of scope). One question at a time. Complete when information is sufficient to write PRD.md.';
-    if (step === 'GENERATE_PRD') params.hint = 'PO: write PRD.md in wf/needs/<name>/ (template: wf/templates/PRD.md) from the information collected during COLLECT_PRD. Output artifact: PRD.md. Notify OR via SendMessage (step_complete) when done.';
+    if (step === 'GENERATE_PRD') params.hint = 'PO: write PRD.md in wf/needs/<name>/ (template: ${CLAUDE_PLUGIN_ROOT}/wf/templates/${WF_LANGUAGE:-en}/PRD.md) from the information collected during COLLECT_PRD. Output artifact: PRD.md. Notify OR via SendMessage (step_complete) when done.';
     if (step === 'CHECKPOINT_REQ') params.hint = 'PM : Read PRD.md, present a summary to HO via AskUserQuestion. If validated, complete (advances to FUNCTIONAL_SPECS). If changes needed, complete with decision=retry (loops to COLLECT_PRD). Also supports decision=pause or decision=abort.';
     break;
   case 'FUNCTIONAL_SPECS':
@@ -780,7 +780,7 @@ switch(phase) {
     break;
   case 'CLOSURE':
     if (step === 'LOG_AUDIT') params.hint = 'OR: analyze post-need logs. 1) Parse or.log (grep ERROR/WARN/SKIP/WATCHDOG). 2) Parse tracking.md (review cycles exceeding max_runs). 3) Write a "## Anomalies detected" section in bilan.md (structured list, or "No anomaly detected." if nothing found). INV-003: this step always advances even if no anomaly. Input artifacts: or.log, tracking.md. Output artifact: anomalies section in bilan.md.';
-    if (step === 'BILAN') params.hint = 'OR: generate bilan.md. 1) Read wf/templates/${WF_LANGUAGE:-en}/bilan.md as template. 2) Parse or.log (phases, timestamps, ERROR/WARN/SKIP anomalies). 3) Read tracking.md (review cycles, DEC-xxx, OBS-xxx). 4) Compute per-phase duration from history[] in .wf-state.json. 5) Write bilan.md in wf/needs/<name>/. Output artifact: bilan.md.';
+    if (step === 'BILAN') params.hint = 'OR: generate bilan.md. 1) Read ${CLAUDE_PLUGIN_ROOT}/wf/templates/${WF_LANGUAGE:-en}/bilan.md as template. 2) Parse or.log (phases, timestamps, ERROR/WARN/SKIP anomalies). 3) Read tracking.md (review cycles, DEC-xxx, OBS-xxx). 4) Compute per-phase duration from history[] in .wf-state.json. 5) Write bilan.md in wf/needs/<name>/. Output artifact: bilan.md.';
     if (step === 'ARCHIVE') params.hint = 'PM: NOOP — call --complete CLOSURE:ARCHIVE with no parameter. The script itself performs the atomic mv wf/needs/<name>/ → wf/archives/<name>/. Do not move the directory manually (causes NO_STATE error).';
     if (step === 'CLEANUP_WORKTREES') {
       const sid = state.session_id || 'default';
