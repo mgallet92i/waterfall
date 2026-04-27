@@ -1092,6 +1092,12 @@ handle_complete() {
       if [[ -z "$git_diff_out" ]]; then
         git_diff_out=$(git -C "$PROJECT_ROOT" status --porcelain "wf/needs/$name" 2>/dev/null)
       fi
+      # Fallback for gitignored need_dir: accept any non-empty content under wf/needs/<name>/
+      if [[ -z "$git_diff_out" ]] && git -C "$PROJECT_ROOT" check-ignore -q "wf/needs/$name" 2>/dev/null; then
+        if [[ -n "$(find "$need_dir" -type f -not -empty 2>/dev/null | head -1)" ]]; then
+          git_diff_out="ignored:wf/needs/$name"
+        fi
+      fi
       if [[ -z "$git_diff_out" ]]; then
         printf '{"ok":false,"error":"No modified files detected in wf/needs/%s (git diff empty)","code":"ARTIFACT_NOT_MODIFIED"}\n' "$name"
         exit 1
@@ -1111,6 +1117,12 @@ handle_complete() {
       fi
       if [[ -z "$diff_out" ]]; then
         diff_out=$(git -C "$PROJECT_ROOT" status --porcelain -- "$artifact_rel" 2>/dev/null)
+      fi
+      # Fallback for gitignored artifact: accept if file exists and is non-empty
+      if [[ -z "$diff_out" ]] && git -C "$PROJECT_ROOT" check-ignore -q "$artifact_rel" 2>/dev/null; then
+        if [[ -s "$artifact_path" ]]; then
+          diff_out="ignored:$artifact_rel"
+        fi
       fi
       if [[ -z "$diff_out" ]]; then
         printf '{"ok":false,"error":"Artifact not modified: %s","code":"ARTIFACT_NOT_MODIFIED"}\n' "$artifact"

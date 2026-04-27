@@ -121,8 +121,8 @@ Read `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query` to kn
 
 ### Step 5 — Team re-creation and OR spawn
 
-1. Load the `wf-pm` skill via `Skill({name: "wf-pm"})`
-2. PM executes TeamCreate according to `agent_mode`:
+1. Load the `wf-pm` skill via `Skill({name: "wf-pm"})`. **The main conversation thus adopts PM responsibilities** — PM is never spawned as a separate agent (aligned with `wf-new` step 3). The team-lead created by `TeamCreate` IS the main.
+2. PM (= main) executes TeamCreate according to `agent_mode`:
    ```bash
    if [[ "$WF_AGENT_MODE" == "team" ]]; then
      TeamCreate wf-<name>
@@ -130,16 +130,16 @@ Read `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query` to kn
      # Subagent mode: spawn OR via Agent tool, no TeamCreate
    fi
    ```
-3. PM may **clear the traceability registry** (optional, DEC-001):
+3. PM (= main) may **clear the traceability registry** (optional, DEC-001):
    ```bash
    bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-registry.sh clear <name>
    ```
    > **DEC-001**: traceability only — enforcement uses `agent_type` from the harness payload. Skipping this step does not prevent teammates from completing their steps.
-4. PM spawns OR first. For traceability (optional):
+4. PM (= main) spawns OR first via `Agent` (subagent_type=`waterfall:wf-or`, name=`or`, team_name=`wf-<name>`). For traceability (optional):
    ```bash
    bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-registry.sh add <name> <or_agent_id> or
    ```
-5. PM sends the resume brief to OR:
+5. PM (= main) sends the resume brief to OR via `SendMessage`:
 
 ```xml
 <brief>

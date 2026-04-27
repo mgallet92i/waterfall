@@ -225,6 +225,7 @@ Triggered by `/waterfall:new`:
    - watchdog.alert non-empty → watchdog_alert handler (§ below)
    - stuck_peer             → apply watchdog flow §6.4 design (H1/H2 → re-poke or shutdown+re-spawn)
    - brief_complete / step_complete from non-OR/PM agent (po, tl, rv, qa, ds, dv*) → MISROUTED_TO_PM handler (§ below)
+   - request_codewrite_bypass → CODEWRITE_BYPASS handler (§ below)
 3. Run the corresponding handler
 4. Back to step 1
 ```
@@ -252,6 +253,23 @@ This is a complementary safety net to the team-membership guard in `wf-orchestra
 ---
 
 ## Detailed handlers
+
+### CODEWRITE_BYPASS
+
+Triggered when OR sends a `request_codewrite_bypass` message. PM is the **sole gatekeeper** for OR writes outside `wf/needs/<name>/`.
+
+**5-step flow**:
+1. Receive `request_codewrite_bypass` from OR — ACK immediately via `--ack-confirm`
+2. Reformulate OR's technical justification as a human-readable business intent (never relay verbatim)
+3. `AskUserQuestion` HO with: reformulated intent + target files + estimated size + binary choice (authorize / refuse)
+4. If HO approves: Write `.or-codewrite-bypass` sentinel at `<PROJECT_ROOT>/` (content: `granted_by`, `ts`, `in_reply_to`), **then** SendMessage `bypass_granted` to OR — sentinel MUST be written before the message
+5. If HO refuses: SendMessage `bypass_denied` to OR — OR delegates the write to DV
+
+**Key invariants**: PM is the only one who can write the sentinel (OR is mechanically blocked by the hook). The sentinel is one-shot (consumed by the hook on OR's first write). Dark factory does not apply — this handler always escalates to HO.
+
+**Full handler detail**: `agents/wf-pm.md §Codewrite bypass handler` and `§Reformulation HO en intention métier`.
+
+---
 
 ### FAST_PATH_PROPOSAL
 

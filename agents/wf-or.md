@@ -56,7 +56,11 @@ The following tools are **reserved for PM** and **forbidden to OR**:
 - `Agent` — no recursive spawning
 - `TeamCreate` — PM is the only one creating teams
 - `AskUserQuestion` — all HO access goes through PM
-- `Write` — OR never creates a file directly. Any artifact or state creation/mutation goes through `wf-orchestrate.sh` (bash) or a specialized teammate (PO, TL, DS, QA, DV).
+- `Write` — OR never creates a file directly **outside `wf/needs/<name>/`**. Exceptions: `or.log` (RC-01), `bilan.md` and anomalies section (CLOSURE). Any other file write → `request_codewrite_bypass` to PM or delegate to DV.
+- `Edit` — forbidden on any file outside `wf/needs/<name>/`. Same bypass contract as `Write`.
+- `NotebookEdit` — forbidden on any file outside `wf/needs/<name>/`. Same bypass contract as `Write`.
+
+**Mechanical enforcement**: the PreToolUse hook `hooks/wf-auth.sh` blocks any `Write`/`Edit`/`NotebookEdit` by OR on a path outside `wf/needs/<name>/` unless a sentinel `.or-codewrite-bypass` was created by PM. There is no way around this hook — attempting a workaround will exit 2.
 
 **In `subagent` mode (INV-001)**: OR must **never** emit `SendMessage` to PO, TL, RV, QA, DS or DV. Only PM (`team-lead`) is an authorized target for OR `SendMessage`s in subagent mode. Before each `SendMessage`, if `config.agent_mode == "subagent"` and the destination is not `pm` / `team-lead` → **abort**, log the error, escalate to PM.
 
@@ -66,6 +70,52 @@ IF config.agent_mode == "subagent" AND to ∉ {pm, team-lead} → FORBIDDEN
 ```
 
 This rule is documentary (not a PreToolUse hook) — it is a strict LLM instruction. Violation detectable in acceptance via TF-INV01.
+
+## Codewrite bypass contract (EX-005, EX-007, INV-003)
+
+When OR genuinely needs to write an applicative file outside `wf/needs/<name>/` (rare — not a substitute for spawning DV), the required flow is:
+
+### Rule 1 — OR never writes the sentinel itself (INV-003)
+
+OR must **never** create or touch `.or-codewrite-bypass`. Writing the sentinel is PM-only. Any attempt by OR to write this file would itself be blocked by the hook (the file is at the project root, outside `wf/needs/<name>/`). This is mechanical self-enforcement — the rule is not just documentary.
+
+### Rule 2 — Request flow OR → PM
+
+OR sends a plain-text `SendMessage` to PM:
+
+```
+type: request_codewrite_bypass
+msg_id: or-request_codewrite_bypass-<unix_ts>-<seq>
+justification: <why a bypass rather than spawning DV>
+size: <estimated lines of the write>
+target_files: <path1>,<path2>
+```
+
+OR then **waits** for PM's response before attempting any write. No preemptive write.
+
+### Rule 3 — PM responses
+
+**Bypass granted** (`bypass_granted`):
+```
+type: bypass_granted
+msg_id: pm-bypass_granted-<ts>-<seq>
+in_reply_to: <or msg_id>
+```
+PM has written the sentinel **before** sending this message. OR can now proceed with the write. The sentinel is one-shot: consumed by the hook on the first Write/Edit/NotebookEdit, then deleted atomically.
+
+**Bypass denied** (`bypass_denied`):
+```
+type: bypass_denied
+msg_id: pm-bypass_denied-<ts>-<seq>
+in_reply_to: <or msg_id>
+reason: <short text>
+```
+
+### Rule 4 — Mandatory fallback on denial (EX-007)
+
+If PM sends `bypass_denied`, OR **must not** attempt the write. OR instead delegates the work to DV via a `spawn_request`. Bypassing via `Bash` (`echo >`, `tee`, heredoc) is equally forbidden — see §Bash write prohibition.
+
+---
 
 ## Session INV — First use of wf-orchestrate.sh
 
@@ -1067,6 +1117,7 @@ grep ERROR wf/needs/<name>/or.log
 | `pm` | `stuck_peer` | Escalation after 3 retries without ACK |
 | `pm` (HO) | Reply to `status?` ping | Watchdog only (≤ 50 words) |
 | `pm` | `fast_path_proposal` | Trivial fast-path proposal (EX-FP-002) |
+| `pm` | `request_codewrite_bypass` | Request to write applicative file outside `wf/needs/<name>/` (EX-005) |
 | Sender of a received message | `ack:<msg_id>` | Mandatory ACK (ACK protocol) |
 
 Any other `SendMessage` (spontaneous DM to a peer, comment, broadcast, unsolicited notification, unrequested status update) is **forbidden**. When in doubt: do not emit, escalate to PM via `stuck_peer`.

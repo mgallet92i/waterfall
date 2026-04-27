@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# wf-auth.sh — PreToolUse(Bash) hook enforcing agent identity for wf-orchestrate.sh --complete.
+# wf-auth.sh — PreToolUse hook: enforces agent identity for wf-orchestrate.sh --complete (Bash)
+#              and guards OR codewrite operations outside wf/needs/<name>/ (Write/Edit/NotebookEdit).
 #
 # Replaces the legacy self-declared --agent flag (removed from wf-orchestrate.sh).
 #
@@ -65,6 +66,89 @@ _wf_auth_allow() {
   exit 0
 }
 
+# ─── Codewrite guard helpers ──────────────────────────────────────────────────
+
+# _wf_resolve_need — best-effort: most recently modified active need (by .wf-state.json mtime).
+_wf_resolve_need() {
+  ls -1t "$PROJECT_ROOT"/wf/needs/*/.wf-state.json 2>/dev/null \
+    | head -1 \
+    | xargs -I{} dirname {} 2>/dev/null \
+    | xargs -I{} basename {} 2>/dev/null
+}
+
+# _wf_cw_log — append codewrite decision to wf-auth.log.
+_wf_cw_log() {
+  local need="$1" decision="$2" tool="$3" path="$4" agent="$5" reason="$6"
+  [[ -z "$need" ]] && need="$(_wf_resolve_need)"
+  [[ -z "$need" ]] && return 0
+  local log_file="$PROJECT_ROOT/wf/needs/$need/wf-auth.log"
+  [[ -d "$(dirname "$log_file")" ]] || return 0
+  local ts
+  ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  printf '%s %s need=%s tool=%s path=%s agent_type=%s reason=%s\n' \
+    "$ts" "$decision" "$need" "$tool" "$path" "$agent" "$reason" \
+    >> "$log_file" 2>/dev/null || true
+}
+
+# _wf_codewrite_guard — intercepts Write/Edit/NotebookEdit for OR agents.
+# Exits 0 (allow) or 2 (block) — never returns to caller.
+_wf_codewrite_guard() {
+  local payload="$1"
+  local agent_type tool_name target_path sentinel
+  local need_name="${WF_NEED_NAME:-}"
+
+  tool_name=$(echo "$payload" | jq -r '.tool_name // ""')
+  agent_type=$(echo "$payload" | jq -r '.agent_type // ""')
+  [[ -z "$agent_type" || "$agent_type" == "null" ]] && agent_type="pm"
+
+  # Step 1 — pass-through for known non-OR agents (INV-005).
+  case " dv tl po rv qa ds pm dv1 dv2 dv3 dv4 dv5 dv6 dv7 dv8 dv9 " in
+    *" $agent_type "*) exit 0 ;;
+  esac
+
+  # Step 2 — OR identity check (Q-002: covers "or", "or1", "or2", "or-1", "or-2" respawn forms).
+  if [[ ! ( "$agent_type" == "or" || "$agent_type" =~ ^or(-[0-9]+|[0-9]+)$ ) ]]; then
+    echo "wf-auth: unknown agent_type=$agent_type on $tool_name. Blocked." >&2
+    _wf_cw_log "$need_name" "block" "$tool_name" "" "$agent_type" "unknown_agent"
+    exit 2
+  fi
+
+  # Step 3 — extract target path (Write/Edit → file_path ; NotebookEdit → notebook_path).
+  target_path=$(echo "$payload" | jq -r '.tool_input.file_path // .tool_input.notebook_path // ""')
+  if [[ -z "$target_path" ]]; then
+    echo "wf-auth: OR codewrite guard — empty target_path. Blocked." >&2
+    _wf_cw_log "$need_name" "block" "$tool_name" "" "$agent_type" "empty_path"
+    exit 2
+  fi
+
+  # Step 3.5 — resolve PROJECT_ROOT if not injected (fallback via git).
+  if [[ -z "${PROJECT_ROOT:-}" ]]; then
+    PROJECT_ROOT="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel 2>/dev/null)"
+  fi
+
+  # Step 4 — normalise: strip PROJECT_ROOT prefix from absolute paths.
+  target_path="${target_path#$PROJECT_ROOT/}"
+
+  # Step 5 — need paths always allowed (INV-004).
+  if [[ "$target_path" =~ ^wf/needs/[^/]+/ ]]; then
+    _wf_cw_log "$need_name" "allow" "$tool_name" "$target_path" "$agent_type" "need_path"
+    exit 0
+  fi
+
+  # Step 6 — consume sentinel bypass if present (INV-002: rm BEFORE exit).
+  sentinel="$PROJECT_ROOT/.or-codewrite-bypass"
+  if [[ -f "$sentinel" ]]; then
+    rm -f "$sentinel"
+    _wf_cw_log "$need_name" "allow-bypass" "$tool_name" "$target_path" "$agent_type" "bypass_consumed"
+    exit 0
+  fi
+
+  # Step 7 — default block.
+  echo "wf-auth: OR write blocked on applicative path: $target_path" >&2
+  _wf_cw_log "$need_name" "block" "$tool_name" "$target_path" "$agent_type" "or_codewrite_no_bypass"
+  exit 2
+}
+
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 # 1. jq check (ADR-004).
@@ -82,6 +166,14 @@ fi
 if ! echo "$payload" | jq -e . >/dev/null 2>&1; then
   exit 0
 fi
+
+# 2b. Early dispatch for Write/Edit/NotebookEdit — codewrite guard (INV-001: before --complete branch).
+_tool_name_early=$(echo "$payload" | jq -r '.tool_name // ""')
+case "$_tool_name_early" in
+  Write|Edit|NotebookEdit)
+    _wf_codewrite_guard "$payload"
+    ;;
+esac
 
 command=$(echo "$payload" | jq -r '.tool_input.command // ""')
 
