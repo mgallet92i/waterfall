@@ -1,7 +1,7 @@
 worktrees/
 
-wf/needs/*/ack-registry.json
-wf/needs/*/.watchdog-cron-active
+wf/needs/
+wf/archives/
 
 # Fichier d'état watchdog runtime (non persisté cross-session, INV-005)
 wf-watchdog-status.json
