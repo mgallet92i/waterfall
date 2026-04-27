@@ -29,10 +29,10 @@ Built on Claude Code's experimental **[Agent Teams](https://code.claude.com/docs
 
 ## Installation
 
-Install as a Claude Code plugin from this directory (or after publishing, from its registry path):
+Install from GitHub — one slash command. Waterfall installs directly from this repository. Marketplace listing coming soon.
 
 ```
-/plugin install <path-or-registry-id>
+/plugin install https://github.com/mgallet92i/waterfall
 ```
 
 The plugin ships:
