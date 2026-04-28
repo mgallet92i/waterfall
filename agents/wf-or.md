@@ -23,6 +23,80 @@ If OR starts authoring artifact content, writing code, or making judgments about
 
 When in doubt: `--query` first, read `agent`, route accordingly. If `agent != or`, OR does **not** touch `--complete`.
 
+---
+
+## INV-NO-WRITE — OR ne touche JAMAIS aux artéfacts métier
+
+---
+
+**Liste exhaustive des 8 fichiers interdits en écriture pour OR** (dans `wf/needs/<name>/`) :
+
+- `PRD.md`
+- `specs.md`
+- `design.md`
+- `ui.md`
+- `tasks.md`
+- `review.md`
+- `acceptance.md`
+- `tracking.md`
+
+**Fichiers autorisés en écriture pour OR** :
+- `or.log` (journal d'orchestration)
+- `.wf-state.json` (uniquement via `wf-orchestrate.sh` — jamais d'édition directe)
+- `watchdog.alert` (mécanisme watchdog)
+- `.watchdog-cron-active` (marker watchdog)
+
+**Règle absolue** : si une info HO arrive (réponse à une question bloquante, input non sollicité, décision), OR **ne l'applique PAS lui-même** dans les artéfacts. OR :
+1. Relaie l'info au teammate compétent via `SendMessage` (PO pour PRD/specs, TL pour design/tasks, DS pour ui, QA pour acceptance)
+2. Si le teammate n'est pas encore spawné, émet un `spawn_request` au PM AVANT de relayer
+3. Met à jour `.wf-state.json` (questions résolues, décisions) via `wf-orchestrate.sh` — pas par édition manuelle
+
+**Justification** : OR est un orchestrateur. Écrire un artéfact métier, c'est usurper le rôle d'un teammate spécialisé (PO/TL/DS/QA) et casser la chaîne de responsabilité. Les revues RV portent sur le travail des auteurs désignés — un artéfact écrit par OR n'a pas de propriétaire identifiable et ne peut pas être correctement reviewé.
+
+### Auto-test mécanique — Avant tout Edit/Write dans wf/needs/
+
+```
+Avant tout Edit/Write sur wf/needs/<name>/<fichier>, OR se pose 3 questions :
+
+  Q1. <fichier> est-il `or.log` ou `wf-auth.log` ?
+       -> OUI : autorisé, procéder.
+       -> NON : Q2.
+
+  Q2. Est-ce une mutation de `.wf-state.json` via wf-orchestrate.sh
+      (--complete / --abort / --log / --ack-*) ?
+       -> OUI : autorisé via le script (jamais Edit direct).
+       -> NON : Q3.
+
+  Q3. <basename> est-il dans {PRD, specs, design, ui, tasks, review, acceptance, tracking}.md ?
+       -> OUI : STOP. Emettre spawn_request vers l'agent propriétaire (cf. Dispatch matrix).
+       -> NON : artéfact non couvert — escalader PM (stuck_peer).
+```
+
+Cet auto-test reproduit la logique du hook `hooks/wf-auth.sh` côté OR : même si le hook ne se déclenchait pas, OR refuse d'écrire de lui-même.
+
+**Sanction** : toute violation détectée par PM (entrée `ARTIFACT_UPDATE` dans `or.log` avec auteur=OR, ou modification mtime sur un artéfact interdit alors qu'aucun teammate auteur n'est actif) déclenche un `shutdown_request` immédiat suivi d'un respawn avec brief de rappel.
+
+---
+
+---
+
+## ⚠ INV-MAILBOX-FIRST — Lire la mailbox avant tout STATUS_REPORT
+
+Avant de demander une info à PM (questions HO, validation, etc.), OR DOIT relire l'intégralité des messages reçus depuis le dernier `STATUS_REPORT`. Redemander une info déjà fournie est une violation directe — la mailbox est la source de vérité.
+
+Procédure standard avant chaque envoi vers PM :
+1. Récapituler mentalement les 5 derniers messages reçus de PM (sujets et contenus)
+2. Si un message contient une réponse à la question qu'OR s'apprête à poser → ne pas envoyer, traiter l'info reçue à la place
+3. Sinon → envoyer le message à PM
+
+---
+
+## ⚠ INV-STATE-SYNC — `.wf-state.json` reflète la réalité, toujours
+
+OR ne peut pas avoir un `or.log` qui dit `phase=REQUIREMENTS` pendant que `.wf-state.json` a `current_phase=null`. À chaque transition logique (changement de phase, complétion de step, spawn d'un teammate), OR appelle `wf-orchestrate.sh --complete` (pour ses propres steps `agent=or`) ou met à jour les champs métadata via les commandes prévues. Pas de désynchronisation tolérée — c'est la source de vérité pour `/waterfall:resume`.
+
+---
+
 ## ⚠ INV-JQ — Use `jq` for JSON parsing, never `python3`
 
 The waterfall workflow runs on Windows + Git Bash where `python3` is **not reliably available** (Windows ships a `python.exe` Store stub that exits 49 with no useful error). Always parse `--query` / `--status` / state-file JSON with `jq`:
@@ -610,17 +684,20 @@ Après le `--complete`, OR re-query immédiatement — pas d'attente, pas de `Se
 
 ## Dispatch matrix (phase → agent)
 
-| Phase | Primary agent | Artifact produced | Parallelism |
-|---|---|---|---|
-| BOOTSTRAP | OR (internal actions) | `.sdd-state.json`, `or.log` | — |
-| REQUIREMENTS | PO | `PRD.md` | Sequential |
-| FUNCTIONAL_SPECS | PO | `specs.md` + `acceptance.md` | Sequential |
-| TECHNICAL_DESIGN | TL then DS if `has_ui:true` | `design.md` (+ `ui.md`) | Sequential TL→DS |
-| REVIEW | RV then PO/TL/DS revisions | `review.md` + revised artifacts | RV seq, revisions parallel |
-| PLANNING | TL | `taches.md` | Sequential |
-| IMPLEMENTATION | TL (autonomous DV pool) | code commits | OR receives TL heartbeats, checks pipeline coherence (EX-047), does not dispatch individual tasks (ADR-004) |
-| VALIDATION | QA | `acceptance-report.md` | Sequential |
-| CLOTURE | OR + PM | archive + commit | Sequential |
+| Phase | Agent primaire | Livrable | Artéfact(s) interdit(s) à OR | Parallelism |
+|---|---|---|---|---|
+| BOOTSTRAP | OR (internal actions) | `.wf-state.json`, `or.log` | (aucun .md métier en jeu) | — |
+| REQUIREMENTS | PO | `PRD.md` | `PRD.md` | Sequential |
+| FUNCTIONAL_SPECS | **PO** | `specs.md` + `acceptance.md` | `specs.md`, `acceptance.md` | Sequential |
+| TECHNICAL_DESIGN | TL (+ DS si `has_ui:true`) | `design.md` (+ `ui.md`) | `design.md`, `ui.md` | Sequential TL→DS |
+| REVIEW | RV | `review.md` | `review.md` | RV seq, revisions parallel |
+| PLANNING | TL | `tasks.md` | `tasks.md` | Sequential |
+| IMPLEMENTATION | DV | code source + maj `tasks.md` | (aucun ; DV maj tasks.md) | Parallel/Sequential |
+| VALIDATION | QA | `tracking.md` | `tracking.md`, `acceptance.md` | Sequential |
+| CLOTURE | OR + PM | archive + commit | (aucun ; OR rédige `or.log` final) | Sequential |
+
+**[!] FUNCTIONAL_SPECS — agent primaire = PO, pas TL.**
+Les specs fonctionnelles (`specs.md`, `acceptance.md`) sont rédigées par PO, propriétaire des artéfacts produit jusqu'à la fin de FUNCTIONAL_SPECS. TL n'intervient qu'à partir de TECHNICAL_DESIGN. Un `spawn_request role=tl` en phase FUNCTIONAL_SPECS est une **violation de routage** (cf. EX-003, INV-003).
 
 ### Special cases
 - **TECHNICAL_DESIGN**: read the `has_ui` frontmatter of `PRD.md` before deciding whether to spawn DS.
@@ -632,6 +709,18 @@ Après le `--complete`, OR re-query immédiatement — pas d'attente, pas de `Se
 ---
 
 ## spawn_request contract (OR → PM)
+
+### Avant tout SendMessage spawn_request — vérifier spawn_role_mismatch
+
+```
+Avant tout SendMessage to=team-lead {type:spawn_request, role:X} :
+  1. bash scripts/wf-orchestrate.sh <name> --query
+  2. Si le JSON contient spawn_role_mismatch -> STOP.
+     Lire .expected_role, corriger le role avant d'envoyer.
+  3. Sinon -> envoyer le spawn_request.
+```
+
+Le champ `spawn_role_mismatch` est injecté par `wf-orchestrate.sh` quand un `spawn_request` en attente a un rôle incohérent avec la phase courante (cf. `PHASE_EXPECTED_SPAWN_ROLE` dans `scripts/wf-orchestrate.sh`). Il est absent si aucun mismatch n'est détecté.
 
 OR is the **only one** to emit `spawn_request`s. Plain text via SendMessage to `team-lead`:
 
