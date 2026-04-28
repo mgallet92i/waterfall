@@ -126,8 +126,11 @@ _wf_codewrite_guard() {
     PROJECT_ROOT="$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel 2>/dev/null)"
   fi
 
-  # Step 4 — normalise: strip PROJECT_ROOT prefix from absolute paths.
-  target_path="${target_path#$PROJECT_ROOT/}"
+  # Step 4 — normalise: convert backslashes to forward slashes (Windows/Git Bash),
+  # then strip PROJECT_ROOT prefix from absolute paths.
+  target_path="${target_path//\\//}"
+  local project_root_norm="${PROJECT_ROOT//\\//}"
+  target_path="${target_path#$project_root_norm/}"
 
   # Step 5 — need paths always allowed (INV-004).
   if [[ "$target_path" =~ ^wf/needs/[^/]+/ ]]; then

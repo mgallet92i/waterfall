@@ -108,3 +108,14 @@ teardown() {
   run bash "$HOOK" <<< "$payload"
   [ "$status" -eq 0 ]
 }
+
+# ─── TF-WIN-01 — OR Write inside wf/needs/ avec backslashes Windows → exit 0 ─
+# Bug: sur Windows (Git Bash) les chemins absolus peuvent contenir des `\`.
+# Le strip de PROJECT_ROOT échouait, donc le test `^wf/needs/` ratait et le
+# write légitime était bloqué. Fix: normaliser `\` → `/` avant comparaison.
+@test "TF-WIN-01: OR Write wf\\needs\\foo\\bilan.md (backslashes) → exit 0" {
+  abs_path="${TMPDIR//\//\\}\\wf\\needs\\foo\\bilan.md"
+  payload=$(jq -nc --arg p "$abs_path" '{tool_name:"Write",tool_input:{file_path:$p,content:"x"},agent_type:"or"}')
+  run bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 0 ]
+}
