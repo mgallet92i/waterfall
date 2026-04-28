@@ -576,6 +576,99 @@ compute_next_step() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Section 4b : SPAWN ROLE MISMATCH DETECTION
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Table: expected spawn role per phase (for mismatch detection).
+# tl is accepted as alias of dv for IMPLEMENTATION (DEC-002 solo-impl).
+declare -A PHASE_EXPECTED_SPAWN_ROLE=(
+  [REQUIREMENTS]="po"
+  [FUNCTIONAL_SPECS]="po"
+  [TECHNICAL_DESIGN]="tl"
+  [REVIEW]="rv"
+  [PLANNING]="tl"
+  [IMPLEMENTATION]="dv"
+  [VALIDATION]="qa"
+  [BOOTSTRAP]=""
+  [CLOTURE]=""
+)
+
+# detect_pending_spawn_role_mismatch <name>
+# Reads WF_TEST_TRANSCRIPT_PATH if set, otherwise skips (no real transcript source in prod yet).
+# Returns a JSON struct if mismatch detected, empty string otherwise.
+# Never exits non-zero — all errors produce an empty string (best-effort).
+detect_pending_spawn_role_mismatch() {
+  local name="$1"
+  local transcript_path=""
+  local requested_role=""
+  local phase=""
+  local expected_role=""
+
+  # WF_TEST_TRANSCRIPT_PATH : path to a stub transcript file (for TF-OR-03).
+  # WF_TEST_STATE_PATH      : path to a stub .wf-state.json (overrides real state, for TF-OR-03).
+  # Both variables are invisible in prod (unset = real sources used, or no-op if unavailable).
+  # Source: WF_TEST_TRANSCRIPT_PATH for tests, real transcript not yet wired.
+  if [[ -n "${WF_TEST_TRANSCRIPT_PATH:-}" ]] && [[ -f "$WF_TEST_TRANSCRIPT_PATH" ]]; then
+    transcript_path="$WF_TEST_TRANSCRIPT_PATH"
+  else
+    echo ""
+    return 0
+  fi
+
+  # Parse last spawn_request block: look for role: <X>
+  requested_role=$(grep -oP '(?<=role:\s)[\w-]+' "$transcript_path" 2>/dev/null | tail -1) || true
+  if [[ -z "$requested_role" ]]; then
+    echo ""
+    return 0
+  fi
+
+  # Read phase from state file (WF_TEST_STATE_PATH overrides for tests)
+  local state_file
+  if [[ -n "${WF_TEST_STATE_PATH:-}" ]] && [[ -f "$WF_TEST_STATE_PATH" ]]; then
+    state_file="$WF_TEST_STATE_PATH"
+  else
+    state_file="$PROJECT_ROOT/wf/needs/$name/.wf-state.json"
+  fi
+  if [[ -f "$state_file" ]]; then
+    phase=$(jq -r '.phase // ""' "$state_file" 2>/dev/null) || phase=""
+  fi
+  if [[ -z "$phase" ]]; then
+    echo ""
+    return 0
+  fi
+
+  expected_role="${PHASE_EXPECTED_SPAWN_ROLE[$phase]:-}"
+
+  # No expected role for this phase (BOOTSTRAP/CLOTURE) → no mismatch
+  if [[ -z "$expected_role" ]]; then
+    echo ""
+    return 0
+  fi
+
+  # tl is accepted alias for dv in IMPLEMENTATION
+  if [[ "$phase" == "IMPLEMENTATION" ]] && [[ "$requested_role" == "tl" ]]; then
+    echo ""
+    return 0
+  fi
+
+  # dv1..dv9 aliases for dv
+  if [[ "$expected_role" == "dv" ]] && [[ "$requested_role" =~ ^dv[1-9]$ ]]; then
+    echo ""
+    return 0
+  fi
+
+  # No mismatch
+  if [[ "$requested_role" == "$expected_role" ]]; then
+    echo ""
+    return 0
+  fi
+
+  # Mismatch detected
+  printf '{"requested_role":"%s","expected_role":"%s","phase":"%s","message":"spawn_request role=%s incompatible avec phase %s (attendu: %s)"}' \
+    "$requested_role" "$expected_role" "$phase" "$requested_role" "$phase" "$expected_role"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Section 5 : QUERY
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -649,6 +742,11 @@ handle_query() {
     ep_json=$(printf '%s\n' $ep_list | sed 's/.*/"&"/' | paste -sd, | sed 's/^/[/;s/$/]/')
   fi
   export _WF_QUERY_EXPECTED_PARAMS="$ep_json"
+
+  # Best-effort spawn role mismatch detection (never blocks query)
+  local _mismatch_json=""
+  _mismatch_json=$(detect_pending_spawn_role_mismatch "$name" 2>/dev/null) || true
+  export _WF_QUERY_SPAWN_ROLE_MISMATCH="${_mismatch_json:-}"
 
   node --input-type=module <<'ENDJS'
 const phase = process.env._WF_QUERY_PHASE;
@@ -841,6 +939,12 @@ const result = {
 };
 
 if (stopReason) result.stop_reason = stopReason;
+
+// Inject spawn_role_mismatch only when detected (field absent = no mismatch)
+const mismatchRaw = process.env._WF_QUERY_SPAWN_ROLE_MISMATCH || '';
+if (mismatchRaw) {
+  try { result.spawn_role_mismatch = JSON.parse(mismatchRaw); } catch(e) { /* soft-fail */ }
+}
 
 process.stdout.write(JSON.stringify(result, null, 2) + '\n');
 ENDJS
