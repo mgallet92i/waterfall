@@ -50,7 +50,7 @@
 
 ---
 
-## OR — Routage agent ↔ phase incorrect (FUNCTIONAL_SPECS dispatché à TL au lieu de PO)
+## OR — Routage agent ↔ phase incorrect (FUNCTIONAL_SPECS dispatché à TL au lieu de PO) — ✅ DONE (or-write-discipline)
 
 **Symptôme** : pendant la phase FUNCTIONAL_SPECS du besoin `pulse-reporting-hebdo`, OR a émis un `spawn_request` pour TL avec mission de "produire specs fonctionnelles et techniques". Or en waterfall standard :
 - REQUIREMENTS → PO produit `PRD.md`
@@ -62,24 +62,17 @@ OR a sauté l'étape PO/specs et a fusionné FUNCTIONAL_SPECS + TECHNICAL_DESIGN
 **Cause probable** : règle de mapping phase → agent absente ou ambiguë dans `agents/wf-or.md`. La machine d'état connaît la phase mais pas l'agent attendu pour chaque livrable.
 
 **À fixer** :
-- [ ] Documenter dans `agents/wf-or.md` un tableau strict phase → agent → livrable :
-  - REQUIREMENTS → po → PRD.md
-  - FUNCTIONAL_SPECS → po → specs.md
-  - TECHNICAL_DESIGN → tl → design.md (+ ui → ds si has_ui)
-  - REVIEW → rv → review.md
-  - PLANNING → tl → tasks.md
-  - IMPLEMENTATION → dv → code (orchestré par tl)
-  - VALIDATION → qa → acceptance.md
-  - CLOSURE → pm → commit
-- [ ] Ajouter un guard dans `scripts/wf-orchestrate.sh --query` : refuser un `spawn_request` dont le `role` ne correspond pas à la phase courante (sauf cas explicites multi-agents).
-- [ ] Côté PM : ajouter une **pre-spawn validation phase↔role** dans le handler `spawn_request` (avant de spawn) — si mismatch, retourner `spawn_failed reason: phase_role_mismatch` à OR plutôt que d'exécuter aveuglément.
-- [ ] Mettre à jour le skill `wf-pm/SKILL.md` pour formaliser cette validation côté PM (filet de sécurité indépendant d'OR).
+- [x] Tableau dispatch matrix dans `agents/wf-or.md` (T-003)
+- [x] Champ `spawn_role_mismatch` dans `scripts/wf-orchestrate.sh --query` — warning enrichi non-bloquant (DP-02 ; T-005, T-007, T-009a)
+- [x] Section "Violations détectées par PM" dans `skills/wf-pm/SKILL.md` (T-006/T-008)
 
-**Découvert** : 2026-04-28, FUNCTIONAL_SPECS de `pulse-reporting-hebdo`. Dépendance d'OR à un mapping phase→agent qui n'est pas explicitement encodé.
+**Livré** : besoin `or-write-discipline`, branche `feature/or-write-discipline` (commits `fba9575`, `9c1b67a`, `79f3e76`). 7/7 TF PASS dont TF-OR-03 (mismatch role/phase).
+
+**Découvert** : 2026-04-28, FUNCTIONAL_SPECS de `pulse-reporting-hebdo`.
 
 ---
 
-## OR — Écrit lui-même les artéfacts métier au lieu de spawner PO/TL
+## OR — Écrit lui-même les artéfacts métier au lieu de spawner PO/TL — ✅ DONE (or-write-discipline)
 
 **Symptôme** : sur le besoin `pulse-reporting-hebdo` (resume puis nouveau cycle), OR a effectué directement des `ARTIFACT_UPDATE` sur `PRD.md` (v1.3) et `specs.md` (v1.1) en intégrant la réponse HO-Q1 reçue de PM. Aucun `spawn_request` PO n'a été émis. Comportement répété même après une correction explicite envoyée par PM ("STOP écrire, spawn PO"). Détecté par le HO via inspection de l'or.log.
 
@@ -90,12 +83,117 @@ OR a sauté l'étape PO/specs et a fusionné FUNCTIONAL_SPECS + TECHNICAL_DESIGN
 **Cause probable** : pas d'invariant fort dans `agents/wf-or.md` interdisant explicitement à OR d'écrire dans `PRD.md`/`specs.md`/`design.md`/etc. OR voit l'info HO arriver, et "fait au plus court" en mettant à jour l'artéfact lui-même au lieu de respecter la chaîne PO/TL/DS.
 
 **À fixer** :
-- [ ] Ajouter dans `agents/wf-or.md` un invariant explicite : **OR n'écrit JAMAIS dans les artéfacts métier** (`PRD.md`, `specs.md`, `design.md`, `ui.md`, `tasks.md`, `review.md`, `acceptance.md`). OR n'écrit que dans `or.log` et `.wf-state.json` (via `wf-orchestrate.sh`). Toute info HO reçue → relayée au PO/TL via SendMessage, pas appliquée directement.
-- [ ] Hook `wf-auth.sh` côté OR : bloquer en dur les writes vers `wf/needs/<name>/{PRD,specs,design,ui,tasks,review,acceptance,tracking}.md`. L'agent n'a aucune raison légitime de toucher à ces fichiers.
-- [ ] Ajouter un test (TF) qui simule un `ho_unsolicited_input` en phase REQUIREMENTS et vérifie que (a) OR ne touche pas à PRD.md, (b) OR émet un `spawn_request` PO si pas déjà spawné, (c) OR relaie l'info à PO via SendMessage.
-- [ ] Côté PM (skill `wf-pm/SKILL.md`) : ajouter à `wf-pm` un mécanisme de détection — si un `ARTIFACT_UPDATE` apparaît dans `or.log` avec auteur=OR, lever un `ERROR_UNRECOVERABLE` automatique plutôt que de faire confiance.
+- [x] Encadré INV-NO-WRITE renforcé + auto-test 3 questions dans `agents/wf-or.md` (T-004)
+- [x] Hook `wf-auth.sh` step 6 — blocage `exit 2` sur 8 artéfacts métier nommés dans `wf/needs/<name>/` (T-001/T-002, commit `444f7cf`)
+- [x] Tests TF-OR-01..06 (codewrite block + autorisations légitimes) — 6/6 PASS dans `tests/or-write-discipline/run-tf.sh` (T-009)
+- [x] §2b skill `wf-pm/SKILL.md` — détection `ARTIFACT_UPDATE auteur=OR` + circuit-breaker 3× → `ERROR_UNRECOVERABLE` HO (T-006, commit `79f3e76`)
+- Méta-validation : pendant CLOSURE:BILAN du besoin lui-même, OR n'a pas pu écrire `tracking.md` et a dû déléguer à PM — preuve que le fix mord en pratique.
 
-**Découvert** : 2026-04-28, sur le 2e cycle de `pulse-reporting-hebdo` (le 1er cycle a été archivé suite au crash dû au schéma `state.json` obsolète).
+**Livré** : besoin `or-write-discipline`. 6 commits sur `feature/or-write-discipline`, 7/7 TF PASS, branche prête à merger.
+
+**Découvert** : 2026-04-28, sur le 2e cycle de `pulse-reporting-hebdo`.
+
+---
+
+## Contrat `--complete` non documenté côté agents (NOUVEAU)
+
+**Symptôme** : pendant le besoin `or-write-discipline` (méta-test), conflit OR↔PO sur qui exécute `wf-orchestrate.sh --complete REQUIREMENTS:COLLECT_PRD` :
+- OR envoie `PLEASE_COMPLETE_STEP` à PO ;
+- PO refuse ("c'est le rôle d'OR de driver la machine à états") ;
+- OR bloqué par `wf-auth.sh` (qui exige `agent_type=po`) ;
+- PM tranche (DEC-002) en rappelant EX-016.
+
+**Cause** : le contrat "agent désigné par `STEP_AGENT` drive son propre `--complete`" est **encodé uniquement** dans `hooks/wf-auth.sh` + `scripts/wf-step-agents.sh`. Aucun rappel explicite dans `agents/wf-po.md`, `agents/wf-tl.md`, `agents/wf-rv.md`, `agents/wf-qa.md`, `agents/wf-ds.md`, `agents/wf-dv.md`. PO a hérité d'une compréhension intuitive (fausse) de son rôle.
+
+**À fixer** :
+- [ ] Ajouter dans chaque `agents/wf-{po,tl,rv,qa,ds,dv}.md` une section "Quand drives-tu `--complete` ?" avec règle claire : "Tu drives toi-même `--complete <PHASE:STEP>` quand `--query` retourne `agent=<ton role>`. Tu ne demandes JAMAIS à PM de le faire à ta place pour ces steps. PM ne touche `--complete` que pour `*:CHECKPOINT_*` et `CLOTURE:COMMIT`."
+- [ ] Idem dans `agents/wf-or.md` : OR n'envoie `PLEASE_COMPLETE_STEP` qu'à l'agent désigné par `--query.agent`, jamais à PM (sauf si `agent=pm`).
+- [ ] À grouper avec §3/§4 (même chantier `or-write-discipline`).
+
+**Découvert** : 2026-04-28, méta-test `or-write-discipline`.
+
+---
+
+## Mismatch noms de steps `WRITE_PRD` vs `GENERATE_PRD` (NOUVEAU)
+
+**Symptôme** : OR référence `REQUIREMENTS:WRITE_PRD` dans ses `PLEASE_COMPLETE_STEP`, mais la state machine (`scripts/wf-step-agents.sh`) connaît `REQUIREMENTS:GENERATE_PRD`. PO a quand même complété le bon step, mais le mismatch crée de la confusion dans les logs et les messages OR↔PO.
+
+**Cause** : doc OR (`agents/wf-or.md` ou skill) désynchronisée de la liste de steps canonique.
+
+**À fixer** :
+- [ ] Audit `grep -rn 'WRITE_PRD\|COLLECT_PRD' agents/ skills/` pour aligner sur les noms canoniques de `scripts/wf-step-agents.sh`.
+- [ ] Idem pour les autres phases (FUNCTIONAL_SPECS, TECHNICAL_DESIGN, …) — risque de drift similaire.
+
+**Découvert** : 2026-04-28, méta-test `or-write-discipline`.
+
+---
+
+## Détection de langue trop fragile (basée sur `$LANG`)
+
+**Symptôme** : `scripts/wf-read-config.sh` détecte la langue via `$LANG` (variable d'environnement shell), ce qui ne reflète pas la langue dans laquelle les artéfacts du projet sont effectivement rédigés. Sur une machine en `LANG=en_US.UTF-8` mais avec un projet rédigé en français, on tombe sur les templates EN — incohérent avec le reste du dépôt.
+
+**Règle attendue** :
+- Si les artéfacts existants (`PRD.md`, `specs.md`, `tracking.md` d'autres needs déjà clos, ou `README.md` du dépôt) sont rédigés en français → templates FR.
+- Sinon → templates EN par défaut (anglais comme langue universelle).
+
+**Pistes de fix** :
+- [ ] Heuristique : détecter la langue par sondage rapide sur `README.md` du projet ou sur le dernier `PRD.md` clos. Si majoritairement français (mots-clés FR fréquents : "le", "la", "des", "que") → `WF_LANGUAGE=fr`. Sinon `en`.
+- [ ] Override explicite via `.wf-config.json` (`language: "fr"|"en"`) prioritaire sur l'auto-détection (déjà présent ?  à vérifier).
+- [ ] Fallback sur `$LANG` uniquement si aucun signal projet disponible.
+- [ ] Tester sur un projet EN avec `LANG=fr_FR.UTF-8` (cas symétrique) pour valider la non-régression.
+
+**Découvert** : 2026-04-28, suite au bootstrap `or-write-discipline` où les templates FR ont été correctement copiés (heureusement) mais sans certitude que la détection était fiable.
+
+---
+
+## RV (et autres agents) notifient PM au lieu d'OR sur brief_complete (NOUVEAU — observé)
+
+**Symptôme** : pendant `or-write-discipline`, RV a envoyé son `brief_complete RV_REVIEW verdict=CONVERGE` directement à PM au lieu d'OR. PM a auto-relayé via le handler MISROUTED_TO_PM (filet de sécurité fonctionnel), mais le contrat n'est pas respecté côté agent.
+
+**Cause** : `agents/wf-rv.md` (et probablement les autres) ne précise pas explicitement que les `brief_complete` / `step_complete` doivent aller à OR (la cible naturelle d'un agent quand il a fini son travail). Le brief PM mentionne "Notifie OR (pas PM)" mais l'agent retombe sur des réflexes par défaut.
+
+**À fixer** :
+- [ ] Ajouter dans chaque `agents/wf-{po,tl,rv,qa,ds,dv}.md` : "Tes notifications `brief_complete` et `step_complete` vont TOUJOURS à OR (jamais à team-lead/PM). PM n'est destinataire que de `stuck_peer` et `request_codewrite_bypass`."
+- [ ] Le handler MISROUTED_TO_PM côté skill wf-pm fonctionne mais est un filet, pas une fix. Garder les deux.
+
+**Découvert** : 2026-04-28, méta-test `or-write-discipline` — RV pendant REVIEW, **et confirmé sur DV1 pendant IMPLEMENTATION** (lot G1 task_done envoyé à PM au lieu d'OR). Le pattern est généralisé, pas spécifique à un agent.
+
+---
+
+## OR confond "écrire un fichier" et "compléter le step" dans ses requêtes à PM (NOUVEAU)
+
+**Symptôme** : pendant CLOSURE:BILAN du besoin `or-write-discipline`, OR (qui ne peut désormais plus écrire `tracking.md` grâce au fix INV-001 qu'on venait de livrer — méta) a envoyé un message à PM disant : "PM — OR ne peut pas écrire tracking.md, voici le contenu à insérer. Une fois écrit, complète CLOSURE:BILAN et notifie-moi". PM a écrit le fichier puis a tenté `--complete CLOSURE:BILAN` → bloqué par wf-auth (agent=or). PM a dû renvoyer la balle à OR.
+
+**Cause** : dans le contrat actuel, OR peut légitimement demander à PM d'écrire un artéfact (PM est gatekeeper des writes "métier" en aval du fix INV-001). Mais OR amalgame **deux actions distinctes** dans une même demande :
+1. Écrire le fichier (légitime, PM exécute)
+2. Compléter le step de la machine d'état (illégitime côté PM si `agent != pm`)
+
+**À fixer** :
+- [ ] Dans `agents/wf-or.md` : quand OR délègue une écriture à PM, le message doit explicitement séparer les deux étapes :
+  - "PM, écris ce contenu dans X." (action PM, immédiate)
+  - "Quand c'est fait, je drive `--complete <STEP>` moi-même." (action OR, en aval)
+- [ ] Côté `agents/wf-pm.md` (et skill `wf-pm/SKILL.md`) : ajouter un réflexe — avant tout `--complete`, **toujours** lancer `--query` et vérifier `agent==pm`. Si pas pm → ne pas exécuter, renvoyer la consigne à l'agent désigné. Le hook wf-auth est le filet, mais le réflexe `--query` doit être en amont.
+- [ ] Test TF couvrant le cas : OR demande "écris X et complète Y" sur un step `agent=or` → PM écrit X mais refuse de --complete et notifie OR.
+
+**Découvert** : 2026-04-28, méta-test `or-write-discipline`, CLOSURE:BILAN.
+
+---
+
+## OR ne relit pas la mailbox / l'état avant d'envoyer (NOUVEAU — confirmation)
+
+**Symptôme** : pendant `or-write-discipline`, OR a re-envoyé un `PLEASE_COMPLETE_STEP` à PO pour `COLLECT_PRD` alors que PO l'avait déjà complété et notifié via `step_advanced`. PO a dû répondre "Déjà fait" pour débloquer.
+
+**Cause** : déjà documentée dans §4 ("aggravants observés"). Confirmation que ce n'est pas un cas isolé du besoin `pulse-reporting-hebdo` — c'est un comportement structurel d'OR.
+
+**À fixer** : déjà couvert par §4, mais **mettre la priorité sur la lecture mailbox systématique avant tout `SendMessage` sortant** dans la spec OR. Ajouter une checklist explicite dans `agents/wf-or.md` :
+- Avant tout `SendMessage`, OR doit : (1) `--query` pour l'état canonique, (2) lire les derniers messages reçus de la mailbox, (3) confirmer que l'action n'est pas déjà en cours.
+
+**Variantes observées sur le même besoin** :
+- OR re-poke TL après que TL ait déjà notifié CONVERGE (16s plus tôt).
+- OR re-demande HO_VALIDATE à PM alors que PM avait déjà répondu VALIDATION_RESPONSE.
+- OR annonce "agent=pm" pour BILAN alors que `--query` retournait `agent=or` — donc OR n'a pas relu sa propre source de vérité avant de pinger PM.
+
+**Découvert** : 2026-04-28, méta-test `or-write-discipline`.
 
 ---
 

@@ -23,17 +23,29 @@ Waterfall turns a single Claude Code session into a coordinated team of agents, 
 
 Each *besoin* (work item) lives under `wf/needs/<kebab-name>/` with its own PRD, design, specs, tasks, tracking, and `.wf-state.json`. The state machine (`scripts/wf-orchestrate.sh`) is the single source of truth for what happens next; agents only advance via guarded `--complete` calls.
 
-Built on Claude Code's experimental **[Agent Teams](https://code.claude.com/docs/fr/agent-teams)** feature.
+Built on Claude Code's experimental **[Agent Teams](https://code.claude.com/docs/en/agent-teams#enable-agent-teams)** feature.
 
 ---
 
 ## Installation
 
-Install from GitHub — one slash command. Waterfall installs directly from this repository. Marketplace listing coming soon.
+Marketplace listing coming soon. In the meantime, install from a local clone in three slash commands.
+
+1. Clone the repository locally (e.g. `C:\projets\waterfall` on Windows, `~/projects/waterfall` on macOS/Linux).
+2. Register the clone as a local marketplace, then install the plugin:
 
 ```
-/plugin install https://github.com/mgallet92i/waterfall
+/plugin marketplace add C:\projets\waterfall
+/plugin install waterfall@waterfall-local
 ```
+
+3. Verify the plugin is active:
+
+```
+/plugin
+```
+
+You should see `waterfall` listed and the `/waterfall:new`, `/waterfall:resume`, `/waterfall:quit` commands available.
 
 The plugin ships:
 
@@ -62,7 +74,7 @@ The plugin ships:
 
 ### 1. Enable Agent Teams (required)
 
-[Agent Teams](https://code.claude.com/docs/fr/agent-teams) is an experimental Claude Code feature. Enable it in `~/.claude/settings.json`:
+[Agent Teams](https://code.claude.com/docs/en/agent-teams#enable-agent-teams) is an experimental Claude Code feature. Enable it in `~/.claude/settings.json`:
 
 ```json
 {
