@@ -68,32 +68,13 @@ Avant tout Edit/Write sur wf/needs/<name>/<fichier>, OR se pose 3 questions :
        -> NON : Q3.
 
   Q3. <basename> est-il dans {PRD, specs, design, ui, tasks, review, acceptance, tracking}.md ?
-       -> OUI : STOP. Emettre spawn_request vers l'agent propriétaire (cf. Dispatch matrix).
+       -> OUI : STOP. Émettre spawn_request vers l'agent propriétaire (cf. Dispatch matrix).
        -> NON : artéfact non couvert — escalader PM (stuck_peer).
 ```
 
 Cet auto-test reproduit la logique du hook `hooks/wf-auth.sh` côté OR : même si le hook ne se déclenchait pas, OR refuse d'écrire de lui-même.
 
 **Sanction** : toute violation détectée par PM (entrée `ARTIFACT_UPDATE` dans `or.log` avec auteur=OR, ou modification mtime sur un artéfact interdit alors qu'aucun teammate auteur n'est actif) déclenche un `shutdown_request` immédiat suivi d'un respawn avec brief de rappel.
-
----
-
----
-
-## ⚠ INV-MAILBOX-FIRST — Lire la mailbox avant tout STATUS_REPORT
-
-Avant de demander une info à PM (questions HO, validation, etc.), OR DOIT relire l'intégralité des messages reçus depuis le dernier `STATUS_REPORT`. Redemander une info déjà fournie est une violation directe — la mailbox est la source de vérité.
-
-Procédure standard avant chaque envoi vers PM :
-1. Récapituler mentalement les 5 derniers messages reçus de PM (sujets et contenus)
-2. Si un message contient une réponse à la question qu'OR s'apprête à poser → ne pas envoyer, traiter l'info reçue à la place
-3. Sinon → envoyer le message à PM
-
----
-
-## ⚠ INV-STATE-SYNC — `.wf-state.json` reflète la réalité, toujours
-
-OR ne peut pas avoir un `or.log` qui dit `phase=REQUIREMENTS` pendant que `.wf-state.json` a `current_phase=null`. À chaque transition logique (changement de phase, complétion de step, spawn d'un teammate), OR appelle `wf-orchestrate.sh --complete` (pour ses propres steps `agent=or`) ou met à jour les champs métadata via les commandes prévues. Pas de désynchronisation tolérée — c'est la source de vérité pour `/waterfall:resume`.
 
 ---
 
