@@ -93,6 +93,49 @@ Max 3 retries per spawn_request. On the 3rd failure: `ERROR_UNRECOVERABLE` escal
 
 **Note**: `config.agent_mode` is read **once at bootstrap** from `bootstrap_need` and kept in PM context for the entire need lifetime. On a context clear, PM re-reads `config.agent_mode` from `.wf-state.json` (`config.agent_mode` field) before resuming the reactive loop.
 
+### 2b. Violations détectées par PM (INV-NO-WRITE bypass)
+
+PM scrute deux signaux pour détecter qu'OR a écrit dans un artéfact métier malgré le hook.
+
+**CRITERE 1 — Lecture or.log**
+```bash
+grep -E '^[^ ]+ ARTIFACT_UPDATE .* (author|auteur)=(or|OR)' wf/needs/<name>/or.log
+```
+Un match = violation détectée.
+
+**CRITERE 2 — Comparaison mtime (cross-check)**
+
+Pour chaque artéfact métier interdit (cf. `design.md §2` : PRD.md, specs.md, design.md, ui.md, tasks.md, review.md, acceptance.md, tracking.md) :
+- `mtime(artifact) > mtime(dernier spawn_confirmed_<owner>)` ET aucun teammate `<owner>` actif au moment du delta → violation suspectée.
+
+**Action immédiate pour CHAQUE violation détectée (EX-004) :**
+
+```
+1. PM émet shutdown_request vers OR (SendMessage type=shutdown_request).
+2. PM émet spawn_request vers nouvelle instance OR (or-respawn) avec brief :
+   - Reprise sur .wf-state.json existant.
+   - Rappel explicite INV-NO-WRITE + liste des 8 fichiers interdits.
+   - Référence wf-auth.log pour visualiser le block manqué.
+3. PM journalise l'événement dans or.log via SendMessage à OR-respawn ou log PM.
+4. Incrémenter le compteur dans wf/needs/<name>/.pm-violation-counter (init 0).
+```
+
+**Circuit-breaker anti-boucle :** si le compteur atteint 3 occurrences sur le même need → ERROR_UNRECOVERABLE remonté à HO via AskUserQuestion :
+
+```
+"OR a violé INV-NO-WRITE 3 fois sur ce need malgré respawn.
+ Continuer (4e respawn) ou avorter le need ?"
+```
+
+Le compteur `.pm-violation-counter` est réinitialisé à 0 à la fin du need (CLOTURE).
+
+**Moments d'exécution du check :**
+- Au démarrage de PM (post-TeamCreate, avant tout dispatch).
+- À chaque réception d'un `brief_complete` d'un teammate auteur (PO/TL/RV/QA) — opportunité de croiser mtime.
+- Sur demande explicite OR (`stuck_peer` avec hint `audit_or_writes`).
+
+---
+
 ### 3. HO relay (AskUserQuestion)
 
 PM is the **only** channel between teammates and the HO (INV-010). It relays:
