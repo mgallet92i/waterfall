@@ -132,17 +132,28 @@ _wf_codewrite_guard() {
   local project_root_norm="${PROJECT_ROOT//\\//}"
   target_path="${target_path#$project_root_norm/}"
 
-  # Step 5 — need paths always allowed (INV-004).
-  if [[ "$target_path" =~ ^wf/needs/[^/]+/ ]]; then
-    _wf_cw_log "$need_name" "allow" "$tool_name" "$target_path" "$agent_type" "need_path"
-    exit 0
-  fi
-
-  # Step 6 — consume sentinel bypass if present (INV-002: rm BEFORE exit).
+  # Step 5 — consume sentinel bypass if present (INV-002: rm BEFORE exit).
+  # Sentinel has priority over the artifact filter (step 6) — explicit HO override.
   sentinel="$PROJECT_ROOT/.or-codewrite-bypass"
   if [[ -f "$sentinel" ]]; then
     rm -f "$sentinel"
     _wf_cw_log "$need_name" "allow-bypass" "$tool_name" "$target_path" "$agent_type" "bypass_consumed"
+    exit 0
+  fi
+
+  # Step 6 — block OR writes to named business artifacts within wf/needs/<name>/.
+  if [[ "$target_path" =~ ^wf/needs/[^/]+/ ]]; then
+    local artifact_basename
+    artifact_basename="$(basename "$target_path")"
+    case "$artifact_basename" in
+      PRD.md|specs.md|design.md|ui.md|tasks.md|review.md|acceptance.md|tracking.md)
+        echo "wf-auth: OR write blocked on artifact: $artifact_basename" >&2
+        _wf_cw_log "$need_name" "block" "$tool_name" "$target_path" "$agent_type" "forbidden_artifact"
+        exit 2
+        ;;
+    esac
+    # Other files under need_dir are allowed (or.log, .wf-state.json, watchdog.*, wf-auth.log, etc.)
+    _wf_cw_log "$need_name" "allow" "$tool_name" "$target_path" "$agent_type" "need_path"
     exit 0
   fi
 
