@@ -356,7 +356,7 @@
     <div class="vcycle__body">
       <svg class="vcycle__lines" viewBox="0 0 790 464" preserveAspectRatio="none" aria-hidden="true">
         <!-- 01 → 02 -->
-        <line x1="55" y1="64" x2="75" y2="100" stroke="var(--teal-400)" stroke-width="1.2" stroke-dasharray="4 4"/>
+        <line x1="5" y1="64" x2="25" y2="100" stroke="var(--teal-400)" stroke-width="1.2" stroke-dasharray="4 4"/>
         <!-- horizontales (phases miroir) -->
         <line x1="75" y1="132" x2="715" y2="132" stroke="var(--teal-300)" stroke-width="1.5" stroke-dasharray="4 4"/>
         <line x1="165" y1="232" x2="635" y2="232" stroke="var(--teal-300)" stroke-width="1.5" stroke-dasharray="4 4"/>
@@ -364,8 +364,8 @@
         <!-- descente gauche : 02→03→04 -->
         <line x1="75" y1="132" x2="165" y2="232" stroke="var(--teal-400)" stroke-width="1.2" stroke-dasharray="4 4"/>
         <line x1="165" y1="232" x2="245" y2="332" stroke="var(--teal-400)" stroke-width="1.2" stroke-dasharray="4 4"/>
-        <!-- 05 → 06 -->
-        <line x1="395" y1="332" x2="320" y2="432" stroke="var(--teal-500)" stroke-width="1.5" stroke-dasharray="4 4"/>
+        <!-- 04 → 06 -->
+        <line x1="255" y1="332" x2="320" y2="432" stroke="var(--teal-500)" stroke-width="1.5" stroke-dasharray="4 4"/>
         <!-- 06 → 07 -->
         <line x1="320" y1="432" x2="475" y2="432" stroke="var(--teal-500)" stroke-width="1.5" stroke-dasharray="4 4"/>
         <!-- 07 → 08 -->
@@ -377,7 +377,7 @@
 
     <ol class="vcycle__list">
       <!-- Bootstrap -->
-      <li class="vphase vphase--preamble" style="left:0px; top:0px; width:150px;" data-tip="OR scaffolds the cycle, locks scope, initialises the ledger.">
+      <li class="vphase vphase--preamble" style="left:-50px; top:0px; width:150px;" data-tip="OR scaffolds the cycle, locks scope, initialises the ledger.">
         <span class="vphase__id">01 · Bootstrap</span>
         <span class="vphase__owner">OR</span>
       </li>
@@ -534,15 +534,13 @@
     <li class="install__step">
       <span class="install__num">02</span>
       <div class="install__body">
-        <h3>Initialize a cycle in your repo</h3>
-        <p>Creates <code>.waterfall/</code> with your ledger, phase templates, and HO config.</p>
+        <h3>Configure HO at the repo root</h3>
+        <p>Copy <code>.wf-config.example.json</code> to <code>.wf-config.json</code> and tune models per role, review-loop budgets, watchdog interval, and <em>Dark Factory</em>. Defaults apply if the file is absent. Schema lives in <code>.wf-config.example.md</code>.</p>
         <div class="code">
           <span class="code__lang">shell</span>
-          <pre><code><span class="prompt">$</span> cd your-repo
-<span class="prompt">$</span> claude
-</code></pre>
-          <button class="code__copy" data-copy="cd your-repo
-claude">Copy</button>
+          <pre><code><span class="prompt">$</span> cp .wf-config.example.json .wf-config.json
+<span class="comment"># edit models, review_loops, dark_factory…</span></code></pre>
+          <button class="code__copy" data-copy="cp .wf-config.example.json .wf-config.json">Copy</button>
         </div>
       </div>
     </li>
@@ -566,17 +564,19 @@ claude">Copy</button>
     <div>
       <h4>Requirements</h4>
       <ul>
-        <li>Claude Code <code>≥ 1.0</code></li>
-        <li>POSIX shell (macOS, Linux, WSL)</li>
+        <li>Claude Code <code>≥ 2.1</code></li>
+        <li><code>jq</code> (required — config &amp; ledger parsing)</li>
+        <li>POSIX shell: macOS, Linux, WSL — or <strong>Git Bash</strong> on Windows</li>
         <li>A repo and a willingness to write specs</li>
       </ul>
     </div>
     <div>
       <h4>Configure HO</h4>
       <ul>
-        <li><code>.waterfall/ho.toml</code> — your name, sign-off policy, gates you skip</li>
-        <li>Default policy: <strong>HO must review artefacts and code</strong></li>
-        <li>Switch to <em>Dark Factory</em> below if you want auto-advance with checkpoint review</li>
+        <li><code>.wf-config.json</code> — models per role, review-loop budgets, watchdog, agent mode</li>
+        <li>Schema &amp; defaults: <code>.wf-config.example.md</code></li>
+        <li>Default policy: <strong>HO reviews artefacts and code at every gate</strong> (<code>dark_factory: "off"</code>)</li>
+        <li>Flip <code>dark_factory</code> to <code>"on"</code> for auto-advance with logged checkpoint decisions</li>
       </ul>
     </div>
     <div>

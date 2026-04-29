@@ -1,0 +1,22 @@
+{
+  "models": {
+    "pm": "sonnet",
+    "or": "sonnet",
+    "po": "sonnet",
+    "tl": "opus",
+    "rv": "opus",
+    "qa": "sonnet",
+    "dv": "sonnet",
+    "ds": "haiku"
+  },
+  "review_loops": {
+    "artifacts": 2,
+    "code": 3
+  },
+  "watchdog": {
+    "interval": "3min"
+  },
+  "agent_mode": "team",
+  "dark_factory": "off",
+  "statusline": false
+}
