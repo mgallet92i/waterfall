@@ -258,7 +258,7 @@ Triggered by `/waterfall:new`:
    - fast_path_proposal     → FAST_PATH_PROPOSAL handler
    - CHECKPOINT_REQUEST     → relay HO checkpoint
    - NEED_HO_INPUT          → relay factual HO question
-   - NEED_PM_DECISION       → arbitrate, log DEC-xxx in suivi.md
+   - NEED_PM_DECISION       → arbitrate, log DEC-xxx in tracking.md
    - PLAN_MODE_REQUIRED     → EnterPlanMode + present taches.md to HO
    - VALIDATION_REQUESTED   → present acceptance-report.md to HO
    - COMMIT_REQUIRED        → validate message with HO + git commit
@@ -375,9 +375,9 @@ Triggered when OR sends a `SendMessage` with `type="fast_path_proposal"`.
 ```
 IF config.dark_factory == "on":
   # Auto-validation — do not call AskUserQuestion
-  next_num = grep -oE '^DEC-[0-9]+' wf/needs/<name>/suivi.md | tail -1 | cut -d- -f2 || echo 0
+  next_num = grep -oE '^DEC-[0-9]+' wf/needs/<name>/tracking.md | tail -1 | cut -d- -f2 || echo 0
   next_num = next_num + 1
-  Edit wf/needs/<name>/suivi.md §Decisions:
+  Edit wf/needs/<name>/tracking.md §Decisions:
     DEC-<num pad 3>: Valider (dark_factory auto, <ISO8601 now>)
   PM → OR (SendMessage): CHECKPOINT_RESPONSE approved
 
@@ -393,7 +393,7 @@ OTHERWISE (dark_factory == "off" — default):
 PO/TL conflict or ambiguity that PM can resolve:
 1. Read the conflict context
 2. Decide
-3. Log `DEC-xxx` in `wf/needs/<name>/suivi.md` (section `## Decisions` in EN, `## Décisions` in FR)
+3. Log `DEC-xxx` in `wf/needs/<name>/tracking.md` (section `## Decisions` in EN, `## Décisions` in FR)
 4. SendMessage to OR with the decision
 
 ### PLAN_MODE_REQUIRED
@@ -401,9 +401,9 @@ PO/TL conflict or ambiguity that PM can resolve:
 ```
 IF config.dark_factory == "on":
   # Auto-validation — do not call EnterPlanMode or AskUserQuestion
-  next_num = grep -oE '^DEC-[0-9]+' wf/needs/<name>/suivi.md | tail -1 | cut -d- -f2 || echo 0
+  next_num = grep -oE '^DEC-[0-9]+' wf/needs/<name>/tracking.md | tail -1 | cut -d- -f2 || echo 0
   next_num = next_num + 1
-  Edit wf/needs/<name>/suivi.md §Decisions:
+  Edit wf/needs/<name>/tracking.md §Decisions:
     DEC-<num pad 3>: Plan approved (dark_factory auto, <ISO8601 now>)
   PM → OR (SendMessage): PLAN_APPROVED
 
@@ -420,9 +420,9 @@ OTHERWISE (dark_factory == "off" — default):
 ```
 IF config.dark_factory == "on":
   # Auto-validation — do not call AskUserQuestion
-  next_num = grep -oE '^DEC-[0-9]+' wf/needs/<name>/suivi.md | tail -1 | cut -d- -f2 || echo 0
+  next_num = grep -oE '^DEC-[0-9]+' wf/needs/<name>/tracking.md | tail -1 | cut -d- -f2 || echo 0
   next_num = next_num + 1
-  Edit wf/needs/<name>/suivi.md §Decisions:
+  Edit wf/needs/<name>/tracking.md §Decisions:
     DEC-<num pad 3>: Approved (dark_factory auto, <ISO8601 now>)
   PM → OR (SendMessage): VALIDATION approved
 
@@ -442,9 +442,9 @@ IF config.dark_factory == "on":
     AskUserQuestion to HO to obtain the commit message
   OTHERWISE:
     # Auto-validation — do not call AskUserQuestion
-    next_num = grep -oE '^DEC-[0-9]+' wf/needs/<name>/suivi.md | tail -1 | cut -d- -f2 || echo 0
+    next_num = grep -oE '^DEC-[0-9]+' wf/needs/<name>/tracking.md | tail -1 | cut -d- -f2 || echo 0
     next_num = next_num + 1
-    Edit wf/needs/<name>/suivi.md §Decisions:
+    Edit wf/needs/<name>/tracking.md §Decisions:
       DEC-<num pad 3>: Commit approved (dark_factory auto, <ISO8601 now>)
     bash git commit -m "<commit_message provided by OR>"
     PM → OR (SendMessage): COMMIT_DONE

@@ -225,7 +225,7 @@ PM reads `config.dark_factory` from `bootstrap_need` (or `.wf-state.json` post-c
 
 **DEC-xxx counter** (ADR-config-wiring-02):
 ```bash
-next_num=$(grep -oE '^DEC-[0-9]+' wf/needs/<name>/suivi.md | tail -1 | cut -d- -f2 || echo 0)
+next_num=$(grep -oE '^DEC-[0-9]+' wf/needs/<name>/tracking.md | tail -1 | cut -d- -f2 || echo 0)
 next_num=$((next_num + 1))
 label=$(printf 'DEC-%03d' "$next_num")
 ```
@@ -239,7 +239,7 @@ label=$(printf 'DEC-%03d' "$next_num")
 | VALIDATION_REQUESTED | `Approved` | SendMessage OR: VALIDATION approved |
 | COMMIT_REQUIRED | `Commit approved` | git commit -m "<commit_message>" + SendMessage OR: COMMIT_DONE |
 
-Log in `wf/needs/<name>/suivi.md` section `## Decisions` (EN) or `## Décisions` (FR):
+Log in `wf/needs/<name>/tracking.md` section `## Decisions` (EN) or `## Décisions` (FR):
 ```
 DEC-<num>: <decision> (dark_factory auto, <ISO8601 now>)
 ```

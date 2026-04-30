@@ -5,62 +5,62 @@ phase: "PLANNING"
 status: "DRAFT"
 dv_pool_size: 1
 ---
-# Tasks — {{name}}
+# Tâches — {{name}}
 
-<!-- Written by TL during PLANNING phase -->
-<!-- Task granularity heuristics (guardrails, not hard rules):
-  - 1-3 EX-xxx per task
-  - 1-5 files to create/modify
-  - 1-2 TF-xxx covered
-  - ≤ 5 stable refs total
+<!-- Rédigé par TL pendant la phase PLANNING -->
+<!-- Heuristiques de granularité (garde-fous, pas règles strictes) :
+  - 1 à 3 EX-xxx par tâche
+  - 1 à 5 fichiers à créer/modifier
+  - 1 à 2 TF-xxx couverts
+  - ≤ 5 références stables au total
   - Effort S (< 2h) / M (2-6h) / L (6-12h)
   - < 500 LOC
-  If exceeded → split the task.
+  Si dépassé → découper la tâche.
 -->
 
-## Summary
-- **Total tasks**: 0
-- **Critical path length**: 0
-- **Max parallelism**: 0 (limited by dv_pool_size)
-- **Estimated total effort**: 0h
+## Synthèse
+- **Total tâches** : 0
+- **Longueur du chemin critique** : 0
+- **Parallélisme max** : 0 (limité par dv_pool_size)
+- **Effort total estimé** : 0h
 
-## Parallelization Plan
-<!-- Mandatory section. Identifies batches executable in parallel. -->
+## Plan de parallélisation
+<!-- Section obligatoire. Identifie les lots exécutables en parallèle. -->
 
-### Batch 1 (no dependencies)
-<!-- Tasks that can run in parallel from the start -->
+### Lot 1 (sans dépendances)
+<!-- Tâches exécutables en parallèle dès le départ -->
 
-### Batch 2 (depends on Batch 1)
+### Lot 2 (dépend du Lot 1)
 <!-- ... -->
 
-### Critical Path
-<!-- Longest dependency chain. Format: T-001 → T-004 → T-007 → T-010 -->
+### Chemin critique
+<!-- Plus longue chaîne de dépendances. Format : T-001 → T-004 → T-007 → T-010 -->
 
-## Main Table
+## Tableau principal
 
-| ID | Requirements | Description | Files | Tests | Review | Status | Assignee |
-|----|--------------|-------------|-------|-------|--------|--------|----------|
-| T-001 | [EX-xxx] | [brief] | [n] | 0/0 | - | TODO | dv1 |
+| ID | Exigences | Description | Fichiers | Tests | Revue | Statut | Assigné |
+|----|-----------|-------------|----------|-------|-------|--------|---------|
+| T-001 | [EX-xxx] | [bref] | [n] | 0/0 | - | TODO | dv1 |
 
-## Task Details
+## Détail des tâches
 
-### T-001 — [Title]
+### T-001 — [Titre]
 
-| Field | Value |
-|-------|-------|
-| Requirements | [EX-xxx, EX-yyy] |
+| Champ | Valeur |
+|-------|--------|
+| Exigences | [EX-xxx, EX-yyy] |
 | Invariants | [INV-xxx] |
-| Design refs | [design.md §"section"] |
-| UI refs | [ui.md §"section" if applicable] |
-| Tests refs | [TF-xxx] |
-| Dependencies | [T-xxx or "none"] |
+| Réfs design | [design.md §"section"] |
+| Réfs UI | [ui.md §"section" si applicable] |
+| Réfs tests | [TF-xxx] |
+| Dépendances | [T-xxx ou "aucune"] |
 | Effort | [S \| M \| L] |
-| Files to touch | [file list] |
-| Done criteria | [verifiable conditions, including E2E test written if applicable] |
-| Assignee | [dv1 \| dv2 \| dv3] |
-| Status | [TODO \| IN_PROGRESS \| IMPLEMENTED \| UNIT_TESTS_OK \| CODE_REVIEW_OK \| DONE] |
+| Fichiers à toucher | [liste de fichiers] |
+| Critères de fin | [conditions vérifiables, dont test E2E rédigé si applicable] |
+| Assigné | [dv1 \| dv2 \| dv3] |
+| Statut | [TODO \| IN_PROGRESS \| IMPLEMENTED \| UNIT_TESTS_OK \| CODE_REVIEW_OK \| DONE] |
 
-## Constraints
-<!-- Project-wide constraints that apply to all tasks -->
+## Contraintes
+<!-- Contraintes transverses applicables à toutes les tâches -->
 
 n/a
