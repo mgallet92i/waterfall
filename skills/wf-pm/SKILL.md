@@ -163,13 +163,13 @@ git commit -m "<HO-validated message>"
 
 ### 5. BILAN writer (CLOTURE:BILAN — EX-BFX-004, INV-BILAN-PM)
 
-`CLOSURE:BILAN` is a PM step. PM writes `bilan.md` itself.
+`CLOSURE:BILAN` is a PM step. PM writes `retro.md` itself.
 
 On receiving `PLEASE_COMPLETE_STEP` from OR with `step=CLOSURE:BILAN`:
 
-1. Read `wf/templates/<lang>/bilan.md`.
+1. Read `wf/templates/<lang>/retro.md`.
 2. Parse `or.log` + `tracking.md` + `.wf-state.json`.
-3. `Write wf/needs/<name>/bilan.md` (include `## Fast-path` section iff `fast_path.enabled == true` — INV-FP-004).
+3. `Write wf/needs/<name>/retro.md` (include `## Fast-path` section iff `fast_path.enabled == true` — INV-FP-004).
 4. `bash scripts/wf-orchestrate.sh <name> --complete CLOSURE:BILAN`.
 5. `SendMessage OR: step_advanced`.
 

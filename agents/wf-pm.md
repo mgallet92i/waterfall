@@ -271,20 +271,20 @@ If QA is not spawned → PM asks OR via SendMessage to spawn QA before continuin
 
 ## CLOTURE — BILAN step (EX-BFX-004, INV-BILAN-PM)
 
-`CLOSURE:BILAN` est un step PM (`STEP_AGENT = pm`). PM rédige `bilan.md` lui-même ; OR ne le rédige pas.
+`CLOSURE:BILAN` est un step PM (`STEP_AGENT = pm`). PM rédige `retro.md` lui-même ; OR ne le rédige pas.
 
 **Séquence** (déclenchée par réception de `PLEASE_COMPLETE_STEP` depuis OR avec `step=CLOSURE:BILAN`) :
 
-1. PM lit le template : `wf/templates/<lang>/bilan.md` (où `<lang>` ∈ `{fr, en}`, déterminé par la frontmatter `lang` du PRD ou le défaut `fr`).
+1. PM lit le template : `wf/templates/<lang>/retro.md` (où `<lang>` ∈ `{fr, en}`, déterminé par la frontmatter `lang` du PRD ou le défaut `fr`).
 2. PM parse :
    - `wf/needs/<name>/or.log` — phases, timestamps, tags `[ERROR]/[WARN]/[SKIP]/[OBS-xxx]`
    - `wf/needs/<name>/tracking.md` — décisions `DEC-xxx`, observations `OBS-xxx`, cycles de review (max_runs)
    - `wf/needs/<name>/.wf-state.json` — `history[]` pour les durées par phase, `fast_path.*` si applicable
-3. PM rédige `wf/needs/<name>/bilan.md` via l'outil `Write`. Si `.wf-state.json` contient `fast_path.enabled == true`, PM inclut une section `## Fast-path` (champs `fast_path.summary`, `fast_path.files`, `fast_path.phases_skipped`, `fast_path.approved_at`). Sinon la section est omise (INV-FP-004).
+3. PM rédige `wf/needs/<name>/retro.md` via l'outil `Write`. Si `.wf-state.json` contient `fast_path.enabled == true`, PM inclut une section `## Fast-path` (champs `fast_path.summary`, `fast_path.files`, `fast_path.phases_skipped`, `fast_path.approved_at`). Sinon la section est omise (INV-FP-004).
 4. PM exécute : `bash scripts/wf-orchestrate.sh <name> --complete CLOSURE:BILAN`
    - `wf-auth.sh` : `agent_type=pm` (fallback DEC-002), `expected=pm` → `allow`.
 5. PM envoie `step_advanced` à OR via SendMessage (plain text).
-6. OR re-query → `step=CLOSURE:LOG_AUDIT, agent=or` → OR appendra la section `## Anomalies détectées` dans le `bilan.md` déjà écrit.
+6. OR re-query → `step=CLOSURE:LOG_AUDIT, agent=or` → OR appendra la section `## Anomalies détectées` dans le `retro.md` déjà écrit.
 
 **Important** : la section anomalies (`## Anomalies détectées` / `## Anomalies detected`) est rédigée par OR au step suivant `CLOSURE:LOG_AUDIT` (Exception 3 conservée dans `agents/wf-or.md`). PM ne la pré-écrit pas.
 
@@ -1275,7 +1275,7 @@ grep 'loop_stopped_phase_closed' wf/needs/<name>/or.log
 
 ## [OBSERVATION] protocol
 
-Any agent can log an observation at any time in `tracking.md` or its main artifact. Format: `[OBS-xxx] <ISO date> — <description>`. PM logs its own observations in `tracking.md`. OR will consolidate them in `bilan.md` at step `CLOSURE:BILAN`.
+Any agent can log an observation at any time in `tracking.md` or its main artifact. Format: `[OBS-xxx] <ISO date> — <description>`. PM logs its own observations in `tracking.md`. OR will consolidate them in `retro.md` at step `CLOSURE:BILAN`.
 
 ---
 

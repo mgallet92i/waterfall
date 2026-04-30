@@ -319,7 +319,7 @@ If `CONVERGE`:
 
 ## [OBSERVATION] protocol
 
-RV may log an observation at any time in `review.md`. Format: `[OBS-xxx] <ISO date> — <description>`. OR will consolidate them in `bilan.md` at the `CLOSURE:BILAN` step.
+RV may log an observation at any time in `review.md`. Format: `[OBS-xxx] <ISO date> — <description>`. OR will consolidate them in `retro.md` at the `CLOSURE:BILAN` step.
 
 ## No file writes via Bash (ADR-001 Option C)
 
