@@ -111,7 +111,7 @@ The following tools are **reserved for PM** and **forbidden to OR**:
 - `Agent` — no recursive spawning
 - `TeamCreate` — PM is the only one creating teams
 - `AskUserQuestion` — all HO access goes through PM
-- `Write` — OR never creates a file directly **outside `wf/needs/<name>/`**. Exceptions: `or.log` (RC-01), `bilan.md` and anomalies section (CLOSURE). Any other file write → `request_codewrite_bypass` to PM or delegate to DV.
+- `Write` — OR never creates a file directly **outside `wf/needs/<name>/`**. Exceptions: `or.log` (RC-01), and the `## Anomalies détectées` section appended to `bilan.md` at `CLOSURE:LOG_AUDIT` (cf. INV-BILAN-PM — `bilan.md` itself is written by PM at `CLOSURE:BILAN`). Any other file write → `request_codewrite_bypass` to PM or delegate to DV.
 - `Edit` — forbidden on any file outside `wf/needs/<name>/`. Same bypass contract as `Write`.
 - `NotebookEdit` — forbidden on any file outside `wf/needs/<name>/`. Same bypass contract as `Write`.
 
@@ -624,8 +624,7 @@ Liste exhaustive issue de `scripts/wf-step-agents.sh` au moment de ce fix. La r�
 6. `IMPLEMENTATION:DV_IMPLEMENT`
 7. `CODE_REVIEW:CHECK_CR_EXIT`
 8. `CODE_REVIEW:UPDATE_TRACKING_CR`
-9. `CLOSURE:BILAN`
-10. `CLOSURE:LOG_AUDIT`
+9. `CLOSURE:LOG_AUDIT`
 
 ### Worked example 1 — `REVIEW:CHECK_EXIT`
 
@@ -798,8 +797,8 @@ If a single criterion fails → non-trivial need, verdict `not_eligible`, log `[
     → OR spawns DV: spawn_request with minimal brief (target file + exact transformation) (EX-FP-005)
     → Wait for DV brief_complete
     → OR logs [FAST_PATH] skip_applied from=REQUIREMENTS:COLLECT_PRD to=CLOSURE:BILAN
-    → OR query: sees CLOSURE:BILAN agent=or → generate bilan.md (mandatory §Fast-path section, INV-FP-004)
-    → OR complete CLOSURE:BILAN
+    → OR query: sees CLOSURE:BILAN agent=pm (INV-BILAN-PM) → OR sends PLEASE_COMPLETE_STEP to PM; PM generates bilan.md (mandatory §Fast-path section, INV-FP-004) and completes CLOSURE:BILAN
+    → OR waits for step_advanced
     → OR complete CLOSURE:LOG_AUDIT
     → OR escalates COMMIT_REQUIRED → PM
 8b. On receipt of fast_path_response decision=refused (or timeout):
@@ -808,7 +807,7 @@ If a single criterion fails → non-trivial need, verdict `not_eligible`, log `[
     → No re-proposal: fast-path locked for this need (INV-FP-003)
 ```
 
-> **Note**: the `CLOSURE:BILAN` step has `agent=or`. OR generates `bilan.md` directly (Write exception §707). Only `bilan.md`, `or.log` and the commit are produced — no specs/design/tasks/acceptance (INV-FP-004). No DV is spawned for BILAN.
+> **Note**: the `CLOSURE:BILAN` step has `agent=pm` (INV-BILAN-PM). OR sends `PLEASE_COMPLETE_STEP` to PM; PM generates `bilan.md` (mandatory §Fast-path section, INV-FP-004) and completes `CLOSURE:BILAN`. Only `bilan.md`, `or.log` and the commit are produced — no specs/design/tasks/acceptance (INV-FP-004). No DV is spawned for BILAN.
 
 ### OR → PM message format: `fast_path_proposal`
 
@@ -828,9 +827,9 @@ After receipt of `fast_path_response decision=approved`:
 1. PM has already run `wf-orchestrate.sh <name> --fast-path-skip --to CLOSURE:BILAN`
 2. OR spawns DV with minimal brief (no `tasks.md`, no `design.md` referenced): target file + transformation
 3. OR waits for DV `brief_complete`
-4. OR runs `bash scripts/wf-orchestrate.sh <name> --query` → returns `phase=CLOSURE, step=BILAN, agent=or`
-5. OR generates `bilan.md` with `## Fast-path` section (see template)
-6. OR completes `CLOSURE:BILAN`
+4. OR runs `bash scripts/wf-orchestrate.sh <name> --query` → returns `phase=CLOSURE, step=BILAN, agent=pm` (INV-BILAN-PM)
+5. OR sends `PLEASE_COMPLETE_STEP` to PM; PM generates `bilan.md` with `## Fast-path` section (see template) and completes `CLOSURE:BILAN`
+6. OR waits for `step_advanced` from PM
 7. OR completes `CLOSURE:LOG_AUDIT`
 8. OR escalates `COMMIT_REQUIRED` to PM
 
@@ -1341,8 +1340,8 @@ Any agent can log an observation at any time by adding an entry in its main arti
 
 OR must:
 1. Log its own observations in `or.log` via `bash scripts/wf-orchestrate.sh <name> --log --msg "[OBS-xxx] ..."`.
-2. At step `CLOSURE:BILAN`, extract all `[OBS-xxx]` lines from `or.log` and `tracking.md` to consolidate them in `bilan.md`.
-3. At step `CLOSURE:LOG_AUDIT` (after BILAN), analyze logs to detect anomalies and complete `bilan.md`.
+2. At step `CLOSURE:BILAN` (delegated to PM — INV-BILAN-PM), OR sends `PLEASE_COMPLETE_STEP` to PM and waits for `step_advanced`. OR does NOT write `bilan.md` and does NOT execute `--complete CLOSURE:BILAN` (wf-auth.sh blocks `agent_type=or` on this step). PM consolidates `[OBS-xxx]` lines into `bilan.md`.
+3. At step `CLOSURE:LOG_AUDIT` (after BILAN, `agent=or`), OR analyzes logs and appends the anomalies section to the existing `bilan.md` (written by PM at the previous step).
 
 The other agents (PO, TL, RV, QA, DV) log their observations directly in their respective artifacts (`PRD.md`, `design.md`, `review.md`, `tasks.md`) or in `tracking.md` — they are picked up by OR at BILAN.
 
@@ -1363,6 +1362,6 @@ After `CLOSURE:BILAN`, OR runs `LOG_AUDIT`:
 OR does not have `Write` in its tools — any artifact mutation goes through `wf-orchestrate.sh` or a specialized agent. **Never use `Bash` to write files** (`echo > file`, `cat > file`, `tee`, heredoc `<<EOF >`, etc.).
 
 - **Exception 1**: `echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) ..." >> wf/needs/<name>/or.log` or via `bash scripts/wf-orchestrate.sh <name> --log --msg "..."` (RC-01).
-- **Exception 2**: `CLOSURE:BILAN` — OR generates `bilan.md` in `wf/needs/<name>/` by reading the template `wf/templates/fr/bilan.md`, parsing `or.log` + `tracking.md` + `.wf-state.json`, and writing via `Bash`. This is the only artifact OR writes directly. If `.wf-state.json` contains `fast_path.enabled == true`, OR includes the `## Fast-path` section in `bilan.md` (with `fast_path.summary`, `fast_path.files`, `fast_path.phases_skipped`, `fast_path.approved_at`). Otherwise, OR omits this section entirely (INV-FP-004).
+- **Exception 2 (deprecated, INV-BILAN-PM)**: `CLOSURE:BILAN` is now a PM step. OR no longer generates `bilan.md`. OR sends `PLEASE_COMPLETE_STEP` to PM. The fast-path `## Fast-path` section (when `fast_path.enabled == true` in `.wf-state.json`) is written by PM at this step (cf. agents/wf-pm.md and skills/wf-pm/SKILL.md). INV-FP-004 unchanged on the section content; ownership flips to PM.
 - **Exception 3**: `CLOSURE:LOG_AUDIT` — OR adds the `## Anomalies détectées` (FR) / `## Anomalies detected` (EN) section in `bilan.md` via `Bash` (read of `or.log` + `tracking.md`, write of the anomalies section).
 - **Unforeseen case**: escalate to PM via SendMessage before any other write.
