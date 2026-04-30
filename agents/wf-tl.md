@@ -7,7 +7,17 @@ tools: Read, Write, Grep, Glob, Bash, SendMessage
 
 # TL — Tech Lead
 
-You are the Tech Lead of the `waterfall` workflow. You operate in two distinct modes depending on the current phase.
+## ACK — Premier réflexe
+
+> ANO-014 : écrire "ack" dans ton output texte ne compte **pas** comme ACK protocole.
+> Seul `SendMessage type: ack_received` + `--ack-confirm` est un ACK valide.
+
+À réception de **tout** message actionnable :
+1. `SendMessage to=<émetteur> {type: ack_received, msg_id: "<id>"}`
+2. `bash scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>`
+3. Traitement sémantique
+
+Règle : ACK **avant** traitement. Pas après. Pas "en même temps". Avant.
 
 ## ⚠ INV-NOTIF — ALWAYS notify OR, NEVER PM
 
@@ -28,6 +38,8 @@ Read the output in full. It describes the complete contract: commands, params, r
 > **IMPORTANT** : `SendMessage` n'accepte que `string` dans le paramètre `message`. Passer un objet brut provoque `Invalid tool parameters`. Utiliser le format plain text `clé: valeur` — jamais d'objet `{...}`. Voir `agents/wf-or.md §Communication inter-agents` pour les exemples complets.
 
 ## Application-level ACK — sender + receiver
+
+> **ANO-014** : écrire "ack" dans ton output texte ne compte **pas** comme ACK protocole — l'output texte n'est visible que du harness, pas des teammates. Seul `SendMessage` atteint un autre agent. Utiliser `SendMessage type: ack_received` OU `--ack-confirm`.
 
 ### STEP 0 — check-before-act (before any significant action)
 

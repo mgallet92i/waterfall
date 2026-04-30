@@ -7,6 +7,18 @@ tools: Read, Write, Grep, Glob, Bash, SendMessage
 
 # RV — Cross-reviewer
 
+## ACK — Premier réflexe
+
+> ANO-014 : écrire "ack" dans ton output texte ne compte **pas** comme ACK protocole.
+> Seul `SendMessage type: ack_received` + `--ack-confirm` est un ACK valide.
+
+À réception de **tout** message actionnable :
+1. `SendMessage to=<émetteur> {type: ack_received, msg_id: "<id>"}`
+2. `bash scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>`
+3. Traitement sémantique
+
+Règle : ACK **avant** traitement. Pas après. Pas "en même temps". Avant.
+
 ## ⚠ INV-NOTIF — ALWAYS notify OR, NEVER PM
 
 `brief_complete` and `step_complete` messages **MUST** be sent to `or` — **never** to `pm`, **regardless of who emitted the brief you are responding to**. PM is a relay for HO interactions; OR is your orchestrator. Routing notifications to PM breaks the workflow because OR never wakes up and the state machine stalls.
@@ -32,6 +44,8 @@ RV renders a binary verdict:
 ---
 
 ## Application-level ACK — sender + receiver
+
+> **ANO-014** : écrire "ack" dans ton output texte ne compte **pas** comme ACK protocole — l'output texte n'est visible que du harness, pas des teammates. Seul `SendMessage` atteint un autre agent. Utiliser `SendMessage type: ack_received` OU `--ack-confirm`.
 
 ### STEP 0 — check-before-act (before any significant action)
 

@@ -348,6 +348,7 @@ Pour chaque entrée `pending` retournée :
 ```
 elapsed = now - entry.last_sent_at
 SI elapsed >= 60 ET entry.attempts < 5 :
+   → echo "[ACK-WATCHDOG] msg_id=<id> to=<role> elapsed=<s>s — retry <n>/3" >> wf/needs/<name>/or.log
    → re-SendMessage to entry.to with SAME msg_id + SAME content (plain text)
    → bash scripts/wf-orchestrate.sh <name> --ack-register --retry --msg-id <id>
 SI entry.attempts == 5 ET entry.status == "pending" :
@@ -435,6 +436,22 @@ bash scripts/wf-orchestrate.sh ack-watchdog --ack-register --retry --msg-id or-s
 
 ## Protocole ACK
 
+> **ANO-014** : écrire "ack" dans ton output texte ne compte **pas** comme ACK protocole — l'output texte n'est visible que du harness, pas des teammates. Seul `SendMessage` atteint un autre agent. Utiliser `SendMessage type: ack_received` OU `--ack-confirm`.
+
+### Format de brief — Bloc ACK-FIRST obligatoire (EX-001)
+
+OR insère systématiquement le bloc suivant en **première ligne** de tout `SendMessage` de type brief adressé à PO, TL, RV, DV ou QA, avant tout autre contenu sémantique :
+
+```
+[ACK OBLIGATOIRE — AVANT TOUT]
+1. SendMessage to=<sender> {type: ack_received, msg_id: "<msg_id>"}
+2. bash scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <msg_id>
+3. SEULEMENT ENSUITE : traitement sémantique du brief
+ANO-014 : écrire "ack" en texte ne compte PAS comme ACK protocole.
+```
+
+Ce bloc est le template de référence — il n'est pas dupliqué dans chaque exemple de dispatch mais s'applique à tous sans exception.
+
 ### Messages soumis à ACK obligatoire (EX-012d)
 
 - `spawn_request` / `spawn_confirmed`
@@ -491,8 +508,6 @@ bash scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>
       --ack-escalate --msg-id <id>
       STOP — pas de 6ème retry (INV-005)
 ```
-
-> **ANO-014** : écrire "ack" dans ton output texte ne compte **pas** comme ACK protocole — l'output texte n'est visible que du harness, pas des teammates. Seul `SendMessage` atteint un autre agent. Utiliser `SendMessage type: ack_received` OU `--ack-confirm`.
 
 ---
 
