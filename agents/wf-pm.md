@@ -25,6 +25,20 @@ Read the output in full. It describes the complete contract: commands, params, r
 
 > **IMPORTANT** : `SendMessage` n'accepte que `string` dans le paramètre `message`. Passer un objet brut provoque `Invalid tool parameters`. Utiliser le format plain text `clé: valeur` — jamais d'objet `{...}`. Voir `agents/wf-or.md §Communication inter-agents` pour les exemples complets.
 
+### INV-PM-ASK (reinforced) — Strict HO channel
+
+**Any question, request, solicitation or test addressed to the HO goes exclusively through `AskUserQuestion`, no exception.** A question asked in plain text (markdown, sentence ending with `?`, list of options in prose, numbered steps describing a manual test) is a **violation**. This covers:
+
+- **Binary requests**: yes/no, approve/refuse, validate/reject.
+- **Non-binary requests**: visual tests, diagnostics, multi-choice selections, any request expecting a structured HO answer before PM proceeds.
+- All checkpoints (`CHECKPOINT_REQUEST`, `PLAN_MODE_REQUIRED`, `VALIDATION_REQUESTED`, `COMMIT_REQUIRED`, `HO_VALIDATE`).
+- All escalations (`NEED_HO_INPUT`, `ERROR_UNRECOVERABLE`, `stuck_peer` ask_ho step).
+- All external actions for which PM seeks green light (push, PR, merge, tag, release).
+
+**Structured options are mandatory for non-binary cases.** Example for a visual test request: `AskUserQuestion(options=[PASS, FAIL, BLOCKED-NETWORK, Other (free text)])`. PM never sends test instructions as a numbered markdown list expecting the HO to reply by message — such instructions are invisible in the teammate flow and constitute a violation.
+
+**Free text in teammate messages does NOT count as an HO request.** Only `AskUserQuestion` is rendered to the HO. If PM hesitates: `AskUserQuestion`. If PM has nothing to ask: silence. **No third option.**
+
 ## Protocole ACK
 
 ### Messages soumis à ACK obligatoire (EX-012d)
@@ -254,6 +268,25 @@ DEC-<num>: <decision> (dark_factory auto, <ISO8601 now>)
 
 Before transitioning to `VALIDATION:QA_ACCEPTANCE_TEST`, PM verifies that QA is active.
 If QA is not spawned → PM asks OR via SendMessage to spawn QA before continuing.
+
+## CLOTURE — BILAN step (EX-BFX-004, INV-BILAN-PM)
+
+`CLOSURE:BILAN` est un step PM (`STEP_AGENT = pm`). PM rédige `bilan.md` lui-même ; OR ne le rédige pas.
+
+**Séquence** (déclenchée par réception de `PLEASE_COMPLETE_STEP` depuis OR avec `step=CLOSURE:BILAN`) :
+
+1. PM lit le template : `wf/templates/<lang>/bilan.md` (où `<lang>` ∈ `{fr, en}`, déterminé par la frontmatter `lang` du PRD ou le défaut `fr`).
+2. PM parse :
+   - `wf/needs/<name>/or.log` — phases, timestamps, tags `[ERROR]/[WARN]/[SKIP]/[OBS-xxx]`
+   - `wf/needs/<name>/tracking.md` — décisions `DEC-xxx`, observations `OBS-xxx`, cycles de review (max_runs)
+   - `wf/needs/<name>/.wf-state.json` — `history[]` pour les durées par phase, `fast_path.*` si applicable
+3. PM rédige `wf/needs/<name>/bilan.md` via l'outil `Write`. Si `.wf-state.json` contient `fast_path.enabled == true`, PM inclut une section `## Fast-path` (champs `fast_path.summary`, `fast_path.files`, `fast_path.phases_skipped`, `fast_path.approved_at`). Sinon la section est omise (INV-FP-004).
+4. PM exécute : `bash scripts/wf-orchestrate.sh <name> --complete CLOSURE:BILAN`
+   - `wf-auth.sh` : `agent_type=pm` (fallback DEC-002), `expected=pm` → `allow`.
+5. PM envoie `step_advanced` à OR via SendMessage (plain text).
+6. OR re-query → `step=CLOSURE:LOG_AUDIT, agent=or` → OR appendra la section `## Anomalies détectées` dans le `bilan.md` déjà écrit.
+
+**Important** : la section anomalies (`## Anomalies détectées` / `## Anomalies detected`) est rédigée par OR au step suivant `CLOSURE:LOG_AUDIT` (Exception 3 conservée dans `agents/wf-or.md`). PM ne la pré-écrit pas.
 
 ## CLOTURE — PR_CREATE step (EX-047)
 

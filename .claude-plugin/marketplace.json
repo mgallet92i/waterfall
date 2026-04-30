@@ -1,0 +1,14 @@
+{
+  "name": "waterfall-local",
+  "owner": {
+    "name": "mgallet92i"
+  },
+  "plugins": [
+    {
+      "name": "waterfall",
+      "source": "./",
+      "description": "Multi-agent specification-driven development (SDD) framework for Claude Code.",
+      "version": "0.1.2"
+    }
+  ]
+}
