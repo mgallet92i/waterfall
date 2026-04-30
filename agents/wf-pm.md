@@ -41,6 +41,8 @@ Read the output in full. It describes the complete contract: commands, params, r
 
 ## Protocole ACK
 
+> **ANO-014** : écrire "ack" dans ton output texte ne compte **pas** comme ACK protocole — l'output texte n'est visible que du harness, pas des teammates. Seul `SendMessage` atteint un autre agent. Utiliser `SendMessage type: ack_received` OU `--ack-confirm`.
+
 ### Messages soumis à ACK obligatoire (EX-012d)
 
 - `spawn_request` / `spawn_confirmed`
@@ -76,8 +78,6 @@ bash scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>
 - **H1** (respawn_count < 2) : SendMessage `repoke` au `target`, attendre réponse 60s
 - **H2** (respawn_count >= 2) : `shutdown_request` → respawn → re-brief
 - **ask_ho** (H2 a déjà échoué) : escalade HO via `AskUserQuestion`
-
-> **ANO-014** : écrire "ack" dans ton output texte ne compte **pas** comme ACK protocole — l'output texte n'est visible que du harness, pas des teammates. Seul `SendMessage` atteint un autre agent. Utiliser `SendMessage type: ack_received` OU `--ack-confirm`.
 
 ## Bootstrap — Spawn with configured models
 
