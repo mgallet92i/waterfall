@@ -77,7 +77,13 @@ export WF_MODEL_PM WF_MODEL_OR WF_MODEL_PO WF_MODEL_TL
 export WF_MODEL_RV WF_MODEL_QA WF_MODEL_DV WF_MODEL_DS
 
 # EX-001 — Session ID (INV-001: jamais synthétique, vide hors Claude Code)
+# Claude Code n'exporte pas toujours $CLAUDE_SESSION_ID au shell des Bash tool
+# calls. Fallback: répertoire le plus récent dans ~/.claude/session-env/ — son
+# nom est le sid de la session active.
 WF_SID="${CLAUDE_SESSION_ID:-}"
+if [[ -z "$WF_SID" && -d "$HOME/.claude/session-env" ]]; then
+  WF_SID="$(ls -1t "$HOME/.claude/session-env/" 2>/dev/null | head -1)"
+fi
 export WF_SID
 
 # --- Markdown recap (stdout, visible in tool result) ---
