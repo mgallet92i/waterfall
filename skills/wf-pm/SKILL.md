@@ -78,6 +78,7 @@ PM receives JSON `spawn_request` from OR via SendMessage, validates them, spawns
 
    IF config.agent_mode == "team" (default — INV-006):
      Agent(subagent_type: wf-<role>) via team + SendMessage(teammate_name, initial_brief)
+     Note: this SendMessage is the **only** brief the teammate receives. OR does not contact the teammate directly after `spawn_confirmed` (INV-002).
      PM → OR (SendMessage, plain text):
        type: spawn_confirmed
        request_id: <mirrored uuid>

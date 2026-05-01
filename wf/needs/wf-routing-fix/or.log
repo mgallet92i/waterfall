@@ -1,0 +1,27 @@
+2026-05-01T12:42:33Z [OBS-001] OR a émis un spawn_request pour pm — PM n'est pas un teammate spawnable (PM=main conv, INV-006). Frame conceptuel incorrect, devrait être un brief 'reminder' ou simplement step_advanced. À tracer comme bug routing additionnel.
+2026-05-01T12:42:52Z INFO NOOP_AUTO_ADVANCE BOOTSTRAP:STORE_PATH -> BOOTSTRAP:COLLECT_CARD_NUM (no PLEASE_COMPLETE_STEP emitted)
+2026-05-01T12:43:35Z [OBS-001] INV-006 confirmé : spawn_request agent=pm invalide (PM=main conv). Corrigé : steps agent=pm → PLEASE_COMPLETE_STEP à PM, pas spawn_request.
+2026-05-01T12:44:19Z [OBS-002] spawn_confirmed PO reçu. OR respecte canal unique brief (bug #3 in vivo) : aucun SendMessage à PO de la part d'OR.
+2026-05-01T12:45:48Z [OBS-001] PO: PRD.md rédigé en dark factory — 3 bugs + bonus documentés (Bug #2 watchdog doublon, Bug #3 brief doublon, Bug A misrouting brief_complete, Bonus self-complete)
+2026-05-01T12:52:03Z [OBS-003] VALIDATE_SPECS OK — couverture complète : EX-001→TF-001, EX-002→TF-002, EX-003→TF-003, INV-004→TF-004, EX-004→TF-005 (conditionnel). Aucun gap.
+2026-05-01T15:15:06Z [OBS-004] RESUME OR: state TECHNICAL_DESIGN:GENERATE_DESIGN confirmé. PRD/specs/acceptance non-template, design.md=template. Cohérence OK. Emission spawn_request TL.
+2026-05-01T15:16:22Z [OBS-005] spawn_confirmed TL reçu. OR n'émet pas de SendMessage additionnel à TL (canal unique, INV-006). Attente brief_complete TL.
+2026-05-01T15:19:33Z [OBS-005] TL : guard watchdog EX-001 déjà présent dans wf-or.md (if [[ ! -f marker ]]) — seul le log else manquait. Changement minimal confirmé.
+2026-05-01T15:19:44Z [OBS-006] TL : EX-003 — wf-po.md déjà conforme (mention HO-channel présente). 4 agents sur 5 à corriger (tl, rv, dv, qa). wf-dv.md a une variante DV-spécifique à préserver.
+2026-05-01T15:20:49Z [OBS-006] TL a self-completed GENERATE_DESIGN. State avancé à CHECKPOINT_DESIGN agent=pm. OR émet PLEASE_COMPLETE_STEP à PM.
+2026-05-01T15:22:11Z [OBS-007] State REVIEW:RV_REVIEW confirmé. Emission spawn_request RV à PM. run=0/3, artifacts=[PRD.md, specs.md, design.md, acceptance.md].
+2026-05-01T15:25:17Z [OBS-008] spawn_confirmed RV reçu (run=0, sonnet). OR n'émet pas de brief additionnel à RV (canal unique).
+2026-05-01T15:25:27Z [OBS-008] PM: race spawn-vs-inbox observée 2x (OR au resume, RV au spawn). Teammate émet 1er message 'prêt, en attente du brief' alors que le brief est déjà dans l'inbox — il n'a juste pas encore été processé. Pattern systémique, pas un bug spécifique. À documenter.
+2026-05-01T15:27:24Z [OBS-007] wf-or.md §Bootstrap step 7 contredit EX-002 : 'Send intro briefs' contradictoire avec la règle no-brief-after-spawn de Pattern B — DV doit aligner step 7 dans le même edit
+2026-05-01T15:28:51Z [OBS-009] REVIEW:CHECK_EXIT converged=true. Avancé PLANNING:GENERATE_TASKS agent=tl. Emission spawn_request TL.
+2026-05-01T15:29:33Z [OBS-010] spawn_confirmed TL (re-brief PLANNING:GENERATE_TASKS). TL déjà dans la team, pas re-spawné. Attente step_complete tasks.md.
+2026-05-01T15:30:41Z [OBS-009] TL PLANNING: 4 tâches S indépendantes, parallélisables. T-003+T-004 partagent les mêmes 5 fichiers agents — regroupement recommandé par fichier pour éviter double-ouverture.
+2026-05-01T15:33:03Z [ASSIGN] dv1=T-001,T-002 dv2=T-003,T-004 (worktrees deferred to IMPLEMENTATION spawn)
+2026-05-01T15:33:55Z [OBS-011] PLANNING:ASSIGN_WORKTREES done. Avancé CHECKPOINT_TASKS agent=pm. Emission PLEASE_COMPLETE_STEP à PM.
+2026-05-01T15:35:22Z [OBS-012] IMPLEMENTATION:DV_IMPLEMENT démarré. Emission spawn_request dv1 (T-001+T-002) et dv2 (T-003+T-004) en parallèle à PM.
+2026-05-01T15:37:44Z [OBS-013] spawn_confirmed dv1+dv2. dv1: worktrees/114311f8/dv1 branch=feature/wf-routing-fix-dv1. dv2: worktrees/114311f8/dv2 branch=feature/wf-routing-fix-dv2. OR en attente TASK_DONE puis brief_complete des deux DV.
+2026-05-01T15:39:32Z pm_relay:{from:dv1,type:brief_complete,reason:misrouted_to_pm}
+2026-05-01T15:39:44Z [OBS-014] dv1 a envoyé brief_complete à PM au lieu de OR — MISROUTED_TO_PM handler activé. Bug INV-NOTIF frappé le DV chargé de le corriger. Ironie documentée. T-001+T-002 DONE confirmés via relay PM.
+2026-05-01T15:49:28Z [OBS-016] CODE_REVIEW:CHECK_CR_EXIT converged=true (0 blocker). Avancé VALIDATION:PO_VALIDATE agent=qa. Emission spawn_request QA.
+2026-05-01T15:53:32Z [OBS-017] QA: --complete VALIDATION:PO_VALIDATE rejette --params verdict=PASS (UNKNOWN_PARAM) — le step ne déclare pas de paramètres attendus, verdict transmis via SendMessage uniquement
+2026-05-01T15:59:56Z [OBS-019] BUG framework : MERGE_WORKTREES était NOOP alors que les DV n'avaient PAS commité dans leurs sous-branches. Si CLEANUP_WORKTREES avait fait git worktree remove --force directement sans intervention PM, les modifs DV étaient PERDUES. PM a dû manuellement copier les 7 fichiers depuis les worktrees vers la branche feature/wf-routing-fix avant cleanup. Soit MERGE_WORKTREES doit être actif (merger les sous-branches, ce qui requiert que DV commitent), soit le brief DV doit imposer un git commit avant TASK_DONE. À tracer.

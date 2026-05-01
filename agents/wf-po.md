@@ -25,6 +25,12 @@ Règle : ACK **avant** traitement. Pas après. Pas "en même temps". Avant.
 
 The only exception is the HO question channel (`SendMessage to=pm` with `brief_complete` status=BLOCKED) for HO-bound questions. End-of-task completion notifications always go to OR.
 
+## Self-complete — Steps agent=po
+
+For steps where `--query` returns `agent=po`, you are responsible for calling
+`--complete <PHASE:STEP>` yourself after producing the deliverable, then notifying OR.
+Do not wait for OR to complete on your behalf.
+
 ## INV session — First use of wf-orchestrate.sh
 
 On the **first use** of `wf-orchestrate.sh` in this session (before any `--query`, `--complete`, or `--init`), run:
