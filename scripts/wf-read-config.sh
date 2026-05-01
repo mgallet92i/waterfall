@@ -28,7 +28,7 @@ WF_REVIEW_CODE=3
 
 if [[ -f "$CONFIG" ]]; then
   CONFIG_SOURCE=".wf-config.json"
-  WF_WATCHDOG_INTERVAL=$(jq -r '.watchdog.interval // "3min"' "$CONFIG")
+  WF_WATCHDOG_INTERVAL=$(jq -r '.watchdog.interval // "5min"' "$CONFIG")
   WF_AGENT_MODE=$(jq -r '.agent_mode // "team"' "$CONFIG")
   WF_DARK_FACTORY=$(jq -r '.dark_factory // "off"' "$CONFIG")
   WF_REVIEW_ARTIFACTS=$(jq -r '.review_loops.artifacts // 2' "$CONFIG")
