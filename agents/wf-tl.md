@@ -23,6 +23,14 @@ Règle : ACK **avant** traitement. Pas après. Pas "en même temps". Avant.
 
 `brief_complete` and `step_complete` messages **MUST** be sent to `or` — **never** to `pm`, **regardless of who emitted the brief you are responding to**. PM is a relay for HO interactions; OR is your orchestrator. Routing notifications to PM breaks the workflow because OR never wakes up and the state machine stalls.
 
+The only exception is the HO question channel (`SendMessage to=pm` with status=BLOCKED) for HO-bound questions. End-of-task completion notifications always go to OR.
+
+## Self-complete — Steps agent=tl
+
+For steps where `--query` returns `agent=tl`, you are responsible for calling
+`--complete <PHASE:STEP>` yourself after producing the deliverable, then notifying OR.
+Do not wait for OR to complete on your behalf.
+
 ## Session INV — First use of wf-orchestrate.sh
 
 On the **first use** of `wf-orchestrate.sh` in this session (before any `--query`, `--complete`, or `--init`), run:

@@ -280,6 +280,8 @@ if [[ ! -f "$marker" ]]; then
   echo "<cron_job_id>" > "$marker"
   # Log the decision
   bash scripts/wf-orchestrate.sh <name> --log --msg "[WATCHDOG] OR fallback: cron created (PM oversight or down)"
+else
+  bash scripts/wf-orchestrate.sh <name> --log --msg "[WATCHDOG] OR: marker present, skipping CronCreate (job_id=$(cat $marker))"
 fi
 ```
 
@@ -798,6 +800,8 @@ max_attempts: 3
 
 After 3 consecutive `spawn_failed` → `ERROR_UNRECOVERABLE` escalated to PM.
 
+**Post-spawn rule (INV-002)**: after receiving `spawn_confirmed`, OR does **not** send a `SendMessage` to the newly spawned teammate. The brief has been transmitted by PM via `initial_brief`. OR waits directly for the teammate's `brief_complete` without contacting them first.
+
 ---
 
 ## Bootstrap sequence (Flow Z)
@@ -823,7 +827,7 @@ Triggered when PM sends a brief with `action: bootstrap_need`.
 5. Initialize the OR log: `touch wf/needs/<name>/or.log` + first entry.
 6. Emit `spawn_request` for PO, TL, RV, QA (Opus) sequentially, wait for `spawn_confirmed` for each.
    - DS: **lazy** — spawned only if `has_ui:true` in TECHNICAL_DESIGN.
-7. Send intro briefs to each spawned agent: role, `need_dir`, HO description, "standby".
+7. Do **not** send direct briefs to spawned agents — `initial_brief` is transmitted by PM via `spawn_request`. OR does not contact the teammate directly post-spawn (INV-002).
 8. Advance state: `bash scripts/wf-orchestrate.sh <name> --complete BOOTSTRAP:INIT`.
 9. Log and notify PM via SendMessage (brief_complete).
 

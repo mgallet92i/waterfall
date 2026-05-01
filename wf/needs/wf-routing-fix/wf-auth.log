@@ -1,0 +1,36 @@
+2026-05-01T12:42:46Z allow need=wf-routing-fix step=BOOTSTRAP: agent_type=pm expected=unknown reason=unknown_step
+2026-05-01T12:45:36Z allow need=wf-routing-fix step=REQUIREMENTS:COLLECT_PRD agent_type=po expected=po
+2026-05-01T12:46:22Z allow need=wf-routing-fix step=REQUIREMENTS:GENERATE_PRD agent_type=po expected=po
+2026-05-01T12:47:15Z allow need=wf-routing-fix step=REQUIREMENTS:CHECKPOINT_REQ agent_type=pm expected=pm
+2026-05-01T12:47:57Z allow need=wf-routing-fix step=FUNCTIONAL_SPECS:INTERVIEW_SPECS agent_type=po expected=po
+2026-05-01T12:49:58Z allow need=wf-routing-fix step=FUNCTIONAL_SPECS:GENERATE_SPECS agent_type=po expected=po
+2026-05-01T12:51:10Z allow need=wf-routing-fix step=FUNCTIONAL_SPECS:GENERATE_ACCEPTANCE agent_type=po expected=po
+2026-05-01T12:51:52Z allow need=wf-routing-fix step=FUNCTIONAL_SPECS:VALIDATE_SPECS agent_type=or expected=or
+2026-05-01T12:52:28Z allow need=wf-routing-fix step=FUNCTIONAL_SPECS:CHECKPOINT_FUNC agent_type=pm expected=pm
+2026-05-01T15:19:59Z allow need=wf-routing-fix step=TECHNICAL_DESIGN:GENERATE_DESIGN agent_type=tl expected=tl
+2026-05-01T15:21:40Z allow need=wf-routing-fix step=TECHNICAL_DESIGN:CHECKPOINT_DESIGN agent_type=pm expected=pm
+2026-05-01T15:27:30Z allow need=wf-routing-fix step=REVIEW:RV_REVIEW agent_type=rv expected=rv
+2026-05-01T15:27:58Z allow need=wf-routing-fix step=REVIEW:RV_REVIEW agent_type=rv expected=rv
+2026-05-01T15:28:28Z allow need=wf-routing-fix step=REVIEW:CHECK_EXIT agent_type=or expected=or
+2026-05-01T15:30:47Z allow need=wf-routing-fix step=PLANNING:GENERATE_TASKS agent_type=tl expected=tl
+2026-05-01T15:33:13Z allow need=wf-routing-fix step=PLANNING:ASSIGN_WORKTREES agent_type=tl expected=tl
+2026-05-01T15:34:44Z allow need=wf-routing-fix step=PLANNING:CHECKPOINT_TASKS agent_type=pm expected=pm
+2026-05-01T15:40:07Z allow need=wf-routing-fix step=IMPLEMENTATION:DV_IMPLEMENT agent_type=or expected=or
+2026-05-01T15:43:02Z allow need=wf-routing-fix step=IMPLEMENTATION:TL_SUPERVISE agent_type=tl expected=tl
+2026-05-01T15:43:25Z block need=wf-routing-fix step=IMPLEMENTATION:TL_SUPERVISE agent_type=or expected=tl reason=role_mismatch
+2026-05-01T15:43:35Z block need=wf-routing-fix step=IMPLEMENTATION:TL_SUPERVISE agent_type=or expected=tl reason=role_mismatch
+2026-05-01T15:44:55Z allow need=wf-routing-fix step=IMPLEMENTATION:CHECKPOINT_IMPL agent_type=pm expected=pm
+2026-05-01T15:45:31Z allow need=wf-routing-fix step=IMPLEMENTATION:MERGE_WORKTREES agent_type=pm expected=pm
+2026-05-01T15:48:25Z allow need=wf-routing-fix step=CODE_REVIEW:TL_REVIEW agent_type=tl expected=tl
+2026-05-01T15:48:32Z allow need=wf-routing-fix step=CODE_REVIEW:TL_REVIEW agent_type=tl expected=tl
+2026-05-01T15:49:05Z allow need=wf-routing-fix step=CODE_REVIEW:CHECK_CR_EXIT agent_type=or expected=or
+2026-05-01T15:53:10Z allow need=wf-routing-fix step=VALIDATION:PO_VALIDATE agent_type=qa expected=qa
+2026-05-01T15:53:18Z allow need=wf-routing-fix step=VALIDATION:PO_VALIDATE agent_type=qa expected=qa
+2026-05-01T15:53:29Z allow need=wf-routing-fix step=VALIDATION:PO_VALIDATE agent_type=qa expected=qa
+2026-05-01T15:53:58Z block need=wf-routing-fix step=VALIDATION:PO_VALIDATE agent_type=or expected=qa reason=role_mismatch
+2026-05-01T15:55:24Z allow need=wf-routing-fix step=VALIDATION:QA_ACCEPTANCE_TEST agent_type=qa expected=qa
+2026-05-01T15:57:05Z allow need=wf-routing-fix step=VALIDATION:HO_VALIDATE agent_type=pm expected=pm
+2026-05-01T15:57:55Z allow need=wf-routing-fix step=VALIDATION:CHECKPOINT_VALID agent_type=pm expected=pm
+2026-05-01T15:59:34Z allow need=wf-routing-fix step=CLOSURE:CLEANUP_WORKTREES agent_type=pm expected=pm
+2026-05-01T16:00:55Z allow need=wf-routing-fix step=CLOSURE:COMMIT agent_type=pm expected=pm
+2026-05-01T16:03:30Z allow need=wf-routing-fix step=CLOSURE:PUSH agent_type=pm expected=pm

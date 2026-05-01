@@ -1,0 +1,236 @@
+{
+  "name": "wf-routing-fix",
+  "status": "in_progress",
+  "phase": "CLOSURE",
+  "step": "PR_CREATE",
+  "session_id": "114311f8-7309-4b58-9206-2d545c54b366",
+  "active_agents": [],
+  "session_segments": [
+    {
+      "start": "2026-05-01T12:41:19Z",
+      "end": "2026-05-01T12:52:55Z"
+    },
+    {
+      "start": "2026-05-01T15:13:43Z",
+      "end": null
+    }
+  ],
+  "history": [
+    {
+      "phase": "BOOTSTRAP",
+      "step": "DETERMINE_NAME",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T12:42:50.492Z"
+    },
+    {
+      "phase": "BOOTSTRAP",
+      "step": "RUN_BOOTSTRAP",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T12:42:52.303Z"
+    },
+    {
+      "phase": "BOOTSTRAP",
+      "step": "STORE_PATH",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T12:42:54.057Z"
+    },
+    {
+      "phase": "BOOTSTRAP",
+      "step": "COLLECT_CARD_NUM",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T12:42:56.652Z"
+    },
+    {
+      "phase": "BOOTSTRAP",
+      "step": "COLLECT_BRANCH_TYPE",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T12:42:59.248Z"
+    },
+    {
+      "phase": "BOOTSTRAP",
+      "step": "CREATE_BRANCH_Q",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T12:43:02.012Z"
+    },
+    {
+      "phase": "BOOTSTRAP",
+      "step": "SPAWN_TEAM",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T12:43:04.553Z"
+    },
+    {
+      "phase": "REQUIREMENTS",
+      "step": "COLLECT_PRD",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T12:45:40.501Z"
+    },
+    {
+      "phase": "REQUIREMENTS",
+      "step": "GENERATE_PRD",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T12:46:27.789Z"
+    },
+    {
+      "phase": "REQUIREMENTS",
+      "step": "CHECKPOINT_REQ",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T12:47:19.070Z"
+    },
+    {
+      "phase": "FUNCTIONAL_SPECS",
+      "step": "INTERVIEW_SPECS",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T12:48:02.429Z"
+    },
+    {
+      "phase": "FUNCTIONAL_SPECS",
+      "step": "GENERATE_SPECS",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T12:50:03.583Z"
+    },
+    {
+      "phase": "FUNCTIONAL_SPECS",
+      "step": "GENERATE_ACCEPTANCE",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T12:51:14.910Z"
+    },
+    {
+      "phase": "FUNCTIONAL_SPECS",
+      "step": "VALIDATE_SPECS",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T12:51:56.341Z"
+    },
+    {
+      "phase": "FUNCTIONAL_SPECS",
+      "step": "CHECKPOINT_FUNC",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T12:52:32.908Z"
+    },
+    {
+      "phase": "TECHNICAL_DESIGN",
+      "step": "GENERATE_DESIGN",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T15:20:05.574Z"
+    },
+    {
+      "phase": "TECHNICAL_DESIGN",
+      "step": "CHECKPOINT_DESIGN",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T15:21:45.133Z"
+    },
+    {
+      "phase": "REVIEW",
+      "step": "RV_REVIEW",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T15:28:02.437Z"
+    },
+    {
+      "phase": "REVIEW",
+      "step": "CHECK_EXIT",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T15:28:32.809Z"
+    },
+    {
+      "phase": "PLANNING",
+      "step": "GENERATE_TASKS",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T15:30:52.116Z"
+    },
+    {
+      "phase": "PLANNING",
+      "step": "ASSIGN_WORKTREES",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T15:33:18.475Z"
+    },
+    {
+      "phase": "PLANNING",
+      "step": "CHECKPOINT_TASKS",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T15:34:49.800Z"
+    },
+    {
+      "phase": "IMPLEMENTATION",
+      "step": "DV_IMPLEMENT",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T15:40:14.048Z"
+    },
+    {
+      "phase": "IMPLEMENTATION",
+      "step": "TL_SUPERVISE",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T15:43:06.214Z"
+    },
+    {
+      "phase": "IMPLEMENTATION",
+      "step": "CHECKPOINT_IMPL",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T15:44:59.999Z"
+    },
+    {
+      "phase": "IMPLEMENTATION",
+      "step": "MERGE_WORKTREES",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T15:45:35.717Z"
+    },
+    {
+      "phase": "CODE_REVIEW",
+      "step": "TL_REVIEW",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T15:48:37.195Z"
+    },
+    {
+      "phase": "CODE_REVIEW",
+      "step": "CHECK_CR_EXIT",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T15:49:10.379Z"
+    },
+    {
+      "phase": "VALIDATION",
+      "step": "PO_VALIDATE",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T15:53:22.390Z"
+    },
+    {
+      "phase": "VALIDATION",
+      "step": "QA_ACCEPTANCE_TEST",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T15:55:28.735Z"
+    },
+    {
+      "phase": "VALIDATION",
+      "step": "HO_VALIDATE",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T15:57:09.678Z"
+    },
+    {
+      "phase": "VALIDATION",
+      "step": "CHECKPOINT_VALID",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T15:57:59.561Z"
+    },
+    {
+      "phase": "CLOSURE",
+      "step": "CLEANUP_WORKTREES",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T15:59:38.410Z"
+    },
+    {
+      "phase": "CLOSURE",
+      "step": "COMMIT",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T16:00:59.603Z"
+    }
+  ],
+  "config": {
+    "agent_mode": "team",
+    "dark_factory": "on",
+    "review_loops": {
+      "artifacts": 2,
+      "code": 3
+    }
+  },
+  "card_num": "none",
+  "branch_type": "feature",
+  "branch": "feature/wf-routing-fix",
+  "team_name": "wf-wf-routing-fix"
+}
