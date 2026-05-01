@@ -2,7 +2,7 @@
   "name": "wf-routing-fix",
   "status": "in_progress",
   "phase": "CLOSURE",
-  "step": "COMMIT",
+  "step": "PR_CREATE",
   "session_id": "114311f8-7309-4b58-9206-2d545c54b366",
   "active_agents": [],
   "session_segments": [
@@ -213,6 +213,12 @@
       "step": "CLEANUP_WORKTREES",
       "status": "in_progress",
       "timestamp": "2026-05-01T15:59:38.410Z"
+    },
+    {
+      "phase": "CLOSURE",
+      "step": "COMMIT",
+      "status": "in_progress",
+      "timestamp": "2026-05-01T16:00:59.603Z"
     }
   ],
   "config": {

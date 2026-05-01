@@ -57,6 +57,11 @@ Format:
 **Decision**: Approved (dark_factory auto, 2026-05-01T15:56:30Z).
 **Rationale**: Couverture acceptance complète, aucun FAIL. Passage CLOSURE.
 
+### DEC-007 — CLOSURE COMMIT (2026-05-01)
+**Context**: Commit ee6ed2c sur feature/wf-routing-fix avec 7 fichiers source + artéfacts complets need.
+**Decision**: Commit effectué (dark_factory auto, 2026-05-01T16:01:00Z).
+**Rationale**: Message OR-proposé conservé, INV-007 respecté (message fourni). Co-Authored-By absent comme spécifié.
+
 ## Phase Transitions
 <!-- Populated by OR as the workflow advances -->
 

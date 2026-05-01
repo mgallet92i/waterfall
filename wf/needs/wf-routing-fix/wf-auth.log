@@ -32,3 +32,5 @@
 2026-05-01T15:57:05Z allow need=wf-routing-fix step=VALIDATION:HO_VALIDATE agent_type=pm expected=pm
 2026-05-01T15:57:55Z allow need=wf-routing-fix step=VALIDATION:CHECKPOINT_VALID agent_type=pm expected=pm
 2026-05-01T15:59:34Z allow need=wf-routing-fix step=CLOSURE:CLEANUP_WORKTREES agent_type=pm expected=pm
+2026-05-01T16:00:55Z allow need=wf-routing-fix step=CLOSURE:COMMIT agent_type=pm expected=pm
+2026-05-01T16:03:30Z allow need=wf-routing-fix step=CLOSURE:PUSH agent_type=pm expected=pm
