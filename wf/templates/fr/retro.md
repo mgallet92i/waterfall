@@ -65,6 +65,4 @@ n/a
 - Phases skipped : {{fast_path.phases_skipped}}
 - Approved at : {{fast_path.approved_at}} -->
 
-## Anomalies détectées
-
-<!-- Section ajoutée par OR à CLOSURE:LOG_AUDIT — ne pas pré-remplir. -->
+<!-- La section `## Anomalies détectées` est ajoutée par OR à CLOSURE:LOG_AUDIT — ne pas la pré-remplir ici. -->

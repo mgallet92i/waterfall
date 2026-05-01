@@ -40,6 +40,30 @@ main() {
     render_base
   fi
   render_wf_block
+  debug_log
+}
+
+# ---------------------------------------------------------------------------
+# Debug instrumentation (opt-in: WF_STATUSLINE_DEBUG=1)
+# Useful to diagnose intermittent "wf" segment absence (fact-13daf791 §H).
+# Logs: ts | sid_received | match=<need|NA> | name | phase
+# Rotated at 200 lines.
+# ---------------------------------------------------------------------------
+debug_log() {
+  [[ "${WF_STATUSLINE_DEBUG:-0}" != "1" ]] && return 0
+  local log_file="${WF_STATUSLINE_DEBUG_LOG:-$HOME/.claude/wf-statusline-debug.log}"
+  local match="NA"
+  [[ -n "${STATE_FILE:-}" ]] && match="${WF_NAME:-found}"
+  printf '%s | sid=%s | match=%s | name=%s | phase=%s\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${SESSION_ID:-EMPTY}" "$match" "${WF_NAME:-NA}" "${WF_PHASE:-NA}" \
+    >> "$log_file" 2>/dev/null || true
+  if [[ -f "$log_file" ]]; then
+    local lines
+    lines=$(wc -l < "$log_file" 2>/dev/null || echo 0)
+    if [[ $lines -gt 200 ]]; then
+      tail -n 200 "$log_file" > "$log_file.tmp" 2>/dev/null && mv "$log_file.tmp" "$log_file" 2>/dev/null
+    fi
+  fi
 }
 
 # ---------------------------------------------------------------------------

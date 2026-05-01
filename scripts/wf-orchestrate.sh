@@ -837,7 +837,7 @@ switch(phase) {
       params.hint = 'TL: write tasks.md in wf/needs/<name>/ with: tasks table (ID, requirement, description, files, status), per-task detail, critical path, parallelization groups, DV assignment. Input artifacts: specs.md, design.md. Output artifact: tasks.md. Notify OR via SendMessage (step_complete) when done.';
       params.source_artifacts = ['specs.md', 'design.md'];
     }
-    if (step === 'ASSIGN_WORKTREES') params.hint = 'TL : updates tasks.md: assign each task group to a DV slot (dv1, dv2, dv3). Do NOT create git worktrees now — they are created automatically when spawning DV agents with isolation=worktree in IMPLEMENTATION. Complete when assignment is documented.';
+    if (step === 'ASSIGN_WORKTREES') params.hint = 'TL : updates tasks.md: assign each task group to a DV slot (dv1, dv2, dv3). Do NOT create git worktrees now — they are created automatically when spawning DV agents with isolation=worktree in IMPLEMENTATION. Mandatory before --complete: log a trace via `bash scripts/wf-orchestrate.sh <name> --log --msg "[ASSIGN] dv1=<tasks> dv2=<tasks> ... (worktrees deferred to IMPLEMENTATION spawn)"` so the NOOP-on-disk is observable. Complete when assignment is documented in tasks.md AND traced in or.log.';
     if (step === 'CHECKPOINT_TASKS') params.hint = 'PM : Present tasks.md summary to HO via AskUserQuestion. If approved, complete (advances to IMPLEMENTATION). If changes needed, complete with decision=retry. Also supports decision=pause or decision=abort.';
     break;
   case 'IMPLEMENTATION':
