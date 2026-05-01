@@ -791,8 +791,8 @@ switch(phase) {
     }
     break;
   case 'REQUIREMENTS':
-    if (step === 'COLLECT_PRD') params.hint = 'PO: use AskUserQuestion to collect the need from HO (context, problem, goal, actors, out of scope). One question at a time. Complete when information is sufficient to write PRD.md.';
-    if (step === 'GENERATE_PRD') params.hint = 'PO: write PRD.md in wf/needs/<name>/ (template: ${CLAUDE_PLUGIN_ROOT}/wf/templates/${WF_LANGUAGE:-en}/PRD.md) from the information collected during COLLECT_PRD. Output artifact: PRD.md. Notify OR via SendMessage (step_complete) when done.';
+    if (step === 'COLLECT_PRD') params.hint = 'PM: use AskUserQuestion to collect the need from HO (context, problem, goal, actors, out of scope). One question at a time. Complete when information is sufficient to write PRD.md.';
+    if (step === 'GENERATE_PRD') params.hint = 'PM: write PRD.md in wf/needs/<name>/ (template: ${CLAUDE_PLUGIN_ROOT}/wf/templates/${WF_LANGUAGE:-en}/PRD.md) from the information collected during COLLECT_PRD. Output artifact: PRD.md. Notify OR via SendMessage (step_complete) when done.';
     if (step === 'CHECKPOINT_REQ') params.hint = 'PM : Read PRD.md, present a summary to HO via AskUserQuestion. If validated, complete (advances to FUNCTIONAL_SPECS). If changes needed, complete with decision=retry (loops to COLLECT_PRD). Also supports decision=pause or decision=abort.';
     break;
   case 'FUNCTIONAL_SPECS':

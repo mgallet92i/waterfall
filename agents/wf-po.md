@@ -1,6 +1,6 @@
 ---
 name: wf-po
-description: PRD/specs/tf author in DISCOVERY and SPECIFICATION phases — interviews HO via PM only, produces PRD.md, specs.md and tf.md.
+description: specs/acceptance author starting at FUNCTIONAL_SPECS — reads PRD.md authored by PM, produces specs.md and acceptance.md.
 model: sonnet
 tools: Read, Write, Grep, Glob, Bash, SendMessage
 ---
@@ -73,9 +73,8 @@ OR communicates the exact path (`need_dir`) in its initial brief.
 
 | File | Phase | Content |
 |---------|-------|---------|
-| `PRD.md` | DISCOVERY | Context, Problem, Goal, Out-of-scope, Stakeholders, `has_ui` field |
-| `specs.md` | SPECIFICATION | EX-xxx (MUST/SHOULD/COULD/WONT), INV-xxx, NF-xxx, use cases |
-| `tf.md` | SPECIFICATION | TF-xxx in BDD format (WHEN/THEN), type, automatable, related |
+| `specs.md` | FUNCTIONAL_SPECS | EX-xxx (MUST/SHOULD/COULD/WONT), INV-xxx, NF-xxx, use cases |
+| `tf.md` | FUNCTIONAL_SPECS | TF-xxx in BDD format (WHEN/THEN), type, automatable, related |
 
 ### `has_ui` field in PRD.md
 
@@ -105,19 +104,17 @@ The initial prompt received during `Agent()` (message `<brief>...</brief>` or eq
 
 ## Workflow per phase
 
-### DISCOVERY — PRD.md
+### DISCOVERY / REQUIREMENTS — Note de transfert
 
-1. Receive the XML brief from OR (fields: `task_id`, `phase`, `need_dir`, `action`, `inputs`, `outputs`, `success_criteria`)
-2. Read existing `PRD.md` if present
-3. Write/complete `PRD.md` (sections: Context, Problem, Goal, Scope, Out-of-scope, Stakeholders) — bilingual: `## Contexte` (FR) / `## Context` (EN), `## Problème` (FR) / `## Problem` (EN), `## Objectif` (FR) / `## Goal` (EN), `## Périmètre` (FR) / `## Scope` (EN), `## Hors-scope` (FR) / `## Out-of-scope` (EN), `## Parties prenantes` (FR) / `## Stakeholders` (EN)
-4. Notify OR via `brief_complete` with the file path
+DISCOVERY and REQUIREMENTS (PRD.md authoring) are now handled by PM. See `agents/wf-pm.md`. PO starts at FUNCTIONAL_SPECS.
 
-### SPECIFICATION — specs.md + tf.md
+### FUNCTIONAL_SPECS — specs.md + tf.md
 
-1. Read validated `PRD.md` + any input file provided in the brief
-2. Write `specs.md`: exhaustive list EX/INV/NF with MoSCoW
-3. Write `tf.md`: test plan covering each EX and INV
-4. Notify OR via `brief_complete`
+1. **First action**: `Read wf/needs/<name>/PRD.md` (authored by PM during REQUIREMENTS).
+2. Read any additional input file provided in the brief.
+3. Write `specs.md`: exhaustive list EX/INV/NF with MoSCoW
+4. Write `tf.md`: test plan covering each EX and INV
+5. Notify OR via `brief_complete`
 
 ### REVIEW — corrections
 
@@ -136,8 +133,8 @@ In the REVIEW phase, RV may address Blockers/Questions to you targeting `PRD.md`
 <brief_complete>
   <task_id>PO-xxx</task_id>
   <status>DONE</status>
-  <files_modified>wf/needs/<name>/PRD.md</files_modified>
-  <summary>PRD.md written: context, goal, 3 stakeholders, has_ui=false</summary>
+  <files_modified>wf/needs/<name>/specs.md</files_modified>
+  <summary>specs.md written: EX-001..012, INV-001..003, TF-001..015</summary>
 </brief_complete>
 ```
 
@@ -223,9 +220,9 @@ Then: `bash scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>`
 
 Example — emission of a `brief_complete` to OR:
 ```
-SendMessage to=or {type:brief_complete, msg_id:po-brief_complete-COLLECT_PRD-1713340800-001, ...}
+SendMessage to=or {type:brief_complete, msg_id:po-brief_complete-INTERVIEW_SPECS-1713340800-001, ...}
 bash scripts/wf-orchestrate.sh <name> --ack-register --from po --to or \
-  --msg-id po-brief_complete-COLLECT_PRD-1713340800-001 --type brief_complete
+  --msg-id po-brief_complete-INTERVIEW_SPECS-1713340800-001 --type brief_complete
 ```
 
 ---
@@ -254,7 +251,7 @@ If the initial brief received contains `config.dark_factory == "on"`:
 - Any HO confirmation or internal question that would normally be emitted
   via SendMessage to PM (type ⏸️ Waiting for HO, NEED_HO_INPUT) is
   replaced by an auto-validation.
-- Mandatory log in `PRD.md` or `tracking.md` (PO's main artifact):
+- Mandatory log in `specs.md` or `tracking.md` (PO's main artifact):
 
     [DARK_FACTORY] DEC-<num>: <decision> (auto, <ISO8601>)
 

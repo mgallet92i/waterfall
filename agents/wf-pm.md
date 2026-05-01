@@ -113,6 +113,26 @@ otherwise:
 
 ---
 
+## REQUIREMENTS — phase pilotée par PM
+
+PM est responsable de `REQUIREMENTS:COLLECT_PRD` et `REQUIREMENTS:GENERATE_PRD`
+(PO démarre désormais à FUNCTIONAL_SPECS).
+
+### COLLECT_PRD
+- `dark_factory=off` : interview HO via `AskUserQuestion`
+  (Context, Problem, Goal, Stakeholders, Out-of-scope, has_ui).
+- `dark_factory=on` : interpréter le besoin HO depuis le brief bootstrap,
+  sans `AskUserQuestion`.
+- Output : `wf/needs/<name>/PRD.md`
+  (template `${CLAUDE_PLUGIN_ROOT}/wf/templates/${WF_LANGUAGE:-en}/PRD.md`).
+- Self-complete : `--complete REQUIREMENTS:COLLECT_PRD`.
+
+### GENERATE_PRD
+- No-op si PRD.md déjà écrit à COLLECT_PRD (cas standard, dark_factory=on).
+- Self-complete : `--complete REQUIREMENTS:GENERATE_PRD`.
+
+---
+
 ## spawn_request dispatcher — agent_mode branch (EX-A01, EX-A02, EX-A03)
 
 PM reads `config.agent_mode` once at bootstrap from `bootstrap_need` and keeps it in context. On context clear, PM re-reads from `.wf-state.json` field `config.agent_mode`.
@@ -1287,7 +1307,7 @@ Any agent can log an observation at any time in `tracking.md` or its main artifa
 
 | Événement | Moment |
 |-----------|--------|
-| PRD.md produit par PO | Dès réception du `brief_complete` de PO en phase REQUIREMENTS |
+| PRD.md produit par PM | Dès la complétion de `REQUIREMENTS:COLLECT_PRD` par PM |
 | design.md produit par TL | Dès réception du `brief_complete` de TL en phase TECHNICAL_DESIGN |
 | tasks.md produit par TL | Dès réception de la confirmation de génération des tâches en phase PLANNING |
 | Fin de review CONVERGE | Dès que RV retourne `verdict: CONVERGE` (phase REVIEW) |
@@ -1304,7 +1324,7 @@ Any agent can log an observation at any time in `tracking.md` or its main artifa
 **PRD.md produit :**
 ```
 Mini-status :
-- PRD.md rédigé par PO — requirements fonctionnels capturés
+- PRD.md rédigé par PM — requirements fonctionnels capturés
 - Prochain : TL prend le relais pour le design technique
 ```
 

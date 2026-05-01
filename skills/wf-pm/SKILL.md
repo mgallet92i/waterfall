@@ -726,6 +726,26 @@ The first `AskUserQuestion` call of a fresh PM session may fail with `Invalid to
 
 ---
 
+## REQUIREMENTS — phase pilotée par PM
+
+PM est responsable de `REQUIREMENTS:COLLECT_PRD` et `REQUIREMENTS:GENERATE_PRD`
+(PO démarre désormais à FUNCTIONAL_SPECS).
+
+### COLLECT_PRD
+- `dark_factory=off` : interview HO via `AskUserQuestion`
+  (Context, Problem, Goal, Stakeholders, Out-of-scope, has_ui).
+- `dark_factory=on` : interpréter le besoin HO depuis le brief bootstrap,
+  sans `AskUserQuestion`.
+- Output : `wf/needs/<name>/PRD.md`
+  (template `${CLAUDE_PLUGIN_ROOT}/wf/templates/${WF_LANGUAGE:-en}/PRD.md`).
+- Self-complete : `--complete REQUIREMENTS:COLLECT_PRD`.
+
+### GENERATE_PRD
+- No-op si PRD.md déjà écrit à COLLECT_PRD (cas standard, dark_factory=on).
+- Self-complete : `--complete REQUIREMENTS:GENERATE_PRD`.
+
+---
+
 ## Mini-status HO (EX-014 / ENH-001)
 
 À chaque étape-clé intra-phase, PM envoie un **mini-status** au HO via `AskUserQuestion`. Distinct et additionnel aux transitions de phase (EX-018).
@@ -734,7 +754,7 @@ The first `AskUserQuestion` call of a fresh PM session may fail with `Invalid to
 
 | Événement | Moment |
 |-----------|--------|
-| PRD.md produit | Réception `brief_complete` PO en REQUIREMENTS |
+| PRD.md produit | Complétion `REQUIREMENTS:COLLECT_PRD` par PM |
 | design.md produit | Réception `brief_complete` TL en TECHNICAL_DESIGN |
 | tasks.md produit | Confirmation génération tasks en PLANNING |
 | Review CONVERGE | RV retourne `verdict: CONVERGE` |
@@ -745,7 +765,7 @@ The first `AskUserQuestion` call of a fresh PM session may fail with `Invalid to
 **PRD.md produit :**
 ```
 Mini-status :
-- PRD.md rédigé par PO — requirements fonctionnels capturés
+- PRD.md rédigé par PM — requirements fonctionnels capturés
 - Prochain : TL prend le relais pour le design technique
 ```
 
