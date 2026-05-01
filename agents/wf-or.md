@@ -76,6 +76,24 @@ Cet auto-test reproduit la logique du hook `hooks/wf-auth.sh` côté OR : même 
 
 **Sanction** : toute violation détectée par PM (entrée `ARTIFACT_UPDATE` dans `or.log` avec auteur=OR, ou modification mtime sur un artéfact interdit alors qu'aucun teammate auteur n'est actif) déclenche un `shutdown_request` immédiat suivi d'un respawn avec brief de rappel.
 
+### Auto-test filesystem — Avant tout signal de complétion
+
+> **INV-001 — Auto-test filesystem obligatoire avant tout signal de complétion.**
+>
+> Avant d'émettre tout signal `brief_complete`, `step_complete`, `OK`, ou `DONE` vers OR ou PM, OR doit vérifier que l'artefact attendu existe réellement sur le disque :
+>
+> ```bash
+> # [FS-CHECK] — à exécuter avant tout signal de complétion
+> wc -l wf/needs/<name>/<artefact>.md          # vérifie que le fichier est non vide
+> # puis lire les dernières lignes pour confirmer le contenu attendu
+> ```
+>
+> **Règle** : si `wc -l` retourne 0 ou si la commande échoue (fichier absent), OR **ne doit pas** émettre le signal de complétion. OR relance l'agent responsable ou escalade PM.
+>
+> **Marqueur de traçabilité** : chaque FS-CHECK doit être loggué `[FS-CHECK] wc-l=<N> artefact=<nom> verdict=ok|fail` dans `or.log`.
+>
+> Cette règle s'applique à tous les signaux de complétion, quel que soit le type de brief (`brief_complete` d'un teammate, auto-complétion `agent=or`, ou signal de fin de phase).
+
 ---
 
 ## ⚠ INV-JQ — Use `jq` for JSON parsing, never `python3`
@@ -592,7 +610,7 @@ These 4 types of messages to PM **ignore** `dark_factory` and remain escalated w
 4. If agent != "or" → dispatch to the designated agent (see Matrix)
 5. If agent == "or" → run the §Self-execution — agent=or steps protocol (no wait for SendMessage; same-turn complete then re-query).
 5b. If a SendMessage from PM indicates an advanced step → immediate return to step 3 (re-query)
-6. (only when step 4 dispatched to a teammate) Wait for brief_complete (timeout 5 min → retry 1× → ERROR_UNRECOVERABLE)
+6. (only when step 4 dispatched to a teammate) Wait for brief_complete (timeout 5 min → retry 1× → ERROR_UNRECOVERABLE). Before advancing, run [FS-CHECK] per §INV-001 (Auto-test filesystem).
 7. Complete the step:
    bash scripts/wf-orchestrate.sh <name> --complete <step> [--params k=v]
 8. Check whether PM escalation is needed (checkpoint, CLOSURE, error)
@@ -654,6 +672,17 @@ OR reçoit un `brief_complete` de RV. OR re-query → `step=CHECK_EXIT, agent=or
 
 Après le `--complete`, OR re-query immédiatement — pas d'attente, pas de `SendMessage`.
 
+> **INV-002 — Pas de relance de review si CONVERGE déjà atteint.**
+>
+> Si `verdict == CONVERGE` lu dans `review.md` (step `REVIEW:CHECK_EXIT`) ou si aucun finding BLOCKER n'est présent dans le rapport TL (step `CODE_REVIEW:CHECK_CR_EXIT`), OR **ne doit pas** :
+> - Re-spawner RV via `spawn_request`
+> - Envoyer un `SendMessage` à RV pour une nouvelle itération
+> - Passer `exit_decision=continue` alors que CONVERGE est confirmé
+>
+> OR doit immédiatement compléter avec `exit_decision=converged` et re-query. Toute relance de review sur verdict CONVERGE est une violation de routage.
+>
+> Cette règle s'applique aux deux steps concernés : `REVIEW:CHECK_EXIT` et `CODE_REVIEW:CHECK_CR_EXIT`.
+
 ### Worked example 2 — `CODE_REVIEW:CHECK_CR_EXIT`
 
 OR reçoit un `brief_complete` de TL (rapport code review). OR re-query → `step=CHECK_CR_EXIT, agent=or`. OR lit `hint` + `expected_params`, puis analyse le rapport TL pour détecter les findings BLOCKER.
@@ -674,10 +703,28 @@ Après le `--complete`, OR re-query immédiatement — pas d'attente, pas de `Se
 | **INV-OR-02** (params depuis `expected_params`) | Les noms de params passés à `--complete` viennent **exclusivement** du champ `expected_params` du JSON `--query`. Jamais inventés. |
 | **EX-OR-05** (no external wait) | Aucune instruction d'attente externe dans cette branche. OR ne fait jamais `wait for SendMessage` sur un step `agent=or`. |
 | **INV-OR-03 / EX-OR-06** (re-query immédiat) | Après chaque `--complete` sur un step `agent=or`, re-query immédiat. Pas de pause, pas de message vers un pair. |
+| **INV-002** (pas de relance CONVERGE) | Si verdict=CONVERGE (`REVIEW:CHECK_EXIT`) ou aucun BLOCKER (`CODE_REVIEW:CHECK_CR_EXIT`), compléter immédiatement avec `exit_decision=converged`. Interdiction de re-spawner RV ou d'envoyer un SendMessage RV. |
 
 ---
 
 ## Dispatch matrix (phase → agent)
+
+> **INV-003 — Le champ `agent` de `--query` est la SEULE source de vérité du routage.**
+>
+> OR **ne doit jamais** déduire l'agent cible depuis le nom du step, la phase courante, ou son contexte. Le champ `agent` retourné par `--query` est la seule autorité :
+>
+> ```bash
+> # Exemple obligatoire — lecture du champ agent via jq
+> query_json=$(bash scripts/wf-orchestrate.sh <name> --query)
+> agent=$(echo "$query_json" | jq -r '.agent')
+> step=$(echo "$query_json" | jq -r '.step')
+> # Dispatcher sur $agent, jamais sur $step ou la phase déduite
+> ```
+>
+> **Interdictions** :
+> - Hard-coder `agent=tl` pour tous les steps `TECHNICAL_DESIGN:*` → certains steps peuvent avoir `agent=or`
+> - Déduire l'agent depuis le préfixe du nom de step (`PO_*` → po, `TL_*` → tl)
+> - Ignorer le champ `agent` et router selon une table statique mémorisée
 
 | Phase | Agent primaire | Livrable | Artéfact(s) interdit(s) à OR | Parallelism |
 |---|---|---|---|---|
@@ -700,6 +747,7 @@ Les specs fonctionnelles (`specs.md`, `acceptance.md`) sont rédigées par PO, p
 - **VALIDATION**: after the QA report, escalate `CHECKPOINT_*` to PM for manual HO validation.
 - **CLOTURE — PR_CREATE delegated to PM (EX-047)**: the `CLOSURE:PR_CREATE` step is delegated to PM (`STEP_AGENT = pm`). OR does not create the PR itself. OR completes only the CLOTURE steps where `agent == "or"`.
 - **VALIDATION — Mandatory QA spawn (EX-044)**: QA MUST be spawned (`spawn_request`) BEFORE dispatching `VALIDATION:QA_ACCEPTANCE_TEST`. If QA is not active when entering the VALIDATION phase → emit `spawn_request` QA immediately. Do not advance to `QA_ACCEPTANCE_TEST` without QA `spawn_confirmed`.
+- **`PO_VALIDATE` step — dispatch vers `qa`, pas `po`** (INV-003) : le step `VALIDATION:PO_VALIDATE` (ou tout step dont le nom contient `PO_VALIDATE`) a `agent=qa` dans `--query`. OR doit router vers `qa`. Dispatcher vers `po` sur ce step est une violation de routage — appliquer INV-003, lire `agent` depuis `--query`.
 
 ---
 
@@ -754,9 +802,21 @@ After 3 consecutive `spawn_failed` → `ERROR_UNRECOVERABLE` escalated to PM.
 
 ## Bootstrap sequence (Flow Z)
 
+> **INV-004 — Bootstrap ≠ Resume. Critère discriminant unique.**
+>
+> | Mode | Critère de détection | Règles spécifiques |
+> |------|---------------------|--------------------|
+> | **bootstrap** | Brief PM contient `action: bootstrap_need` ET `wf/needs/<name>/` n'existe pas | Créer le répertoire, initialiser l'état, spawner tous les agents |
+> | **resume** | Brief PM contient `action: resume` OU `wf/needs/<name>/.wf-state.json` pré-existant | Ne pas ré-initialiser, ne pas re-créer les templates, re-lire `or.log` |
+>
+> **Interdictions** :
+> - Exécuter la séquence bootstrap si `.wf-state.json` existe déjà → c'est un resume, pas un bootstrap
+> - Exécuter la séquence resume si le répertoire `wf/needs/<name>/` n'existe pas → c'est un bootstrap
+> - Appliquer `feedback_resume_pm_main` (spawner un agent PM séparé) en mode bootstrap — PM est le main, pas un agent spawné
+
 Triggered when PM sends a brief with `action: bootstrap_need`.
 
-1. Validate the brief — kebab-case name, non-empty description. Failure → `ERROR_UNRECOVERABLE`.
+1. Validate the brief — kebab-case name, non-empty description. Failure → `ERROR_UNRECOVERABLE`. Logger `[MODE] bootstrap` dans `or.log` : `bash scripts/wf-orchestrate.sh <name> --log --msg "[MODE] bootstrap — need=<name>"`.
 2. Check non-collision — if `wf/needs/<name>/` already exists → escalate to PM (`NEED_PM_DECISION`).
 3. Create the need directory + copy templates with `{{name}}` substitution.
 4. Initialize state: `bash scripts/wf-orchestrate.sh <name> --init --desc "<description>"`.
@@ -972,6 +1032,8 @@ IF current_phase == IMPLEMENTATION AND review_count_code >= max_code:
 ---
 
 ## Resume sequence (context clear detected)
+
+> **Précondition INV-004** : cette séquence ne s'exécute que si `wf/needs/<name>/.wf-state.json` existe déjà. En mode resume, OR **ne doit pas** appliquer `feedback_resume_pm_main` (spawner PM comme agent séparé) — PM est le main qui pilote le workflow, pas un agent spawné. OR envoie `brief_complete` à PM (le main) à la fin de chaque étape.
 
 Triggered if OR receives a resume brief or detects a pre-existing `.sdd-state.json`.
 
@@ -1361,6 +1423,19 @@ OR must:
 The other agents (PO, TL, RV, QA, DV) log their observations directly in their respective artifacts (`PRD.md`, `design.md`, `review.md`, `tasks.md`) or in `tracking.md` — they are picked up by OR at BILAN.
 
 ### CLOSURE:LOG_AUDIT
+
+> **INV-005 — Réactivité au premier brief LOG_AUDIT (EX-005).**
+>
+> Dès réception du brief `CLOSURE:LOG_AUDIT` (ou dès que `--query` retourne `step=LOG_AUDIT, agent=or`), OR doit démarrer l'exécution **dans les 30 secondes**. Aucune inactivité (idle) n'est tolérée sur ce step.
+>
+> **Marqueur de démarrage** : logger immédiatement `[LOG_AUDIT_START] <ISO date> — démarrage analyse logs` dans `or.log`.
+>
+> **Actions visibles autorisées** (les 3 seules) :
+> 1. **ACK** : logger `[LOG_AUDIT_START]` dans `or.log`
+> 2. **Action visible** : lire `or.log` et `tracking.md` (Read tool), écrire la section anomalies dans `retro.md` (Bash)
+> 3. **`--complete`** : `bash scripts/wf-orchestrate.sh <name> --complete CLOSURE:LOG_AUDIT`
+>
+> **Règle de priorité** : si OR était en état idle avant de recevoir ce brief, le brief LOG_AUDIT annule l'idle immédiatement. L'idle ne reprend pas entre les étapes de ce step.
 
 After `CLOSURE:BILAN`, OR runs `LOG_AUDIT`:
 1. Parse `or.log` — extract `[ERROR]`, `[WARN]`, `[SKIP]`, `[WATCHDOG]` lines
