@@ -21,7 +21,7 @@ Waterfall turns a single Claude Code session into a coordinated team of agents, 
 - **QA** — quality, validates against acceptance
 - **DS** — design/UX
 
-Each *besoin* (work item) lives under `wf/needs/<kebab-name>/` with its own PRD, design, specs, tasks, tracking, and `.wf-state.json`. The state machine (`scripts/wf-orchestrate.sh`) is the single source of truth for what happens next; agents only advance via guarded `--complete` calls.
+Each *need* (work item) lives under `wf/needs/<kebab-name>/` with its own PRD, design, specs, tasks, tracking, and `.wf-state.json`. The state machine (`scripts/wf-orchestrate.sh`) is the single source of truth for what happens next; agents only advance via guarded `--complete` calls.
 
 Built on Claude Code's experimental **[Agent Teams](https://code.claude.com/docs/en/agent-teams#enable-agent-teams)** feature.
 
@@ -54,7 +54,7 @@ The plugin ships:
 - `skills/` — skill bundles invoked by the commands
 - `hooks/wf-auth.sh` — `PreToolUse(Bash)` identity guard
 - `scripts/` — orchestrator, watchdog, statusline, registry, preflight checks
-- `templates/` — besoin document templates (PRD, design, specs, tasks, …)
+- `templates/` — need document templates (PRD, design, specs, tasks, …)
 
 ### Requirements
 
@@ -94,7 +94,7 @@ No setup needed; the hook is wired by the plugin manifest.
 
 ### 3. Statusline (optional)
 
-A compact statusline reports the active besoin's phase/step, agent, and handoff state. To enable:
+A compact statusline reports the active need's phase/step, agent, and handoff state. To enable:
 
 ```bash
 bash scripts/wf-statusline-apply.sh on   # backs up your existing statusLine.command
@@ -144,12 +144,12 @@ A reference example is shipped at the plugin root: [`.wf-config.example.md`](./.
 ## Usage
 
 ```
-/waterfall:new <kebab-name>      # start a new besoin
-/waterfall:resume <kebab-name>   # resume an interrupted besoin
-/waterfall:quit                  # cleanly stop the active besoin
+/waterfall:new <kebab-name>      # start a new need
+/waterfall:resume <kebab-name>   # resume an interrupted need
+/waterfall:quit                  # cleanly stop the active need
 ```
 
-Each besoin is created at `wf/needs/<kebab-name>/` in your project. From there, the orchestrator drives PM → PO → TL → DV → RV → QA through the waterfall, asking you for input only at the checkpoints that require human judgment (brief, PRD validation, design approval, acceptance).
+Each need is created at `wf/needs/<kebab-name>/` in your project. From there, the orchestrator drives PM → PO → TL → DV → RV → QA through the waterfall, asking you for input only at the checkpoints that require human judgment (brief, PRD validation, design approval, acceptance).
 
 For a deeper dive — agent contracts, state machine diagram, recovery patterns, and best practices — see the upcoming documentation site.
 
