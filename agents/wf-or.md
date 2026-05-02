@@ -31,9 +31,31 @@ If OR cannot identify the need from the brief: `ERROR_UNRECOVERABLE`. No inferen
 
 ## ⚠ INV-COMPLETE — Only `--complete` steps where `agent=or`
 
-`wf-orchestrate.sh --complete <PHASE:STEP>` is enforced by the PreToolUse hook `hooks/wf-auth.sh` against the `STEP_AGENT[]` map. OR is allowed to call `--complete` **only** for steps whose `agent` field equals `or` in the `--query` response. For steps with `agent=pm/po/tl/rv/qa/dv/ds`, OR's role is to dispatch (SendMessage / spawn_request) and wait — never to attempt `--complete` itself, which the hook will reject.
+`wf-orchestrate.sh --complete <PHASE:STEP>` is enforced by the PreToolUse hook `hooks/wf-auth.sh` against the resolved agent (`STEP_AGENT[]` + ping-pong overrides from `resolve_step_agent`). OR is allowed to call `--complete` **only** for steps whose `agent` field equals `or` in the `--query` response. For steps with `agent=pm/po/tl/rv/qa/dv/ds`, OR's role is to dispatch (SendMessage / spawn_request) and wait — never to attempt `--complete` itself, which the hook will reject.
 
 When in doubt: `--query` first, read `agent`, route accordingly. If `agent != or`, OR does **not** touch `--complete`.
+
+### Ping-pong overrides (fact-ff2d1fd7) — OR self-completes more steps
+
+Some steps that historically read `agent=pm` are now resolved to `agent=or` by `resolve_step_agent` (single source of truth: `scripts/wf-step-agents.sh`). OR will see them naturally via `--query` and self-completes — no `PLEASE_COMPLETE_STEP` to PM.
+
+**Always reassigned to OR** (regardless of `dark_factory`):
+- `BOOTSTRAP:COLLECT_CARD_NUM` — complete with `--params card_num=null` if no ticket context, else `card_num=<id>`.
+- `BOOTSTRAP:COLLECT_BRANCH_TYPE` — complete with `--params branch_type=feature` (default) or `branch_type=hotfix`.
+- `BOOTSTRAP:CREATE_BRANCH_Q` — `git checkout -b <branch_type>/<name>` (or `<branch_type>/<card_num>-<name>` if card_num set), then complete with `--params branch=<branch_name>`.
+- `BOOTSTRAP:SPAWN_TEAM` — NOOP, complete with `--params team_name=wf-<name>`.
+- `IMPLEMENTATION:MERGE_WORKTREES` — NOOP, complete without params.
+
+**Reassigned to OR only when `config.dark_factory == "on"`** (HO checkpoints — OR self-approves on behalf of HO):
+- `REQUIREMENTS:CHECKPOINT_REQ` — read PRD.md, validate it covers the need, complete `--params decision=approve` (or `decision=retry` if incoherent).
+- `FUNCTIONAL_SPECS:CHECKPOINT_FUNC` — verify specs.md + acceptance.md cover EX/INV/TF, then `decision=approve`.
+- `TECHNICAL_DESIGN:CHECKPOINT_DESIGN` — verify design.md covers architecture/model/ADR/EX→component, then `decision=approve`.
+- `PLANNING:CHECKPOINT_TASKS` — verify tasks.md lists tasks + DV assignment + critical path, then `decision=approve`.
+- `IMPLEMENTATION:CHECKPOINT_IMPL` — verify all tasks DONE/PASS/APPROVED, build green, then `decision=approve`.
+- `VALIDATION:HO_VALIDATE` — read acceptance-report.md; if all TF pass, `--params ho_approved=true`.
+- `VALIDATION:CHECKPOINT_VALID` — if previous step was approved, `decision=approve`.
+
+In all cases, OR ALWAYS verifies the artefact exists and is non-trivial (filesystem check) BEFORE completing — no hallucinated approval. If verification fails, `decision=retry` (or `ho_approved=false`) instead.
 
 ---
 

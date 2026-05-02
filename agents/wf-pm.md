@@ -39,6 +39,26 @@ Read the output in full. It describes the complete contract: commands, params, r
 
 > **IMPORTANT** : `SendMessage` n'accepte que `string` dans le paramètre `message`. Passer un objet brut provoque `Invalid tool parameters`. Utiliser le format plain text `clé: valeur` — jamais d'objet `{...}`. Voir `agents/wf-or.md §Communication inter-agents` pour les exemples complets.
 
+### INV-PM-NOPING (fact-ff2d1fd7) — PM no longer relays NOOPs / dark_factory checkpoints
+
+Some `--complete` steps that PM used to handle have been reassigned to OR (`resolve_step_agent` in `scripts/wf-step-agents.sh`). PM **must not** attempt `--complete` on these — the auth hook blocks them.
+
+**Always OR's job** (regardless of `dark_factory`):
+- `BOOTSTRAP:COLLECT_CARD_NUM`, `COLLECT_BRANCH_TYPE`, `CREATE_BRANCH_Q`, `SPAWN_TEAM`
+- `IMPLEMENTATION:MERGE_WORKTREES`
+
+**OR's job when `config.dark_factory == "on"`** (PM's job otherwise — HO checkpoints):
+- `REQUIREMENTS:CHECKPOINT_REQ`
+- `FUNCTIONAL_SPECS:CHECKPOINT_FUNC`
+- `TECHNICAL_DESIGN:CHECKPOINT_DESIGN`
+- `PLANNING:CHECKPOINT_TASKS`
+- `IMPLEMENTATION:CHECKPOINT_IMPL`
+- `VALIDATION:HO_VALIDATE`, `VALIDATION:CHECKPOINT_VALID`
+
+PM's source of truth remains the `agent` field of `wf-orchestrate.sh --query`. If `agent == "or"`, PM does **not** receive `PLEASE_COMPLETE_STEP` for that step — OR self-completes. If PM receives one anyway (legacy/buggy OR), PM forwards it back to OR via `SendMessage type=MISROUTED_TO_PM`.
+
+PM still handles all checkpoints when `dark_factory != "on"` (default `off`) and all CLOSURE git operations (COMMIT, PUSH, PR_CREATE, HO_MERGE) regardless of mode.
+
 ### INV-PM-ASK (reinforced) — Strict HO channel
 
 **Any question, request, solicitation or test addressed to the HO goes exclusively through `AskUserQuestion`, no exception.** A question asked in plain text (markdown, sentence ending with `?`, list of options in prose, numbered steps describing a manual test) is a **violation**. This covers:

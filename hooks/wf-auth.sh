@@ -262,8 +262,16 @@ if [[ -z "$agent_type" || "$agent_type" == "null" ]]; then
   agent_type="pm"
 fi
 
-# 8. Expected role.
-expected="${STEP_AGENT[$step_canonical]:-}"
+# 8. Expected role — apply ping-pong fix (fact-ff2d1fd7): resolve_step_agent
+# overrides certain agent=pm steps to agent=or (NOOPs always; HO checkpoints
+# when dark_factory=on). Read dark_factory from .wf-state.json:config.
+dark_factory="off"
+state_file="$PROJECT_ROOT/wf/needs/$name/.wf-state.json"
+if [[ -f "$state_file" ]] && command -v jq >/dev/null 2>&1; then
+  df_raw=$(jq -r '.config.dark_factory // "off"' "$state_file" 2>/dev/null || echo "off")
+  [[ "$df_raw" == "on" ]] && dark_factory="on"
+fi
+expected=$(resolve_step_agent "$step_canonical" "$dark_factory")
 if [[ -z "$expected" ]]; then
   _wf_auth_allow "$name" "$step_canonical" "$agent_type" "unknown" "unknown_step"
 fi

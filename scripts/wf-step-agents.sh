@@ -70,6 +70,52 @@ declare -gA STEP_AGENT=(
   ["CLOSURE:PR_TRIAGE"]="pm"
 )
 
+# OR self-complete overrides (fix ping-pong HO↔OR/PM, fact-ff2d1fd7).
+#
+# STEP_AGENT_ALWAYS_OR: steps where PM was a passthrough — OR self-completes
+# regardless of dark_factory (NOOPs, bootstrap auto-fillable, OR-driven spawn).
+declare -gA STEP_AGENT_ALWAYS_OR=(
+  ["BOOTSTRAP:COLLECT_CARD_NUM"]=1
+  ["BOOTSTRAP:COLLECT_BRANCH_TYPE"]=1
+  ["BOOTSTRAP:CREATE_BRANCH_Q"]=1
+  ["BOOTSTRAP:SPAWN_TEAM"]=1
+  ["IMPLEMENTATION:MERGE_WORKTREES"]=1
+)
+
+# STEP_AGENT_DARK_OVERRIDE: steps reassigned to OR only when dark_factory=on.
+# These are HO checkpoints that have no human in the loop in dark_factory — OR
+# self-approves with decision=approve / ho_approved=true.
+declare -gA STEP_AGENT_DARK_OVERRIDE=(
+  ["REQUIREMENTS:CHECKPOINT_REQ"]=1
+  ["FUNCTIONAL_SPECS:CHECKPOINT_FUNC"]=1
+  ["TECHNICAL_DESIGN:CHECKPOINT_DESIGN"]=1
+  ["PLANNING:CHECKPOINT_TASKS"]=1
+  ["IMPLEMENTATION:CHECKPOINT_IMPL"]=1
+  ["VALIDATION:HO_VALIDATE"]=1
+  ["VALIDATION:CHECKPOINT_VALID"]=1
+)
+
+# resolve_step_agent <PHASE:STEP> <dark_factory:on|off>
+# Returns the effective agent for the step, applying override rules above.
+resolve_step_agent() {
+  local step_key="$1"
+  local dark_factory="${2:-off}"
+  local base="${STEP_AGENT[$step_key]:-}"
+  if [[ -z "$base" ]]; then
+    echo ""
+    return
+  fi
+  if [[ -n "${STEP_AGENT_ALWAYS_OR[$step_key]:-}" ]]; then
+    echo "or"
+    return
+  fi
+  if [[ "$dark_factory" == "on" && -n "${STEP_AGENT_DARK_OVERRIDE[$step_key]:-}" ]]; then
+    echo "or"
+    return
+  fi
+  echo "$base"
+}
+
 # Reverse index STEP -> PHASE to resolve legacy calls passing STEP alone.
 declare -gA STEP_PHASE=(
   ["DETERMINE_NAME"]="BOOTSTRAP"

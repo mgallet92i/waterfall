@@ -363,6 +363,19 @@ try {
 ENDJS
 }
 
+# Read config.dark_factory from state_json (nested field). Returns "on" or "off".
+_get_dark_factory() {
+  local json="$1"
+  export _WF_DF_JSON="$json"
+  node --input-type=module <<'ENDJS' 2>/dev/null || echo "off"
+try {
+  const o = JSON.parse(process.env._WF_DF_JSON || '{}');
+  const v = (o.config && o.config.dark_factory) || 'off';
+  process.stdout.write(v === 'on' ? 'on' : 'off');
+} catch(e) { process.stdout.write('off'); }
+ENDJS
+}
+
 # Load max cycles from config precedence:
 # 1. hardcoded default=3
 # 2. wf/config.json (if exists)
@@ -710,7 +723,13 @@ handle_query() {
     stop_reason="done"
   fi
 
-  local agent="${STEP_AGENT[${phase}:${step}]:-pm}"
+  # Resolve effective agent (fix ping-pong, fact-ff2d1fd7): some PM steps are
+  # reattributed to OR (NOOPs always; HO checkpoints when dark_factory=on).
+  local dark_factory
+  dark_factory=$(_get_dark_factory "$state_json")
+  local agent
+  agent=$(resolve_step_agent "${phase}:${step}" "$dark_factory")
+  [[ -z "$agent" ]] && agent="pm"
   local action="${STEP_ACTION[$step]:-unknown}"
 
   local max_review max_cr
@@ -766,6 +785,10 @@ const maxCr = parseInt(process.env._WF_QUERY_MAX_CR) || 3;
 let state = {};
 try { state = JSON.parse(process.env._WF_QUERY_STATE_JSON || '{}'); } catch(e) {}
 
+// Ping-pong fix (fact-ff2d1fd7): dynamic hint prefix follows the resolved agent.
+const agentLabel = (agent || 'pm').toUpperCase();
+const darkFactory = (state.config && state.config.dark_factory) === 'on';
+
 // Build step-specific params
 const params = {
   need_name: name,
@@ -782,18 +805,20 @@ switch(phase) {
     if (step === 'DETERMINE_NAME') params.hint = 'PM: validate the kebab-case name provided as argument, or AskUserQuestion to describe the need then propose 3 kebab-case names. No artifact produced — the name is stored in state.';
     if (step === 'RUN_BOOTSTRAP') params.hint = 'PM: create wf/needs/<name>/ by copying templates from ${CLAUDE_PLUGIN_ROOT}/wf/templates/${WF_LANGUAGE} (fallback: ${CLAUDE_PLUGIN_ROOT}/wf/templates/en). Write initial .wf-state.json. Complete when directory and state file exist.';
     if (step === 'STORE_PATH') params.hint = 'PM: NOOP — complete immediately. The need_dir is already recorded in .wf-state.json by RUN_BOOTSTRAP. No parameter required.';
-    if (step === 'COLLECT_CARD_NUM') params.hint = 'PM: AskUserQuestion: "Card number? (e.g. JIRA, WRIKE, Trello, ... ticket id) — or \'none\'". Complete with --params card_num=<id> or card_num=null.';
-    if (step === 'COLLECT_BRANCH_TYPE') params.hint = 'PM: AskUserQuestion: "Is this need a feature or a hotfix?" (options: feature, hotfix). Complete with --params branch_type=feature or branch_type=hotfix.';
-    if (step === 'CREATE_BRANCH_Q') params.hint = 'PM: create the branch using <branch_type> as prefix: git checkout -b <branch_type>/<name> (or <branch_type>/<card_num>-<name> if card_num is set). Default branch_type=feature if missing. Do NOT inject a placeholder like NO-JIRA when card_num is empty. Complete with --params branch=<branch_name>.';
+    if (step === 'COLLECT_CARD_NUM') params.hint = `${agentLabel}: complete with --params card_num=<id> if known (JIRA/WRIKE/Trello), or card_num=null otherwise. OR self-completes with card_num=null when no ticket context is provided — no AskUserQuestion needed.`;
+    if (step === 'COLLECT_BRANCH_TYPE') params.hint = `${agentLabel}: complete with --params branch_type=feature (default) or branch_type=hotfix. OR self-completes with branch_type=feature unless context indicates a hotfix.`;
+    if (step === 'CREATE_BRANCH_Q') params.hint = `${agentLabel}: create the branch using <branch_type> as prefix: git checkout -b <branch_type>/<name> (or <branch_type>/<card_num>-<name> if card_num is set). Default branch_type=feature if missing. Do NOT inject a placeholder like NO-JIRA when card_num is empty. Complete with --params branch=<branch_name>.`;
     if (step === 'SPAWN_TEAM') {
-      params.hint = 'PM: NOOP — complete immediately. The wf-<name> team was created by the wf-new skill before bootstrap. Other agents (PO, TL, RV, QA, DS, DV) are spawned on demand via OR\'s spawn_request — do not invoke TeamCreate here. Complete with --params team_name=wf-<name>.';
+      params.hint = `${agentLabel}: NOOP — complete immediately. The wf-<name> team was created by the wf-new skill before bootstrap. Other agents (PO, TL, RV, QA, DS, DV) are spawned on demand via OR's spawn_request — do not invoke TeamCreate here. Complete with --params team_name=wf-<name>.`;
       params.team_name = 'wf-' + name;
     }
     break;
   case 'REQUIREMENTS':
     if (step === 'COLLECT_PRD') params.hint = 'PM: use AskUserQuestion to collect the need from HO (context, problem, goal, actors, out of scope). One question at a time. Complete when information is sufficient to write PRD.md.';
     if (step === 'GENERATE_PRD') params.hint = 'PM: write PRD.md in wf/needs/<name>/ (template: ${CLAUDE_PLUGIN_ROOT}/wf/templates/${WF_LANGUAGE:-en}/PRD.md) from the information collected during COLLECT_PRD. Output artifact: PRD.md. Notify OR via SendMessage (step_complete) when done.';
-    if (step === 'CHECKPOINT_REQ') params.hint = 'PM : Read PRD.md, present a summary to HO via AskUserQuestion. If validated, complete (advances to FUNCTIONAL_SPECS). If changes needed, complete with decision=retry (loops to COLLECT_PRD). Also supports decision=pause or decision=abort.';
+    if (step === 'CHECKPOINT_REQ') params.hint = darkFactory && agent === 'or'
+      ? 'OR (dark_factory) : self-approve PRD.md without HO. Read PRD.md, validate it covers the need, complete with --params decision=approve. No AskUserQuestion. If PRD is empty/incoherent, complete with decision=retry instead.'
+      : 'PM : Read PRD.md, present a summary to HO via AskUserQuestion. If validated, complete (advances to FUNCTIONAL_SPECS). If changes needed, complete with decision=retry (loops to COLLECT_PRD). Also supports decision=pause or decision=abort.';
     break;
   case 'FUNCTIONAL_SPECS':
     if (step === 'INTERVIEW_SPECS') {
@@ -805,11 +830,15 @@ switch(phase) {
     if (step === 'VALIDATE_SPECS') {
       params.hint = 'OR : validates specs: check that every EX has a TF in acceptance.md, every INV has a TF. Use --validate command. If gaps found, SendMessage to PO to fix specs.md/acceptance.md. Re-run until clean.';
     }
-    if (step === 'CHECKPOINT_FUNC') params.hint = 'PM : Present specs.md + acceptance.md summary to HO via AskUserQuestion. If validated, complete (advances to TECHNICAL_DESIGN). If changes needed, complete with decision=retry (loops to INTERVIEW_SPECS). Also supports decision=pause or decision=abort.';
+    if (step === 'CHECKPOINT_FUNC') params.hint = darkFactory && agent === 'or'
+      ? 'OR (dark_factory) : self-approve specs.md + acceptance.md without HO. Verify both artefacts exist and look complete (EX/INV/TF coverage), then complete with --params decision=approve. If gaps detected, complete with decision=retry.'
+      : 'PM : Present specs.md + acceptance.md summary to HO via AskUserQuestion. If validated, complete (advances to TECHNICAL_DESIGN). If changes needed, complete with decision=retry (loops to INTERVIEW_SPECS). Also supports decision=pause or decision=abort.';
     break;
   case 'TECHNICAL_DESIGN':
     if (step === 'GENERATE_DESIGN') params.hint = 'TL: write design.md in wf/needs/<name>/ (architecture, model, ADR, risks, EX→component traceability). Input artifacts: specs.md, acceptance.md. Output artifact: design.md. Notify OR via SendMessage (brief_complete) when done.';
-    if (step === 'CHECKPOINT_DESIGN') params.hint = 'PM : Present design.md summary to HO via AskUserQuestion. If validated, complete (advances to REVIEW). If changes needed, complete with decision=retry (loops to GENERATE_DESIGN). Also supports decision=pause or decision=abort.';
+    if (step === 'CHECKPOINT_DESIGN') params.hint = darkFactory && agent === 'or'
+      ? 'OR (dark_factory) : self-approve design.md without HO. Verify the artefact exists and covers the design points (architecture, model, ADR, EX→component traceability), then complete with --params decision=approve. If incomplete, complete with decision=retry.'
+      : 'PM : Present design.md summary to HO via AskUserQuestion. If validated, complete (advances to REVIEW). If changes needed, complete with decision=retry (loops to GENERATE_DESIGN). Also supports decision=pause or decision=abort.';
     break;
   case 'REVIEW':
     params.current_run = runReview;
@@ -838,7 +867,9 @@ switch(phase) {
       params.source_artifacts = ['specs.md', 'design.md'];
     }
     if (step === 'ASSIGN_WORKTREES') params.hint = 'TL : updates tasks.md: assign each task group to a DV slot (dv1, dv2, dv3). Do NOT create git worktrees now — they are created automatically when spawning DV agents with isolation=worktree in IMPLEMENTATION. Mandatory before --complete: log a trace via `bash scripts/wf-orchestrate.sh <name> --log --msg "[ASSIGN] dv1=<tasks> dv2=<tasks> ... (worktrees deferred to IMPLEMENTATION spawn)"` so the NOOP-on-disk is observable. Complete when assignment is documented in tasks.md AND traced in or.log.';
-    if (step === 'CHECKPOINT_TASKS') params.hint = 'PM : Present tasks.md summary to HO via AskUserQuestion. If approved, complete (advances to IMPLEMENTATION). If changes needed, complete with decision=retry. Also supports decision=pause or decision=abort.';
+    if (step === 'CHECKPOINT_TASKS') params.hint = darkFactory && agent === 'or'
+      ? 'OR (dark_factory) : self-approve tasks.md without HO. Verify tasks are listed with DV assignment + critical path, then complete with --params decision=approve. If empty/incoherent, complete with decision=retry.'
+      : 'PM : Present tasks.md summary to HO via AskUserQuestion. If approved, complete (advances to IMPLEMENTATION). If changes needed, complete with decision=retry. Also supports decision=pause or decision=abort.';
     break;
   case 'IMPLEMENTATION':
     if (step === 'DV_IMPLEMENT') {
@@ -848,8 +879,10 @@ switch(phase) {
       params.hint = `Use Agent tool to spawn DV agents (max 3: dv1, dv2, dv3) with isolation=worktree and mode=auto. Each DV work_dir: <project_root>/worktrees/${sidShort}/dvN. SendMessage each DV their assigned tasks from tasks.md, including their work_dir. Each DV follows the per-task pipeline: implement → write/run tests (PASS required) → update tasks.md (Tests + Status columns) → notify PM. After DV notifies TASK_DONE, request TL per-task review via SendMessage. Reuse idle DVs for subsequent tasks. Complete when all tasks report done.`;
     }
     if (step === 'TL_SUPERVISE') params.hint = 'TL : performs per-task reviews (not global CODE_REVIEW). For each task completed by a DV, TL reviews only the modified files and sends APPROVED/REJECTED verdict. PM coordinates: SendMessage TL with task ID + file list, wait for verdict. If REJECTED, SendMessage DV with fix instructions. Complete when all tasks have TL APPROVED verdict in tasks.md (Review TL column).';
-    if (step === 'CHECKPOINT_IMPL') params.hint = 'PM : Verify ALL tasks in tasks.md are DONE with Tests PASS and Review TL APPROVED. Check that no task has PENDING review or missing tests. Build must pass (npm run build / tsc --noEmit). Present summary to HO via AskUserQuestion. If approved, complete (advances to MERGE_WORKTREES). If issues, complete with decision=retry (loops to DV_IMPLEMENT).';
-    if (step === 'MERGE_WORKTREES') params.hint = 'PM: NOOP — complete immediately. Worktree merging is deferred (Lot 3). Complete without parameter to advance to CODE_REVIEW.';
+    if (step === 'CHECKPOINT_IMPL') params.hint = darkFactory && agent === 'or'
+      ? 'OR (dark_factory) : self-approve implementation without HO. Verify ALL tasks in tasks.md are DONE with Tests PASS and Review TL APPROVED. No PENDING review, no missing tests. Build must pass. Then complete with --params decision=approve. If issues, complete with decision=retry.'
+      : 'PM : Verify ALL tasks in tasks.md are DONE with Tests PASS and Review TL APPROVED. Check that no task has PENDING review or missing tests. Build must pass (npm run build / tsc --noEmit). Present summary to HO via AskUserQuestion. If approved, complete (advances to MERGE_WORKTREES). If issues, complete with decision=retry (loops to DV_IMPLEMENT).';
+    if (step === 'MERGE_WORKTREES') params.hint = `${agentLabel}: NOOP — complete immediately. Worktree merging is deferred (Lot 3). Complete without parameter to advance to CODE_REVIEW.`;
     break;
   case 'CODE_REVIEW':
     params.current_run = runCr;
@@ -873,8 +906,12 @@ switch(phase) {
       params.hint = 'QA : Read acceptance.md test plan. Execute tests (npm test for automated, MCP chrome-devtools for UI). Report which TF pass/fail. Complete with validation_ok=true/false.';
       params.test_plan = 'acceptance.md';
     }
-    if (step === 'HO_VALIDATE') params.hint = 'PM : Present test results to HO via AskUserQuestion. Ask HO to manually test if needed. Wait for explicit approval. Complete with ho_approved=true/false.';
-    if (step === 'CHECKPOINT_VALID') params.hint = 'PM : If HO approved → complete (advances to CLOSURE:ARCHIVE). If HO rejected → complete with decision=retry (loops to PO_VALIDATE). Also supports decision=pause or decision=abort.';
+    if (step === 'HO_VALIDATE') params.hint = darkFactory && agent === 'or'
+      ? 'OR (dark_factory) : self-approve validation without HO. Read QA acceptance-report.md. If all TF pass (no FAIL), complete with --params ho_approved=true. If any FAIL, complete with ho_approved=false (loops back to PO_VALIDATE).'
+      : 'PM : Present test results to HO via AskUserQuestion. Ask HO to manually test if needed. Wait for explicit approval. Complete with ho_approved=true/false.';
+    if (step === 'CHECKPOINT_VALID') params.hint = darkFactory && agent === 'or'
+      ? 'OR (dark_factory) : if ho_approved was true → complete with decision=approve (advances to CLOSURE). If false → complete with decision=retry (loops to PO_VALIDATE).'
+      : 'PM : If HO approved → complete (advances to CLOSURE:ARCHIVE). If HO rejected → complete with decision=retry (loops to PO_VALIDATE). Also supports decision=pause or decision=abort.';
     break;
   case 'CLOSURE':
     if (step === 'LOG_AUDIT') params.hint = 'OR: analyze post-need logs. 1) Parse or.log (grep ERROR/WARN/SKIP/WATCHDOG). 2) Parse tracking.md (review cycles exceeding max_runs). 3) Write a "## Anomalies detected" section in retro.md (structured list, or "No anomaly detected." if nothing found). INV-003: this step always advances even if no anomaly. Input artifacts: or.log, tracking.md. Output artifact: anomalies section in retro.md.';
