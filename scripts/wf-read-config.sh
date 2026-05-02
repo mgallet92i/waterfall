@@ -18,11 +18,11 @@ WF_DARK_FACTORY="off"
 WF_MODEL_PM="sonnet"
 WF_MODEL_OR="sonnet"
 WF_MODEL_PO="sonnet"
-WF_MODEL_TL="opus"
-WF_MODEL_RV="opus"
+WF_MODEL_TL="sonnet"
+WF_MODEL_RV="sonnet"
 WF_MODEL_QA="sonnet"
 WF_MODEL_DV="sonnet"
-WF_MODEL_DS="haiku"
+WF_MODEL_DS="sonnet"
 WF_REVIEW_ARTIFACTS=2
 WF_REVIEW_CODE=3
 
