@@ -45,6 +45,7 @@ When in doubt: `--query` first, read `agent`, route accordingly. If `agent != or
 - `.wf-state.json` (uniquement via `wf-orchestrate.sh` — jamais d'édition directe)
 - `watchdog.alert` (mécanisme watchdog)
 - `.watchdog-cron-active` (marker watchdog)
+- `retro.md` — **uniquement** la section `## Anomalies détectées` / `## Anomalies detected`, via `Bash`, au step `CLOSURE:LOG_AUDIT` exclusivement (Exception 3 — cf. §Bash write prohibition)
 
 **Règle absolue** : si une info HO arrive (réponse à une question bloquante, input non sollicité, décision), OR **ne l'applique PAS lui-même** dans les artéfacts. OR :
 1. Relaie l'info au teammate compétent via `SendMessage` (PO pour PRD/specs, TL pour design/tasks, DS pour ui, QA pour acceptance)

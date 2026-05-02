@@ -17,6 +17,6 @@
     "interval": "3min"
   },
   "agent_mode": "team",
-  "dark_factory": "off",
+  "dark_factory": "on",
   "statusline": false
 }

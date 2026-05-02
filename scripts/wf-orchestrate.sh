@@ -2097,6 +2097,8 @@ handle_ack_register() {
       else . end]
     ' "$registry")
     printf '%s\n' "$updated" > "$registry"
+    local now_iso; now_iso=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    echo "[$now_iso] [ACK-REGISTER] action=retry msg_id=$msg_id" >> "$PROJECT_ROOT/wf/needs/$name/or.log" 2>/dev/null || true
     printf '{"ok":true,"action":"retry","msg_id":"%s"}\n' "$msg_id"
   else
     # New entry mode
@@ -2119,6 +2121,8 @@ handle_ack_register() {
       }]
     ' "$registry")
     printf '%s\n' "$updated" > "$registry"
+    local now_iso; now_iso=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    echo "[$now_iso] [ACK-REGISTER] action=new from=$from to=$to type=$type msg_id=$msg_id" >> "$PROJECT_ROOT/wf/needs/$name/or.log" 2>/dev/null || true
     printf '{"ok":true,"action":"register","msg_id":"%s"}\n' "$msg_id"
   fi
 }
@@ -2165,6 +2169,8 @@ handle_ack_confirm() {
     .entries = [.entries[] | if .msg_id==$id then .status="acked" else . end]
   ' "$registry")
   printf '%s\n' "$updated" > "$registry"
+  local now_iso; now_iso=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  echo "[$now_iso] [ACK-CONFIRM] msg_id=$msg_id" >> "$PROJECT_ROOT/wf/needs/$name/or.log" 2>/dev/null || true
   printf '{"ok":true,"action":"confirmed","msg_id":"%s"}\n' "$msg_id"
 }
 
