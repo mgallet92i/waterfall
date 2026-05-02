@@ -63,7 +63,7 @@ The plugin ships:
   - **macOS / Linux**: any standard bash shell works.
   - **Windows**: you **must** run Claude Code from **Git Bash** (Git for Windows). cmd.exe, PowerShell, and WSL bash are not supported. Download: <https://git-scm.com/download/win>
   - The bootstrap script `scripts/wf-check-bash.sh` enforces this on every `/waterfall:new` and `/waterfall:resume` and fails fast with a clear message otherwise.
-- **jq** — used by every script that touches `.wf-state.json` / `ack-registry.json`. The bootstrap script `scripts/wf-check-jq.sh` will detect and offer to install it:
+- **[jq](https://jqlang.org/)** — used by every script that touches `.wf-state.json` / `ack-registry.json`. The bootstrap script `scripts/wf-check-jq.sh` will detect and offer to install it:
   - Windows: `winget install jqlang.jq` (fallback: `choco`, `scoop`)
   - macOS: `brew install jq` (fallback: `port`)
   - Linux: `apt-get` / `dnf` / `yum` / `pacman` / `zypper` / `apk` (auto-detected)
