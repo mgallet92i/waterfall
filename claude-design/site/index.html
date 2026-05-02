@@ -452,51 +452,57 @@
         <tbody>
           <tr>
             <td><span class="glossary__abbr">EX</span></td>
-            <td>Experience story</td>
-            <td>User-facing narrative of what the change should feel like. Written by PM in plain language, before any spec.</td>
-            <td><span class="glossary__owner-pill">PM</span></td>
-          </tr>
-          <tr>
-            <td><span class="glossary__abbr">REQ</span></td>
-            <td>Requirements</td>
-            <td>Structured list of what must be true once shipped. Source of truth for everything downstream.</td>
-            <td><span class="glossary__owner-pill">PM · PO</span></td>
-          </tr>
-          <tr>
-            <td><span class="glossary__abbr">SPEC</span></td>
-            <td>Functional spec</td>
-            <td>The behaviour, in detail. Flows, states, edge cases. No implementation, no UI yet.</td>
+            <td>Experience expectation</td>
+            <td>A user-facing expectation in <code>specs.md</code>, prioritized MUST / SHOULD / MAY. The unit of intent every downstream artefact traces back to.</td>
             <td><span class="glossary__owner-pill">PO</span></td>
           </tr>
           <tr>
-            <td><span class="glossary__abbr">AC</span></td>
-            <td>Acceptance criteria</td>
-            <td>Testable conditions a feature must meet to be considered done. The contract QA replays at validation.</td>
+            <td><span class="glossary__abbr">INV</span></td>
+            <td>Invariant</td>
+            <td>A non-negotiable property the system must always preserve, in <code>specs.md</code>. Cross-cutting; doesn't belong to any single EX.</td>
             <td><span class="glossary__owner-pill">PO</span></td>
           </tr>
           <tr>
-            <td><span class="glossary__abbr">TD</span></td>
-            <td>Technical design</td>
-            <td>Architecture, stack, trade-offs. The TL's answer to “how” — written before a single line of code.</td>
+            <td><span class="glossary__abbr">TF</span></td>
+            <td>Functional test</td>
+            <td>Testable GIVEN / WHEN / THEN scenario in <code>acceptance.md</code>. The contract QA replays at validation.</td>
+            <td><span class="glossary__owner-pill">PO</span></td>
+          </tr>
+          <tr>
+            <td><span class="glossary__abbr">T</span></td>
+            <td>Task</td>
+            <td>Sized unit of work in <code>tasks.md</code>, traced to one or more EX. The DV's worklist.</td>
             <td><span class="glossary__owner-pill">TL</span></td>
           </tr>
           <tr>
-            <td><span class="glossary__abbr">TASKS</span></td>
-            <td>Plan</td>
-            <td>The technical design, broken into named, sized, sequenced units of work. The DV's worklist.</td>
-            <td><span class="glossary__owner-pill">TL</span></td>
-          </tr>
-          <tr>
-            <td><span class="glossary__abbr">RV</span></td>
-            <td>Review verdict</td>
-            <td>Approve, request changes, or block. Written at every phase boundary by an independent reviewer.</td>
+            <td><span class="glossary__abbr">B</span></td>
+            <td>Blocker</td>
+            <td>Review finding in <code>review.md</code> that prevents convergence. Must be resolved before the artefact is signed off.</td>
             <td><span class="glossary__owner-pill">RV</span></td>
           </tr>
           <tr>
-            <td><span class="glossary__abbr">VAL</span></td>
-            <td>Validation report</td>
-            <td>QA replays each AC against the build and writes pass / fail with evidence. The closing artefact.</td>
-            <td><span class="glossary__owner-pill">QA</span></td>
+            <td><span class="glossary__abbr">Q</span></td>
+            <td>Question</td>
+            <td>Review-time clarification in <code>review.md</code>, routed to PM, PO, or TL. Non-blocking but must be answered.</td>
+            <td><span class="glossary__owner-pill">RV</span></td>
+          </tr>
+          <tr>
+            <td><span class="glossary__abbr">ADR</span></td>
+            <td>Architecture decision</td>
+            <td>An architectural decision recorded in <code>design.md</code> with context, options considered, and rationale.</td>
+            <td><span class="glossary__owner-pill">TL</span></td>
+          </tr>
+          <tr>
+            <td><span class="glossary__abbr">DEC</span></td>
+            <td>Decision</td>
+            <td>A non-architectural decision logged in <code>tracking.md</code> or <code>retro.md</code> &mdash; scope, trade-off, process choice.</td>
+            <td><span class="glossary__owner-pill">any</span></td>
+          </tr>
+          <tr>
+            <td><span class="glossary__abbr">OBS</span></td>
+            <td>Observation</td>
+            <td>An in-vivo observation about the workflow itself, logged in <code>tracking.md</code> or <code>or.log</code>. Aggregated into <code>retro.md</code> at closure.</td>
+            <td><span class="glossary__owner-pill">any</span></td>
           </tr>
         </tbody>
       </table>
