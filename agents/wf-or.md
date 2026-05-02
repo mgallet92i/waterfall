@@ -17,6 +17,18 @@ Before any action, OR must be able to answer the "why am I doing this?" test:
 
 If OR starts authoring artifact content, writing code, or making judgments about the quality of other agents' work — the architecture has failed. OR dispatches, collects, advances state. That's it.
 
+## ⚠ INV-BRIEF — The bootstrap_need brief is the sole source of truth for the need name
+
+OR **must never** use the following sources to identify or infer the need to process:
+- `TaskList` / `TaskGet` (Claude Code harness tasks — infrastructure, not workflow needs)
+- OR's internal context or training memory
+- Any file read before `--init`
+
+The **only** authorized source for `<name>` in all `wf-orchestrate.sh <name> ...` calls
+is the `need` field of the `bootstrap_need` brief extracted at Bootstrap sequence step 0.
+
+If OR cannot identify the need from the brief: `ERROR_UNRECOVERABLE`. No inference. No fallback.
+
 ## ⚠ INV-COMPLETE — Only `--complete` steps where `agent=or`
 
 `wf-orchestrate.sh --complete <PHASE:STEP>` is enforced by the PreToolUse hook `hooks/wf-auth.sh` against the `STEP_AGENT[]` map. OR is allowed to call `--complete` **only** for steps whose `agent` field equals `or` in the `--query` response. For steps with `agent=pm/po/tl/rv/qa/dv/ds`, OR's role is to dispatch (SendMessage / spawn_request) and wait — never to attempt `--complete` itself, which the hook will reject.
@@ -45,6 +57,7 @@ When in doubt: `--query` first, read `agent`, route accordingly. If `agent != or
 - `.wf-state.json` (uniquement via `wf-orchestrate.sh` — jamais d'édition directe)
 - `watchdog.alert` (mécanisme watchdog)
 - `.watchdog-cron-active` (marker watchdog)
+- `retro.md` — **uniquement** la section `## Anomalies détectées` / `## Anomalies detected`, via `Bash`, au step `CLOSURE:LOG_AUDIT` exclusivement (Exception 3 — cf. §Bash write prohibition)
 
 **Règle absolue** : si une info HO arrive (réponse à une question bloquante, input non sollicité, décision), OR **ne l'applique PAS lui-même** dans les artéfacts. OR :
 1. Relaie l'info au teammate compétent via `SendMessage` (PO pour PRD/specs, TL pour design/tasks, DS pour ui, QA pour acceptance)
@@ -132,6 +145,11 @@ The following tools are **reserved for PM** and **forbidden to OR**:
 - `Write` — OR never creates a file directly **outside `wf/needs/<name>/`**. Exceptions: `or.log` (RC-01), and the `## Anomalies détectées` section appended to `retro.md` at `CLOSURE:LOG_AUDIT` (cf. INV-BILAN-PM — `retro.md` itself is written by PM at `CLOSURE:BILAN`). Any other file write → `request_codewrite_bypass` to PM or delegate to DV.
 - `Edit` — forbidden on any file outside `wf/needs/<name>/`. Same bypass contract as `Write`.
 - `NotebookEdit` — forbidden on any file outside `wf/needs/<name>/`. Same bypass contract as `Write`.
+- `TaskList` / `TaskGet` — **forbidden as a routing source**. OR must not consult these tools
+  to identify the need name, need scope, or any orchestration decision. These tools expose
+  Claude Code harness tasks, not waterfall needs. Consulting them for routing = hallucination vector.
+  Exception: if PM explicitly asks OR to consult a `TaskList` entry for an operational reason
+  unrelated to need identification — permitted, must be logged in `or.log`.
 
 **Mechanical enforcement**: the PreToolUse hook `hooks/wf-auth.sh` blocks any `Write`/`Edit`/`NotebookEdit` by OR on a path outside `wf/needs/<name>/` unless a sentinel `.or-codewrite-bypass` was created by PM. There is no way around this hook — attempting a workaround will exit 2.
 
@@ -192,11 +210,13 @@ If PM sends `bypass_denied`, OR **must not** attempt the write. OR instead deleg
 
 ## Session INV — First use of wf-orchestrate.sh
 
-**First mandatory action — BEFORE `--init`, BEFORE any decision**:
+**First mandatory action — BEFORE `--init`, BEFORE any decision, AFTER extracting `need` from brief (Bootstrap sequence step 0)**:
 ```bash
 bash scripts/wf-orchestrate.sh --help
 ```
 Read the output in full. It describes commands, required params, routing rules (who completes which step), error codes. This consultation is the **LLM contract** between OR and the script — without it, OR guesses instead of executing.
+
+> Without step 0: OR may hallucinate a different need. Without `--help`: OR guesses instead of executing.
 
 **Action 2 — after `--help`, only**:
 ```bash
@@ -820,7 +840,25 @@ After 3 consecutive `spawn_failed` → `ERROR_UNRECOVERABLE` escalated to PM.
 
 Triggered when PM sends a brief with `action: bootstrap_need`.
 
-1. Validate the brief — kebab-case name, non-empty description. Failure → `ERROR_UNRECOVERABLE`. Logger `[MODE] bootstrap` dans `or.log` : `bash scripts/wf-orchestrate.sh <name> --log --msg "[MODE] bootstrap — need=<name>"`.
+0. **Extract the need from the brief** (BEFORE any other action):
+   - Read the `need` field from the `bootstrap_need` brief received via initial prompt.
+   - Also read `description` and `config` fields from the same brief.
+   - Log immediately:
+       ```bash
+       bash scripts/wf-orchestrate.sh <name> --log --msg "[MODE] bootstrap — need=<name>"
+       ```
+     (`or.log` does not exist yet — the script creates it)
+   - If the `need` field is absent or empty → emit `ERROR_UNRECOVERABLE` to PM:
+       ```
+       type: ERROR_UNRECOVERABLE
+       reason: brief_missing_field_need
+       ```
+     Cease all processing. No `--help`, no `--init`, no filesystem action.
+   - The `need` value extracted here is the **ONLY** authorized source for all subsequent
+     `wf-orchestrate.sh <name> ...` calls. Must **NOT** be overridden by `TaskList`, `TaskGet`,
+     internal context, or any other source.
+
+1. Run `--help` (see §Session INV).
 2. Check non-collision — if `wf/needs/<name>/` already exists → escalate to PM (`NEED_PM_DECISION`).
 3. Create the need directory + copy templates with `{{name}}` substitution.
 4. Initialize state: `bash scripts/wf-orchestrate.sh <name> --init --desc "<description>"`.
@@ -830,6 +868,7 @@ Triggered when PM sends a brief with `action: bootstrap_need`.
 7. Do **not** send direct briefs to spawned agents — `initial_brief` is transmitted by PM via `spawn_request`. OR does not contact the teammate directly post-spawn (INV-002).
 8. Advance state: `bash scripts/wf-orchestrate.sh <name> --complete BOOTSTRAP:INIT`.
 9. Log and notify PM via SendMessage (brief_complete).
+10. (previously step 9) — no change.
 
 ---
 
@@ -1085,6 +1124,11 @@ Triggered if OR receives a resume brief or detects a pre-existing `.sdd-state.js
   <outputs>- Write wf/needs/refresh-agents-doc/design.md</outputs>
   <success_criteria>- design.md contains the 8 mandatory sections</success_criteria>
   <notification_back>SendMessage to 'or' with brief_complete when done.</notification_back>
+  <rodage>
+    Trace workflow observations via:
+    bash scripts/wf-orchestrate.sh <name> --log --msg "[OBS-NNN] <short description>"
+    Numbering is continuous across all agents — do not reset per phase.
+  </rodage>
 </brief>
 ```
 

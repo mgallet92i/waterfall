@@ -47,7 +47,20 @@
       "Bash(bash scripts/wf-orchestrate.sh config-wiring --query)",
       "Bash(touch __TRACKED_VAR__/.claude/wf-session-active.f8a50663-b203-427b-a650-955917d76ac4)",
       "Bash(bash scripts/wf-orchestrate.sh or-stall-on-or-steps --query)",
-      "Skill(waterfall:wf-new)"
+      "Skill(waterfall:wf-new)",
+      "Bash(rm -rf C:/projets/waterfall/worktrees/*)",
+      "Bash(git branch *)",
+      "Bash(git push *)",
+      "Skill(waterfall:wf-resume)",
+      "Bash(rm -f __TRACKED_VAR__/.claude/wf-session-active.beb1ff30-192a-4709-9b31-5c8f1f5929bb)",
+      "Bash(bash C:/projets/waterfall/scripts/wf-orchestrate.sh or-codewrite-guard --complete CLEANUP)",
+      "Skill(waterfall:wf-quit)",
+      "Bash(rm -f __TRACKED_VAR__/.claude/wf-session-active.114311f8-7309-4b58-9206-2d545c54b366)",
+      "Bash(bash C:/projets/waterfall/scripts/wf-orchestrate.sh wf-routing-fix --complete CLOSURE:CLEANUP)",
+      "Bash(rm -f __TRACKED_VAR__/.claude/wf-session-active.f76c061c-d773-49d1-b11b-f04f199a876b)",
+      "Bash(rm -f wf/needs/wf-pm-requirements/.watchdog-cron-active)"
     ]
-  }
+  },
+  "spinnerTipsEnabled": false,
+  "prefersReducedMotion": true
 }

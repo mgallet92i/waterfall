@@ -229,6 +229,12 @@ WHY: `git diff` alone only shows unstaged/uncommitted changes. If the code is st
 If `git log --oneline -3` shows no commits → DO NOT transition to IMPLEMENTED.
 If `git diff HEAD~1` is empty → DO NOT transition to IMPLEMENTED. Resume or BLOCKED.
 7. Run tests: bash (npm test / cargo test / pytest / etc.) → PASS mandatory
+7.5. **Commit all changes** (mandatory before UNIT_TESTS_OK — INV-012):
+```bash
+git -C <work_dir> add -A
+git -C <work_dir> commit -m "feat(T-xxx): implementation + tests"
+```
+WHY: worktrees are destroyed at CLOSURE:CLEANUP_WORKTREES. Any uncommitted change is permanently lost. This step is non-negotiable.
 8. Read-before-Edit taches.md → Tests = "PASS (N/N)", Status = UNIT_TESTS_OK
 9. Send brief_complete to TL via SendMessage
 10. Wait for TL verdict (APPROVED or REJECTED)
@@ -275,6 +281,11 @@ TL sends a `<review_feedback>` with P0/P1 blockers (mandatory) and P2 nits (opti
 3. Fix P2 nits if time allows
 4. Read-before-Edit taches.md → Status = IN_PROGRESS
 5. Re-run tests → PASS
+5.5. **Commit all changes** (mandatory — INV-012):
+```bash
+git -C <work_dir> add -A
+git -C <work_dir> commit -m "fix(T-xxx): address TL review iteration N"
+```
 6. Read-before-Edit taches.md → Tests = PASS (N/N), Status = UNIT_TESTS_OK
 7. Send brief_complete to TL: "TASK_READY_FOR_REVIEW: T-xxx (iteration N)"
 ```
