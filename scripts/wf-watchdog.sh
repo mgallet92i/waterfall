@@ -81,11 +81,17 @@ if [[ -f "$state_file" ]]; then
   peer_last="$(jq -r '.history[-1].agent // "null"' "$state_file" 2>/dev/null || echo "null")"
   history_last_ts="$(jq -r '.history[-1].ts // ""' "$state_file" 2>/dev/null || echo "")"
 
-  # Agent resolution via canonical mapping (EX-075-1, EX-075-2, EX-075-4)
+  # Read dark_factory from state.config (fact-ff2d1fd7) so resolve_step_agent
+  # applies the ping-pong overrides consistently with wf-orchestrate.sh and wf-auth.sh.
+  dark_factory="$(jq -r '.config.dark_factory // "off"' "$state_file" 2>/dev/null || echo "off")"
+  [[ "$dark_factory" != "on" ]] && dark_factory="off"
+
+  # Agent resolution via canonical mapping + ping-pong overrides (EX-075-1, EX-075-2, EX-075-4)
   if [[ "$step_name" != "null" && "$step_phase" != "null" ]]; then
     key="$step_phase:$step_name"
-    if [[ -n "${STEP_AGENT[$key]+x}" ]]; then
-      step_agent="${STEP_AGENT[$key]}"
+    resolved="$(resolve_step_agent "$key" "$dark_factory")"
+    if [[ -n "$resolved" ]]; then
+      step_agent="$resolved"
     fi
     # otherwise step_agent stays "null" (fallback EX-075-2)
   fi
