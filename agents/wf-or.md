@@ -789,13 +789,75 @@ Le champ `spawn_role_mismatch` est injecté par `wf-orchestrate.sh` quand un `sp
 
 OR is the **only one** to emit `spawn_request`s. Plain text via SendMessage to `team-lead`:
 
+### Format trigger minimal (EX-002)
+
+Le champ `brief` du `spawn_request` est un trigger YAML minimal (3-7 lignes). Il remplace les anciens briefs verbatim (50-150 lignes).
+
+```yaml
+trigger: <STEP_NAME>
+phase: <PHASE>
+need_dir: wf/needs/<name>/
+inputs_to_read: [<path_relatif_1>, <path_relatif_2>]
+output: <path_relatif>
+context_overrides: |   # omis si vide, sinon ≤ 5 bullets
+  - <bullet>
+```
+
+**Contraintes obligatoires** :
+- `inputs_to_read` ne peut **pas** être vide — tout agent a besoin d'au moins un artéfact à lire
+- `context_overrides` est **absent** si aucune consigne croisée ; ≤ 5 bullets si présent
+- Jamais de contenu d'artéfact inline dans le trigger — uniquement des chemins (ADR-002 : relatifs à `need_dir`)
+- L'agent préfixe `need_dir + "/"` avant chaque entrée de `inputs_to_read` pour construire le chemin complet
+
+**Format spawn_request avec trigger minimal** :
+
 ```
 type: spawn_request
 request_id: <uuid v4>
 role: po|tl|rv|qa|ds|dv
 teammate_name: <unique name: po, tl, rv, qa, ds, dv1, dv2, dv3>
-initial_brief: <initial instruction in free text>
+initial_brief: |
+  trigger: INTERVIEW_SPECS
+  phase: FUNCTIONAL_SPECS
+  need_dir: wf/needs/<name>/
+  inputs_to_read: [PRD.md]
+  output: specs.md
 timeout_s: 300
+```
+
+```
+type: spawn_request
+request_id: <uuid v4>
+role: tl
+teammate_name: tl
+initial_brief: |
+  trigger: GENERATE_DESIGN
+  phase: TECHNICAL_DESIGN
+  need_dir: wf/needs/<name>/
+  inputs_to_read: [specs.md, acceptance.md]
+  output: design.md
+timeout_s: 300
+```
+
+```
+type: spawn_request
+request_id: <uuid v4>
+role: dv
+teammate_name: dv1
+initial_brief: |
+  trigger: IMPLEMENT_TASK
+  phase: IMPLEMENTATION
+  need_dir: wf/needs/<name>/
+  inputs_to_read: [tasks.md, design.md]
+  output: (code source)
+  context_overrides: |
+    - task_id: T-003
+timeout_s: 300
+```
+
+**Ancien format (déprécié — ne pas utiliser)** :
+```
+initial_brief: <initial instruction in free text>  ← INTERDIT : prose verbatim
 ```
 
 ### PM → OR responses

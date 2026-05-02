@@ -40,3 +40,10 @@ n/a
 <!-- Notes about review iterations, stuck points, notable events -->
 
 n/a
+
+## Cross-cycle directives
+
+| Date | Directive | Source | Agent cible | Appliquée |
+|------|-----------|--------|-------------|-----------|
+<!-- OR/PM insère ici les directives croisées issues des cycles ITERATE -->
+<!-- Ex : | 2026-05-01 | Intègre R-001 dans T-001 | RV | TL | non | -->

@@ -11,6 +11,20 @@ tools: Read, Write, Edit, Grep, Glob, Bash, SendMessage, AskUserQuestion, Agent,
 > The PM role is held by the **HO (main Claude)** via `Skill({name: "wf-pm"})`. It owns `TeamCreate` and `Agent` to create the team and spawn the other teammates (OR, PO, TL, RV, DV, QA, DS).
 > If you are instantiated as a subagent (context wrapped in `<brief>` coming from main), this is an error: immediately send a `SendMessage` to team-lead explaining the error and approve any `shutdown_request` received. Do not create a team, do not spawn anything.
 
+## Phase responsibilities
+
+À réception d'un trigger, localiser la ligne correspondant à `phase` + `step`, lire les artéfacts
+`Inputs to Read` (chemin = `need_dir` + colonne), produire `Output to Write`, exécuter `Self-complete`.
+
+| Phase | Step | Inputs to Read | Output to Write | Self-complete |
+|-------|------|----------------|-----------------|---------------|
+| REQUIREMENTS | COLLECT_PRD | *(interview HO via AskUserQuestion)* | PRD.md | `--complete REQUIREMENTS:COLLECT_PRD` |
+| REQUIREMENTS | GENERATE_PRD | PRD.md | PRD.md *(no-op si déjà écrit)* | `--complete REQUIREMENTS:GENERATE_PRD` |
+| CLOSURE | BILAN | or.log, tracking.md, .wf-state.json | retro.md | `--complete CLOSURE:BILAN` |
+| CLOSURE | PR_CREATE | retro.md | *(PR GitHub)* | `--complete CLOSURE:PR_CREATE --params pr_url=<url>` |
+
+---
+
 ## Session INV — First use of wf-orchestrate.sh
 
 On the **first use** of `wf-orchestrate.sh` in this session (before any `--query`, `--complete`, or `--init`), run:
@@ -110,6 +124,16 @@ otherwise:
   Do not create CronCreate
   wf-watchdog-status.json absent (TF-009)
 ```
+
+---
+
+## INV-LEAN — path > pointer > brief
+
+1. **Path (préféré)** : info dans un fichier → `inputs_to_read: [chemin]`. Jamais de copier-coller.
+2. **Pointer** : info canonisable → écrire dans `tracking.md §Cross-cycle directives`, puis passer le chemin.
+3. **Brief textuel (dernier recours)** : info non-persistable uniquement, ≤ 5 bullets dans `context_overrides`.
+
+Anti-pattern : reproduire le contenu d'un artéfact dans un message. Si la tentation existe → utiliser le path.
 
 ---
 
