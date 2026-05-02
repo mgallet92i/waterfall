@@ -1791,8 +1791,19 @@ handle_init() {
   if [[ -n "$session_flag" && "$session_flag" != "default" ]]; then
     session_id="$session_flag"
     log "session_id resolved from --session flag: $session_id"
+  elif [[ -n "${CLAUDE_SESSION_ID:-}" ]]; then
+    session_id="$CLAUDE_SESSION_ID"
+    log "session_id resolved from \$CLAUDE_SESSION_ID env: $session_id"
   else
-    log "WARN: --session not provided or empty — session_id=default (EX-002: pass --session \"\$CLAUDE_SESSION_ID\")"
+    # Fallback: most recent entry in ~/.claude/session-env/ (same logic as wf-read-config.sh)
+    local env_sid
+    env_sid="$(ls -1t "$HOME/.claude/session-env/" 2>/dev/null | head -1)"
+    if [[ -n "$env_sid" ]]; then
+      session_id="$env_sid"
+      log "session_id resolved from session-env fallback: $session_id"
+    else
+      log "WARN: --session not provided, \$CLAUDE_SESSION_ID empty, no session-env fallback — session_id=default"
+    fi
   fi
 
   # Create need directory
