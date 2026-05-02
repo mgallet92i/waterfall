@@ -68,6 +68,16 @@ The plugin ships:
   - macOS: `brew install jq` (fallback: `port`)
   - Linux: `apt-get` / `dnf` / `yum` / `pacman` / `zypper` / `apk` (auto-detected)
 
+### Optional tools
+
+- **[Semgrep](https://semgrep.dev/docs/for-developers/cli)** — static code analysis used by **TL** during code review. Disabled by default; enable by setting `tools.semgrep: "on"` in `.wf-config.json`. The helper `scripts/lib/wf-semgrep.sh` auto-detects the available runner:
+  1. Native Semgrep CLI (`semgrep` on `$PATH` — install via `pipx install semgrep` or `uv tool install semgrep`)
+  2. Fallback to Docker (`semgrep/semgrep` image, requires Docker Desktop running)
+
+  If neither is available, TL skips Semgrep silently and the review proceeds unchanged. Findings are mapped to the existing blocker/nit scale (`ERROR`→P0, `WARNING`→P1, `INFO`→P2).
+
+  The default ruleset is **strict**: `p/owasp-top-ten` + `p/cwe-top-25` + `p/default`. Override via `tools.semgrep_rules` (array of Semgrep registry packs or local YAML paths). Dead code and duplication detection are out of scope for Semgrep — handled by SonarCloud integration (planned, RV-side).
+
 ---
 
 ## Configuration
@@ -125,6 +135,8 @@ A reference example is shipped at the plugin root: [`.wf-config.example.md`](./.
 | `agent_mode` | Agent spawn mechanism | `team` | `team` (Agent Teams + inter-agent SendMessage), `subagent` (Agent tool, no inter-agent messaging) |
 | `dark_factory` | Autonomy mode for checkpoints | `off` | `on` (auto-validate, log decision), `off` (escalate to HO via AskUserQuestion) |
 | `statusline` | Waterfall statusline state — managed by `scripts/wf-statusline-apply.sh`, do not edit manually | `false` | `true`, `false` |
+| `tools.semgrep` | Run Semgrep static analysis during TL code review (auto-detects native CLI or Docker, silent skip if neither) | `off` | `on`, `off` |
+| `tools.semgrep_rules` | Semgrep rulesets passed as `--config` (registry packs `p/...` or local YAML paths) | `["p/owasp-top-ten", "p/cwe-top-25", "p/default"]` | non-empty array of strings |
 
 **Example** (`.wf-config.json` at repo root):
 
@@ -135,7 +147,8 @@ A reference example is shipped at the plugin root: [`.wf-config.example.md`](./.
   "watchdog": { "interval": "3min" },
   "agent_mode": "team",
   "dark_factory": "off",
-  "statusline": false
+  "statusline": false,
+  "tools": { "semgrep": "off" }
 }
 ```
 

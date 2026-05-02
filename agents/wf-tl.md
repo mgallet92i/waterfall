@@ -251,7 +251,7 @@ TODO → IN_PROGRESS → IMPLEMENTED → UNIT_TESTS_OK → CODE_REVIEW_OK → DO
 1. TL dispatches T-xxx to the DV via SendMessage (XML brief). TL creates the worktree if not already existing for this DV (`git worktree add worktrees/<need>/<dvN> HEAD`), provides `work_dir` in the `<task_assignment>` brief
 2. DV: TODO → IN_PROGRESS → IMPLEMENTED → UNIT_TESTS_OK
 3. DV notifies TL: `brief_complete` (task ID, modified files, test results)
-4. TL runs `git -C worktrees/<need>/<dvN> diff --name-only` in the worktree. If diff empty → REJECTED verdict 'no changes on disk' without qualitative review (EX-044). If non-empty → TL checks that the expected files are present, then qualitative review (6 criteria).
+4. TL runs `git -C worktrees/<need>/<dvN> diff --name-only` in the worktree. If diff empty → REJECTED verdict 'no changes on disk' without qualitative review (EX-044). If non-empty → TL checks that the expected files are present, optionally runs Semgrep static analysis (see §Semgrep static analysis), then qualitative review (6 criteria).
 5a. If APPROVED:
     - Update `taches.md` (TL Review = APPROVED, Status = CODE_REVIEW_OK → DONE)
     - Notify OR (`tl_heartbeat`)
@@ -273,6 +273,29 @@ TODO → IN_PROGRESS → IMPLEMENTED → UNIT_TESTS_OK → CODE_REVIEW_OK → DO
 **Verdict rules**:
 - 0 P0/P1 blocker → **APPROVED** (P2 nits mentioned but optional)
 - ≥ 1 P0/P1 blocker → **REJECTED** with actionable feedback
+
+### Semgrep static analysis (optional, feeds criterion #5)
+
+Invoked between the diff check and the qualitative review when the helper detects an available runner (native CLI or Docker). Driven by `tools.semgrep` in `.wf-config.json` — the helper itself reads the config and skips silently if `off`, no need to gate the call. The ruleset defaults to the strict bundle (`p/owasp-top-ten` + `p/cwe-top-25` + `p/default`) and can be overridden via `tools.semgrep_rules` (array of registry packs or local YAML paths).
+
+```bash
+source ${CLAUDE_PLUGIN_ROOT}/scripts/lib/wf-semgrep.sh
+mapfile -t changed < <(git -C worktrees/<need>/<dvN> diff --name-only)
+wf_semgrep_scan "$(pwd)" "wf/needs/<need>/.semgrep-T-xxx.json" "${changed[@]}"
+```
+
+The output JSON follows Semgrep's schema. When skipped (config `off`, no tool available, etc.) the JSON has a `wf_skipped` field — TL mentions `semgrep: skipped (<reason>)` in `<overall_comment>` and proceeds with the qualitative review unchanged.
+
+When findings are present, TL maps Semgrep severity to the existing blocker/nit scale:
+
+| Semgrep severity | Maps to | Blocking |
+|---|---|---|
+| `ERROR` | P0 blocker | Yes (REJECTED) |
+| `WARNING` | P1 blocker | Yes (REJECTED) |
+| `INFO` | P2 nit | No |
+| `INVENTORY`, `EXPERIMENT` | ignored | — |
+
+Each Semgrep finding becomes a `<blocker>` or `<nit>` entry in `<review_feedback>` — `category` = `semgrep:<check_id>`, `file` / `line` from the finding, `issue` = the finding message, `suggested_fix` = the Semgrep fix suggestion when present (else "see Semgrep rule docs"). The standard verdict rules above still apply (≥ 1 P0/P1 → REJECTED).
 
 ### Rejection feedback format
 ```xml

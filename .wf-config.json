@@ -3,8 +3,8 @@
     "pm": "sonnet",
     "or": "sonnet",
     "po": "sonnet",
-    "tl": "sonnet",
-    "rv": "sonnet",
+    "tl": "opus",
+    "rv": "opus",
     "qa": "sonnet",
     "dv": "sonnet",
     "ds": "sonnet"
@@ -18,5 +18,8 @@
   },
   "agent_mode": "team",
   "dark_factory": "on",
-  "statusline": false
+  "statusline": false,
+  "tools": {
+    "semgrep": "off"
+  }
 }

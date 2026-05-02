@@ -25,6 +25,7 @@ WF_MODEL_DV="sonnet"
 WF_MODEL_DS="sonnet"
 WF_REVIEW_ARTIFACTS=2
 WF_REVIEW_CODE=3
+WF_TOOLS_SEMGREP="off"
 
 if [[ -f "$CONFIG" ]]; then
   CONFIG_SOURCE=".wf-config.json"
@@ -33,6 +34,7 @@ if [[ -f "$CONFIG" ]]; then
   WF_DARK_FACTORY=$(jq -r '.dark_factory // "off"' "$CONFIG")
   WF_REVIEW_ARTIFACTS=$(jq -r '.review_loops.artifacts // 2' "$CONFIG")
   WF_REVIEW_CODE=$(jq -r '.review_loops.code // 3' "$CONFIG")
+  WF_TOOLS_SEMGREP=$(jq -r '.tools.semgrep // "off"' "$CONFIG")
   for role in pm or po tl rv qa dv ds; do
     varname="WF_MODEL_${role^^}"
     val=$(jq -r ".models.${role} // empty" "$CONFIG")
@@ -62,6 +64,30 @@ _in "$WF_WATCHDOG_INTERVAL" off 3min 5min 10min || errors+=("watchdog.interval='
 _in "$WF_LANGUAGE" fr en                        || errors+=("WF_LANGUAGE='$WF_LANGUAGE' (expected:fr|en — auto-detected from \$LANG, override via env)")
 _in "$WF_AGENT_MODE" team subagent               || errors+=("agent_mode='$WF_AGENT_MODE' (expected:team|subagent)")
 _in "$WF_DARK_FACTORY" on off                    || errors+=("dark_factory='$WF_DARK_FACTORY' (expected:on|off)")
+_in "$WF_TOOLS_SEMGREP" on off                   || errors+=("tools.semgrep='$WF_TOOLS_SEMGREP' (expected:on|off)")
+
+# tools.semgrep_rules — optional array of strings (registry packs or local paths)
+WF_TOOLS_SEMGREP_RULES_RECAP="default (p/owasp-top-ten, p/cwe-top-25, p/default)"
+if [[ -f "$CONFIG" ]]; then
+  rules_kind=$(jq -r '.tools.semgrep_rules | type' "$CONFIG" 2>/dev/null)
+  case "$rules_kind" in
+    array)
+      rules_count=$(jq -r '.tools.semgrep_rules | length' "$CONFIG")
+      if (( rules_count == 0 )); then
+        errors+=("tools.semgrep_rules=[] (expected: non-empty array of strings, or omit to use the strict default)")
+      else
+        bad=$(jq -r '.tools.semgrep_rules[] | select(type != "string" or length == 0) | "1"' "$CONFIG" | head -1)
+        if [[ -n "$bad" ]]; then
+          errors+=("tools.semgrep_rules contains non-string or empty entries (expected: array of non-empty strings)")
+        else
+          WF_TOOLS_SEMGREP_RULES_RECAP=$(jq -r '.tools.semgrep_rules | join(", ")' "$CONFIG")
+        fi
+      fi
+      ;;
+    null|"") ;;  # absent → use default
+    *) errors+=("tools.semgrep_rules type='$rules_kind' (expected:array of strings)") ;;
+  esac
+fi
 
 for role in pm or po tl rv qa dv ds; do
   varname="WF_MODEL_${role^^}"
@@ -73,6 +99,7 @@ done
 
 export WF_WATCHDOG_INTERVAL WF_LANGUAGE WF_AGENT_MODE WF_DARK_FACTORY
 export WF_REVIEW_ARTIFACTS WF_REVIEW_CODE
+export WF_TOOLS_SEMGREP WF_TOOLS_SEMGREP_RULES_RECAP
 export WF_MODEL_PM WF_MODEL_OR WF_MODEL_PO WF_MODEL_TL
 export WF_MODEL_RV WF_MODEL_QA WF_MODEL_DV WF_MODEL_DS
 
@@ -109,6 +136,8 @@ cat <<EOF
 - **language**: $WF_LANGUAGE  _(auto-detected from \$LANG; override via env WF_LANGUAGE)_
 - **models**: pm=$WF_MODEL_PM, or=$WF_MODEL_OR, po=$WF_MODEL_PO, tl=$WF_MODEL_TL, rv=$WF_MODEL_RV, qa=$WF_MODEL_QA, dv=$WF_MODEL_DV, ds=$WF_MODEL_DS
 - **review_loops**: artifacts=$WF_REVIEW_ARTIFACTS, code=$WF_REVIEW_CODE
+- **tools**: semgrep=$WF_TOOLS_SEMGREP  _(on = TL runs Semgrep static analysis on the diff during code review; off = skip)_
+- **semgrep rules**: $WF_TOOLS_SEMGREP_RULES_RECAP
 - **sid**: ${WF_SID:-non défini}
 
 > To modify: edit \`.wf-config.json\` at the root (schema: \`.wf-config.example.md\`).
