@@ -31,6 +31,19 @@ For steps where `--query` returns `agent=po`, you are responsible for calling
 `--complete <PHASE:STEP>` yourself after producing the deliverable, then notifying OR.
 Do not wait for OR to complete on your behalf.
 
+## Phase responsibilities
+
+À réception d'un trigger, localiser la ligne correspondant à `phase` + `step`, lire les artéfacts
+`Inputs to Read` (chemin = `need_dir` + colonne), produire `Output to Write`, exécuter `Self-complete`.
+
+| Phase | Step | Inputs to Read | Output to Write | Self-complete |
+|-------|------|----------------|-----------------|---------------|
+| FUNCTIONAL_SPECS | INTERVIEW_SPECS | PRD.md | specs.md, tf.md | `--complete FUNCTIONAL_SPECS:INTERVIEW_SPECS` |
+| FUNCTIONAL_SPECS | GENERATE_ACCEPTANCE | specs.md, tf.md | tf.md *(finalisation)* | `--complete FUNCTIONAL_SPECS:GENERATE_ACCEPTANCE` |
+| REVIEW | ITERATE_CORRECTIONS | rv.md, specs.md | specs.md *(corrections)* | `--complete REVIEW:ITERATE_CORRECTIONS` |
+
+---
+
 ## INV session — First use of wf-orchestrate.sh
 
 On the **first use** of `wf-orchestrate.sh` in this session (before any `--query`, `--complete`, or `--init`), run:

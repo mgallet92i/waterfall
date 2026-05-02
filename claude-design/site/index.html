@@ -224,18 +224,18 @@
     <article class="agent" data-role="PM">
       <span class="agent__code">PM</span>
       <h3>Product Manager</h3>
-      <p>Elicits requirements, writes EX stories, frames the problem in user terms before anyone draws a box.</p>
+      <p>Interviews HO, writes PRD.md. Owns the REQUIREMENTS phase end-to-end. Also drives CLOSURE (retro, PR).</p>
       <ul class="agent__io">
-        <li><span>in</span> brief, HO answers</li>
-        <li><span>out</span> requirements doc</li>
+        <li><span>in</span> HO interview, trigger</li>
+        <li><span>out</span> PRD.md, retro.md</li>
       </ul>
     </article>
     <article class="agent" data-role="PO">
       <span class="agent__code">PO</span>
       <h3>Product Owner</h3>
-      <p>Arbitrates trade-offs. Writes functional specs and acceptance criteria. Final word on scope.</p>
+      <p>Reads PRD.md authored by PM. Writes functional specs and acceptance criteria. Starts at FUNCTIONAL_SPECS.</p>
       <ul class="agent__io">
-        <li><span>in</span> requirements</li>
+        <li><span>in</span> PRD.md</li>
         <li><span>out</span> functional specs, AC</li>
       </ul>
     </article>
@@ -383,13 +383,13 @@
       </li>
 
       <!-- Left arm -->
-      <li class="vphase vphase--left" style="left:0px; top:100px; width:150px;" data-tip="PM elicits, PO arbitrates. EX stories and structured requirements are written.">
+      <li class="vphase vphase--left" style="left:0px; top:100px; width:150px;" data-tip="PM interviews HO and writes PRD.md. EX stories and structured requirements are written.">
         <span class="vphase__id">02 · Requirements</span>
-        <span class="vphase__owner">PM · PO</span>
+        <span class="vphase__owner">PM</span>
       </li>
       <li class="vphase vphase--left" style="left:90px; top:200px; width:170px;" data-tip="Functional behaviour, flows, edge cases, acceptance criteria. No code yet.">
         <span class="vphase__id">03 · Functional specs</span>
-        <span class="vphase__owner">PO · DS</span>
+        <span class="vphase__owner">PO</span>
       </li>
       <li class="vphase vphase--left" style="left:170px; top:300px; width:170px;" data-tip="TL writes the architecture and stack. Trade-offs documented.">
         <span class="vphase__id">04 · Technical design</span>

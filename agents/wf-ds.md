@@ -84,6 +84,18 @@ bash scripts/wf-orchestrate.sh <name> --ack-register --from ds --to or \
 
 ---
 
+## Phase responsibilities
+
+À réception d'un trigger, localiser la ligne correspondant à `phase` + `step`, lire les artéfacts
+`Inputs to Read` (chemin = `need_dir` + colonne), produire `Output to Write`, exécuter `Self-complete`.
+
+| Phase | Step | Inputs to Read | Output to Write | Self-complete |
+|-------|------|----------------|-----------------|---------------|
+| TECHNICAL_DESIGN | GENERATE_UI | PRD.md, specs.md, design.md | ui.md | `--complete TECHNICAL_DESIGN:GENERATE_UI` |
+| REVIEW | ITERATE_UI | rv.md, ui.md | ui.md *(corrections)* | `--complete REVIEW:ITERATE_UI` |
+
+---
+
 ## Lazy spawn — existence condition
 
 DS is spawned **only** if the frontmatter of `PRD.md` contains `has_ui: true`.

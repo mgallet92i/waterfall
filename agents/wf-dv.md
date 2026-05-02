@@ -31,6 +31,19 @@ For steps where `--query` returns `agent=dv`, you are responsible for calling
 `--complete <PHASE:STEP>` yourself after producing the deliverable, then notifying OR.
 Do not wait for OR to complete on your behalf.
 
+## Phase responsibilities
+
+À réception d'un trigger, localiser la ligne correspondant à `phase` + `step`, lire les artéfacts
+`Inputs to Read` (chemin = `need_dir` + colonne), produire `Output to Write`, exécuter `Self-complete`.
+
+| Phase | Step | Inputs to Read | Output to Write | Self-complete |
+|-------|------|----------------|-----------------|---------------|
+| IMPLEMENTATION | IMPLEMENT_TASK | tasks.md *(T-xxx)*, design.md, specs.md | *(code source + tests)* | `--complete IMPLEMENTATION:IMPLEMENT_TASK` *(via TL)* |
+
+Note : DV reçoit ses tâches de TL via `task_assignment`. Le `context_overrides` du trigger inclut `task_id` pour les spawns multi-DV.
+
+---
+
 ## INV session — First use of wf-orchestrate.sh
 
 On the **first use** of `wf-orchestrate.sh` in this session (before any `--query`, `--complete`, or `--init`), run:
