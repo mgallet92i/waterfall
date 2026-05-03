@@ -41,6 +41,8 @@ PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
 # _wf_normalize_agent_type — strip plugin prefix injected by Claude Code.
 # When agents are spawned via the waterfall plugin, agent_type arrives as
 # "waterfall:wf-<role>" (e.g. "waterfall:wf-or"). Strip to canonical "<role>".
+# Suffixed forms (or-2, dv1, or1) are pass-through — handled at point of use
+# by respawn-alias regex (see Step 2 of _wf_codewrite_guard, Step 9.bis main).
 _wf_normalize_agent_type() {
   local raw="$1"
   if [[ "$raw" =~ ^waterfall:wf-(.+)$ ]]; then
@@ -176,6 +178,117 @@ _wf_codewrite_guard() {
   exit 2
 }
 
+# ─── Bash write-intent guard (EX-006 / B2) ───────────────────────────────────
+#
+# Intercepts Bash commands that would write to a business artifact under
+# wf/needs/<name>/ (PRD/specs/acceptance/design/ui/tasks/review/tracking/retro)
+# via redirections `>` `>>`, `tee [-a]`, `sed -i`, `dd of=`, or heredocs
+# `<<EOF > artifact`.
+#
+# Mapping authoritative (INV-001) — only the listed agent may write its artifact:
+#   pm → PRD.md, tracking.md, retro.md
+#   po → specs.md, acceptance.md
+#   tl → design.md, tasks.md
+#   ds → ui.md
+#   rv → review.md
+#   or → blocked on ALL artifacts (B2 / OR auto-author elimination)
+#
+# False negatives accepted at v1 (cf. design §6.1): `eval "$(echo … > x)"`,
+# `printf '%s' x 1>artifact`, etc. Targets the naive bypass class observed
+# in vivo, not adversarial obfuscation.
+_wf_bash_guard() {
+  local payload="$1"
+  local agent_type cmd
+  local need_name="${WF_NEED_NAME:-}"
+
+  agent_type=$(echo "$payload" | jq -r '.agent_type // ""')
+  agent_type="$(_wf_normalize_agent_type "$agent_type")"
+  [[ -z "$agent_type" || "$agent_type" == "null" ]] && agent_type="pm"
+  cmd=$(echo "$payload" | jq -r '.tool_input.command // ""')
+
+  # Pattern: write-intent operator followed (anywhere before pipe/sep) by an
+  # artifact path under wf/needs/<n>/.
+  local artifacts_re='(PRD|specs|acceptance|design|ui|tasks|review|tracking|retro)\.md'
+  local path_re="wf/needs/[^[:space:]]+/${artifacts_re}"
+  local writeop_re="(>>?|tee( +-a)?|sed +-i|dd +of=)[^|;&]*${path_re}"
+
+  if ! echo "$cmd" | grep -qE "$writeop_re"; then
+    # No write-intent on a business artifact detected → pass-through.
+    exit 0
+  fi
+
+  # Extract first matching artifact basename for log clarity.
+  local matched_artifact
+  matched_artifact=$(echo "$cmd" | grep -oE "$path_re" | head -1)
+
+  # Canonical role match — branches generalised via case patterns to cover
+  # respawn aliases (or-2, tl-3, po1, …) without needing pre-normalisation.
+  case "$agent_type" in
+    pm|pm-[0-9]*|pm[0-9]*)
+      if echo "$cmd" | grep -qE "wf/needs/[^[:space:]]+/(PRD|tracking|retro)\.md"; then
+        _wf_cw_log "$need_name" "allow" "Bash" "$matched_artifact" "$agent_type" "pm_owned_bash_write"
+        exit 0
+      fi
+      echo "wf-auth: PM bash write blocked on non-owned artifact: $matched_artifact" >&2
+      _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "non_owned_bash_write"
+      exit 2
+      ;;
+    po|po-[0-9]*|po[0-9]*)
+      if echo "$cmd" | grep -qE "wf/needs/[^[:space:]]+/(specs|acceptance)\.md"; then
+        _wf_cw_log "$need_name" "allow" "Bash" "$matched_artifact" "$agent_type" "po_owned_bash_write"
+        exit 0
+      fi
+      echo "wf-auth: PO bash write blocked on non-owned artifact: $matched_artifact" >&2
+      _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "non_owned_bash_write"
+      exit 2
+      ;;
+    tl|tl-[0-9]*|tl[0-9]*)
+      if echo "$cmd" | grep -qE "wf/needs/[^[:space:]]+/(design|tasks)\.md"; then
+        _wf_cw_log "$need_name" "allow" "Bash" "$matched_artifact" "$agent_type" "tl_owned_bash_write"
+        exit 0
+      fi
+      echo "wf-auth: TL bash write blocked on non-owned artifact: $matched_artifact" >&2
+      _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "non_owned_bash_write"
+      exit 2
+      ;;
+    ds|ds-[0-9]*|ds[0-9]*)
+      if echo "$cmd" | grep -qE "wf/needs/[^[:space:]]+/ui\.md"; then
+        _wf_cw_log "$need_name" "allow" "Bash" "$matched_artifact" "$agent_type" "ds_owned_bash_write"
+        exit 0
+      fi
+      echo "wf-auth: DS bash write blocked on non-owned artifact: $matched_artifact" >&2
+      _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "non_owned_bash_write"
+      exit 2
+      ;;
+    rv|rv-[0-9]*|rv[0-9]*)
+      if echo "$cmd" | grep -qE "wf/needs/[^[:space:]]+/review\.md"; then
+        _wf_cw_log "$need_name" "allow" "Bash" "$matched_artifact" "$agent_type" "rv_owned_bash_write"
+        exit 0
+      fi
+      echo "wf-auth: RV bash write blocked on non-owned artifact: $matched_artifact" >&2
+      _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "non_owned_bash_write"
+      exit 2
+      ;;
+    qa|qa-[0-9]*|qa[0-9]*|dv|dv[0-9]*|dv-[0-9]*)
+      # QA and DV are not authors of any business artifact (INV-001).
+      echo "wf-auth: $agent_type bash write blocked on non-owned artifact: $matched_artifact" >&2
+      _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "non_owned_bash_write"
+      exit 2
+      ;;
+    or|or-[0-9]*|or[0-9]*)
+      # OR never writes business artifacts (B2 / EX-006 core invariant).
+      echo "wf-auth: OR bash write blocked on artifact: $matched_artifact (B2)" >&2
+      _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "or_bash_bypass"
+      exit 2
+      ;;
+    *)
+      echo "wf-auth: unknown agent_type=$agent_type bash write blocked on $matched_artifact" >&2
+      _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "unknown_agent_bash"
+      exit 2
+      ;;
+  esac
+}
+
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 # 1. jq check (ADR-004).
@@ -195,10 +308,24 @@ if ! echo "$payload" | jq -e . >/dev/null 2>&1; then
 fi
 
 # 2b. Early dispatch for Write/Edit/NotebookEdit — codewrite guard (INV-001: before --complete branch).
+# Bash branch (EX-006 / B2): intercept write-intent commands targeting business artifacts.
+# Bash dispatch returns to main flow on pass-through (no write-intent detected) — the
+# hook then continues to the wf-orchestrate.sh --complete identity check below.
 _tool_name_early=$(echo "$payload" | jq -r '.tool_name // ""')
 case "$_tool_name_early" in
   Write|Edit|NotebookEdit)
     _wf_codewrite_guard "$payload"
+    ;;
+  Bash)
+    # _wf_bash_guard exits 0 (allow / pass-through, no write-intent on artifact)
+    # or 2 (block). Run in a subshell so allow returns control to parent for
+    # the legacy --complete identity check below; block propagates exit 2.
+    ( _wf_bash_guard "$payload" )
+    bash_guard_rc=$?
+    if [[ "$bash_guard_rc" -ne 0 ]]; then
+      exit "$bash_guard_rc"
+    fi
+    # Fall through to --complete identity logic.
     ;;
 esac
 

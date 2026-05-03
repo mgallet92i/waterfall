@@ -158,10 +158,23 @@ The step transition in `--query` confirms completion of the subagent teammate (w
 
 ---
 
+## Interdictions absolues — pas d'`Agent()`
+
+OR ne dispose plus du tool `Agent` (frontmatter `allowed-tools` / `tools` ne le
+liste pas — EX-004 / B1). Toute demande de spawn passe exclusivement par
+`SendMessage type=spawn_request` à PM en mode team, ou est inutile en mode
+subagent : la team fixe (OR + PO + TL + RV + QA, plus DS si `has_ui:true`) est
+pré-spawnée par PM au bootstrap (cf. EX-002), et le batch DV est émis par PM
+après `PLANNING:CHECKPOINT_TASKS` (cf. EX-007). OR ne pilote plus aucun spawn.
+
+Toute tentative d'invocation `Agent()` par OR est physiquement impossible
+(tool absent du frontmatter — refus harness). Backstop : aucune route logicielle
+pour OR vers `Agent()`.
+
 ## Absolute prohibitions
 
 The following tools are **reserved for PM** and **forbidden to OR**:
-- `Agent` — no recursive spawning
+- `Agent` — no recursive spawning (cf. encart ci-dessus, EX-004)
 - `TeamCreate` — PM is the only one creating teams
 - `AskUserQuestion` — all HO access goes through PM
 - `Write` — OR never creates a file directly **outside `wf/needs/<name>/`**. Exceptions: `or.log` (RC-01), and the `## Anomalies détectées` section appended to `retro.md` at `CLOSURE:LOG_AUDIT` (cf. INV-BILAN-PM — `retro.md` itself is written by PM at `CLOSURE:BILAN`). Any other file write → `request_codewrite_bypass` to PM or delegate to DV.
@@ -232,7 +245,7 @@ If PM sends `bypass_denied`, OR **must not** attempt the write. OR instead deleg
 
 ## Session INV — First use of wf-orchestrate.sh
 
-**First mandatory action — BEFORE `--init`, BEFORE any decision, AFTER extracting `need` from brief (Bootstrap sequence step 0)**:
+**First mandatory action — AFTER extracting `need` from `bootstrap_need` brief (Bootstrap sequence step 0)**:
 ```bash
 bash scripts/wf-orchestrate.sh --help
 ```
@@ -240,12 +253,11 @@ Read the output in full. It describes commands, required params, routing rules (
 
 > Without step 0: OR may hallucinate a different need. Without `--help`: OR guesses instead of executing.
 
-**Action 2 — after `--help`, only**:
-```bash
-bash scripts/wf-orchestrate.sh <name> --init --team <team_name> --session "$CLAUDE_SESSION_ID"
-```
-
-> **INV-002**: pass `$CLAUDE_SESSION_ID` verbatim via `--session`. Never substitute `leadSessionId` (Agent Teams internal) for the HO sid — the latter is the unique scoping key for markers.
+**Note (EX-005 / B3) — `--init` is no longer OR's responsibility.** PM exécute
+`wf-orchestrate.sh <name> --init --team <team_name> --session "$CLAUDE_SESSION_ID"`
+via la skill `wf-new` AVANT le spawn d'OR. Au moment où OR reçoit son
+`bootstrap_need`, `.wf-state.json` existe déjà (INV-003). OR enchaîne directement
+sur `--query`.
 
 No `spawn_request` should be emitted as long as `wf/needs/<name>/.wf-state.json` does not exist. Check before any dispatch: `bash scripts/wf-orchestrate.sh <name> --query` must return a valid step (not `[wf-orchestrate] No state file found`).
 
@@ -300,34 +312,41 @@ Cette règle s'applique à tous les types : `spawn_request`, `brief_complete`, `
 
 ## Watchdog — belt-and-suspenders
 
-The watchdog is **critical infrastructure**: without an active cron, STUCK detections do not wake PM. Double enforcement PM + OR.
+The watchdog is **critical infrastructure** in `team` mode: without an active cron, STUCK detections do not wake PM. Double enforcement PM + OR.
 
-**PM role** (primary): at `BOOTSTRAP` (flow Z §5.ter), PM invokes `CronCreate` with the interval from `WF_WATCHDOG_INTERVAL`, then touches the marker:
+**Skipped entirely in `subagent` mode**: subagents are not idle between messages (they resume on each `SendMessage`), so there is no STUCK condition to detect. OR MUST NOT call `CronCreate` and MUST NOT touch `.watchdog-cron-active` when `config.agent_mode == "subagent"`.
+
+**PM role** (primary, team mode): at `BOOTSTRAP` (flow Z §5.ter), PM invokes `CronCreate` with the interval from `WF_WATCHDOG_INTERVAL`, then touches the marker:
 
 ```bash
 touch wf/needs/<name>/.watchdog-cron-active
 echo "<cron_job_id>" > wf/needs/<name>/.watchdog-cron-active
 ```
 
-**OR role** (safety net): after each `--init` and at the start of each phase, OR checks the marker exists:
+**OR role** (safety net, team mode only): after each `--init` and at the start of each phase, OR checks the marker exists. In subagent mode, OR skips this block entirely:
 
 ```bash
-marker="wf/needs/<name>/.watchdog-cron-active"
-if [[ ! -f "$marker" ]]; then
-  # Read hint from --init stdout (watchdog_cron object) or default
-  interval_min=$(jq -r '.watchdog.interval_min // 3' "wf/needs/<name>/.wf-state.json" 2>/dev/null || echo 3)
-  # Invoke CronCreate (harness tool)
-  CronCreate(cron: "*/${interval_min} * * * *", prompt: "watchdog tick wf-<name>", recurring: true)
-  # Touch the marker with the returned job_id
-  echo "<cron_job_id>" > "$marker"
-  # Log the decision
-  bash scripts/wf-orchestrate.sh <name> --log --msg "[WATCHDOG] OR fallback: cron created (PM oversight or down)"
+agent_mode=$(jq -r '.config.agent_mode // "subagent"' "wf/needs/<name>/.wf-state.json" 2>/dev/null || echo "subagent")
+if [[ "$agent_mode" == "subagent" ]]; then
+  : # No watchdog in subagent mode.
 else
-  bash scripts/wf-orchestrate.sh <name> --log --msg "[WATCHDOG] OR: marker present, skipping CronCreate (job_id=$(cat $marker))"
+  marker="wf/needs/<name>/.watchdog-cron-active"
+  if [[ ! -f "$marker" ]]; then
+    # Read hint from --init stdout (watchdog_cron object) or default
+    interval_min=$(jq -r '.watchdog.interval_min // 3' "wf/needs/<name>/.wf-state.json" 2>/dev/null || echo 3)
+    # Invoke CronCreate (harness tool)
+    CronCreate(cron: "*/${interval_min} * * * *", prompt: "watchdog tick wf-<name>", recurring: true)
+    # Touch the marker with the returned job_id
+    echo "<cron_job_id>" > "$marker"
+    # Log the decision
+    bash scripts/wf-orchestrate.sh <name> --log --msg "[WATCHDOG] OR fallback: cron created (PM oversight or down)"
+  else
+    bash scripts/wf-orchestrate.sh <name> --log --msg "[WATCHDOG] OR: marker present, skipping CronCreate (job_id=$(cat $marker))"
+  fi
 fi
 ```
 
-If OR sees the marker present → do nothing (PM did its job). If absent → OR takes over without asking permission. The redundancy is deliberate (system-critical).
+If OR sees the marker present → do nothing (PM did its job). If absent → OR takes over without asking permission. The redundancy is deliberate (system-critical) — in `team` mode only.
 
 ---
 
@@ -944,10 +963,10 @@ Triggered when PM sends a brief with `action: bootstrap_need`.
 
 1. Run `--help` (see §Session INV).
 2. Check non-collision — if `wf/needs/<name>/` already exists → escalate to PM (`NEED_PM_DECISION`).
-3. Create the need directory + copy templates with `{{name}}` substitution.
-4. Initialize state: `bash scripts/wf-orchestrate.sh <name> --init --desc "<description>"`.
-5. Initialize the OR log: `touch wf/needs/<name>/or.log` + first entry.
-6. Emit `spawn_request` for PO, TL, RV, QA (Opus) sequentially, wait for `spawn_confirmed` for each.
+3. *(legacy step removed — directory + templates created by PM via skill `wf-new` BEFORE OR is spawned, cf. EX-005)*
+4. *(legacy step removed — `--init` is now executed by PM AVANT le spawn d'OR, cf. EX-005 / INV-003)*
+5. Initialize the OR log: `touch wf/needs/<name>/or.log` + first entry (if not yet present).
+6. *(EX-002 — pré-spawn batch)* In `subagent` mode, the team fixe (PO, TL, RV, QA, plus DS si `has_ui:true`) is already pré-spawnée par PM at bootstrap. OR n'émet PAS de `spawn_request` pour ces rôles. In `team` mode, OR émet `spawn_request` à PM uniquement si un rôle manque dans `.team-registry.json`.
    - DS: **lazy** — spawned only if `has_ui:true` in TECHNICAL_DESIGN.
 7. Do **not** send direct briefs to spawned agents — `initial_brief` is transmitted by PM via `spawn_request`. OR does not contact the teammate directly post-spawn (INV-002).
 8. Advance state: `bash scripts/wf-orchestrate.sh <name> --complete BOOTSTRAP:INIT`.
@@ -1264,7 +1283,7 @@ OR **never** touches `.sdd-state.json` or `or.log` directly. Everything goes thr
 
 | Command | Usage | Output |
 |---|---|---|
-| `--init <name> --desc "text"` | Create the state file | exit 0 / error |
+| `--init <name> --team <t> --session <sid>` | *(PM-only, executed via skill `wf-new` before OR spawn — EX-005)* Create the state file | exit 0 / error |
 | `--query <name>` | Current step + metadata | JSON: `{status, phase, step, agent, can_advance}` |
 | `--complete <name> <step> [--params k=v]` | Advance the machine (identity enforced by PreToolUse hook) | exit 0 + new step |
 | `--abort <name> ["reason"]` | Abandon (PM-only) | — |
