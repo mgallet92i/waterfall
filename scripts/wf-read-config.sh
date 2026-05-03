@@ -13,7 +13,7 @@ CONFIG_SOURCE="DEFAULTS (file missing)"
 
 # Defaults
 WF_WATCHDOG_INTERVAL="3min"
-WF_AGENT_MODE="team"
+WF_AGENT_MODE="subagent"
 WF_DARK_FACTORY="off"
 WF_MODEL_PM="sonnet"
 WF_MODEL_OR="sonnet"
@@ -30,7 +30,7 @@ WF_TOOLS_SEMGREP="off"
 if [[ -f "$CONFIG" ]]; then
   CONFIG_SOURCE=".wf-config.json"
   WF_WATCHDOG_INTERVAL=$(jq -r '.watchdog.interval // "5min"' "$CONFIG")
-  WF_AGENT_MODE=$(jq -r '.agent_mode // "team"' "$CONFIG")
+  WF_AGENT_MODE=$(jq -r '.agent_mode // "subagent"' "$CONFIG")
   WF_DARK_FACTORY=$(jq -r '.dark_factory // "off"' "$CONFIG")
   WF_REVIEW_ARTIFACTS=$(jq -r '.review_loops.artifacts // 2' "$CONFIG")
   WF_REVIEW_CODE=$(jq -r '.review_loops.code // 3' "$CONFIG")

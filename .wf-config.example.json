@@ -16,7 +16,7 @@
   "watchdog": {
     "interval": "3min"
   },
-  "agent_mode": "team",
+  "agent_mode": "subagent",
   "dark_factory": "off",
   "statusline": false
 }
