@@ -78,9 +78,8 @@ Load the `wf-pm` skill via `Skill({name: "wf-pm"})`. The main conversation thus 
 if [[ "$WF_AGENT_MODE" == "team" ]]; then
   # Default mode
   TeamCreate wf-<name>
-  # spawn OR as teammate with model=$WF_MODEL_OR
 else
-  # Subagent mode (ADR-006): spawn OR via Agent tool, no TeamCreate
+  # Subagent mode (ADR-006): no TeamCreate, agents are spawned via Agent tool
   # Inform HO: "Subagent mode active — SendMessage and inter-agent watchdog disabled"
 fi
 ```
@@ -95,13 +94,55 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-registry.sh init <name>
 ```
 > **DEC-001**: this registry is **traceability only** — the `wf-auth.sh` hook reads `agent_type` from the harness payload directly. Init is no longer a prerequisite to `--complete` enforcement.
 
-### Step 5 — Spawn OR
-PM spawns the first teammate with the configured model:
-- `name: or`
-- `model: $WF_MODEL_OR` (default: `sonnet`)
-- `agent: agents/wf-or.md`
+### Step 4.ter — `wf-orchestrate.sh --init` (PM, AVANT tout spawn) — EX-005 / B3
 
-Wait for `spawn_confirmed` from OR before continuing.
+> **PM exécute `--init` AVANT le spawn d'OR**. Au moment où OR reçoit son
+> `bootstrap_need`, `.wf-state.json` existe déjà (INV-003). OR ne porte plus
+> la responsabilité d'init.
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> \
+  --init --team wf-<name> --session "${CLAUDE_SESSION_ID}"
+```
+
+**Idempotence** (TF-021) — si `.wf-state.json` existe déjà :
+- soit le script renvoie exit 0 idempotent (no-op)
+- soit exit 1 avec message clair désignant l'état existant
+- dans les deux cas : `.wf-state.json` n'est pas corrompu, aucun artéfact métier modifié.
+
+**Critère opposable** (TF-010) : après cette étape, `wf/needs/<name>/.wf-state.json`
+existe et contient `phase`, `step`, `session_id` non nul.
+
+### Step 5 — Pré-spawn batch de la team fixe (EX-002 / F3)
+
+> **PM pré-spawne en UN SEUL BATCH** la team fixe avant de transférer le
+> pilotage à OR. OR ne pilote plus le spawn (cf. EX-004 — tool `Agent` retiré
+> du frontmatter d'OR). Aucun `spawn_request` n'est émis par OR pour ces rôles
+> fixes durant la totalité du workflow (TF-005).
+
+**Team fixe (toujours)** : `or, po, tl, rv, qa`.
+**DS conditionnel** : ajouté au batch **ssi** `PRD.md` frontmatter porte `has_ui: true` (TF-004).
+**DV** : **non** spawné ici. Émission lazy après `PLANNING:CHECKPOINT_TASKS` (cf. Step 9).
+
+```
+# Mode team
+TeamCreate already done at Step 4 → spawn each role as teammate
+  in a single PM turn (5 ou 6 spawns), with model=$WF_MODEL_<role>.
+
+# Mode subagent
+Single PM turn with N parallel Agent() calls:
+  Agent(subagent_type: wf-or, prompt: <bootstrap_need>)
+  Agent(subagent_type: wf-po, prompt: <stand-by — wait for OR brief>)
+  Agent(subagent_type: wf-tl, prompt: <stand-by>)
+  Agent(subagent_type: wf-rv, prompt: <stand-by>)
+  Agent(subagent_type: wf-qa, prompt: <stand-by>)
+  # if PRD.has_ui == true:
+  Agent(subagent_type: wf-ds, prompt: <stand-by>)
+```
+
+**Critère opposable** (TF-003 / TF-004) : à la sortie de `BOOTSTRAP:SPAWN_TEAM`,
+`wf/needs/<name>/.team-registry.json` contient `or, po, tl, rv, qa` (et `ds` si
+`has_ui:true`), pas `dv`.
 
 ### Step 5.ter — Conditional watchdog (belt-and-suspenders)
 
@@ -131,37 +172,58 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-registry.sh add <name> <or_agent_id> or
 ```
 > **DEC-001**: traceability only — enforcement uses `agent_type` from the payload. Skipping this step does not prevent OR from completing its steps.
 
-### Step 6 — Bootstrap brief
-PM sends OR a brief `action: bootstrap_need` enriched with the config:
-```json
-{
-  "action": "bootstrap_need",
-  "need_name": "<name>",
-  "description": "<HO description>",
-  "need_dir": "wf/needs/<name>/",
-  "has_ui": false,
-  "team_name": "wf-<name>",
-  "config": {
-    "watchdog_interval": "<WF_WATCHDOG_INTERVAL>",
-    "language": "<WF_LANGUAGE>",
-    "agent_mode": "<WF_AGENT_MODE>",
-    "dark_factory": "<WF_DARK_FACTORY>",
-    "models": {
-      "po": "<WF_MODEL_PO>", "tl": "<WF_MODEL_TL>", "rv": "<WF_MODEL_RV>",
-      "qa": "<WF_MODEL_QA>", "dv": "<WF_MODEL_DV>", "ds": "<WF_MODEL_DS>"
-    },
-    "review_loops": { "artifacts": "<WF_REVIEW_ARTIFACTS>", "code": "<WF_REVIEW_CODE>" }
-  }
-}
-```
-OR takes over: initializes the state file (templates have already been copied by PM in step 2.bis).
+### Step 6 — Bootstrap brief (PM → OR, format `intent + context_files`) — EX-001 / F1
 
-**Important (ROB-C07)**: OR MUST pass the HO `CLAUDE_SESSION_ID` to `--init` via the `--session` flag:
-```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --init --team wf-<name> --session "${CLAUDE_SESSION_ID}"
+> **Discipline brief opposable** (INV-005) : `intent:` + `context_files:`,
+> corps hors `context_files:` < 20 lignes, **pas** de paraphrase de PRD.md.
+> Gabarit aligné sur `agents/wf-pm.md §Gabarits de briefs` (T-003).
+
+PM envoie à OR (à la sortie du batch Step 5) un seul `bootstrap_need` :
+
+```yaml
+type: bootstrap_need
+need: <name>
+intent: <1 phrase ≤ 200 caractères — la mission HO synthétisée>
+context_files:
+  - wf/needs/<name>/PRD.md
+config:
+  agent_mode: <subagent|team>
+  dark_factory: <on|off>
+  language: <fr|en>
+  watchdog_interval: <WF_WATCHDOG_INTERVAL>
+  models: { or, po, tl, rv, qa, dv, ds }
+  review_loops: { artifacts, code }
+# corps libre ≤ 20 lignes — pas de paraphrase de PRD.md
 ```
-This guarantees that the `session_id` in `.wf-state.json` matches the marker created in step 1.bis.
-See `agents/wf-or.md` Bootstrap Sequence section and `handle_init()` flag `--session`.
+
+**Critère opposable** (TF-001) : champ `intent:` ≤ 200 caractères, champ
+`context_files:` non vide, corps hors `context_files:` < 20 lignes, aucune
+duplication du contenu de `PRD.md`.
+
+OR enchaîne directement sur `--query` (l'init a été fait au Step 4.ter par PM —
+pas de double-init côté OR).
+
+### Step 9 — Étape post-PLANNING : DV-lazy batch (EX-007)
+
+> **Déclencheur** : juste après `PLANNING:CHECKPOINT_TASKS` validé.
+> Cette étape est portée par PM (cf. `agents/wf-pm.md §Responsabilité —
+> DV-lazy batch` pour l'algo détaillé).
+
+**Résumé de l'étape** :
+1. PM lit `wf/needs/<name>/tasks.md` → liste tâches DV + dépendances.
+2. PM calcule `N = max(parallélisme du chemin critique)` ; plafond
+   `.wf-config.json:planning.max_dv` si défini.
+3. PM log obligatoire (UNE seule ligne, format normatif) :
+   ```bash
+   bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log \
+     --msg "[DV-LAZY] N=<N> justification=<critical_path_width=K|max_dv=K> tasks=<count>"
+   ```
+4. PM émet UN SEUL batch de N spawns DV (pas N spawn_request unitaires).
+5. Cas N=0 (need pure-doc) : pas de spawn, state machine avance, exit 0 (TF-017).
+
+**Critère opposable** (TF-015 / TF-016) :
+- 0 spawn DV avant `PLANNING:CHECKPOINT_TASKS`.
+- Une et une seule ligne `[DV-LAZY] N=<N>` dans `or.log` après le checkpoint.
 
 ## Why PM resolves the name before OR (Flow Z)
 

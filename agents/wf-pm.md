@@ -113,6 +113,32 @@ bash scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>
 - **H2** (respawn_count >= 2) : `shutdown_request` → respawn → re-brief
 - **ask_ho** (H2 a déjà échoué) : escalade HO via `AskUserQuestion`
 
+## Responsabilité — pré-spawn batch au bootstrap (EX-002 / F3)
+
+> Au bootstrap, PM pré-spawne en **un seul batch** la team fixe **avant** de
+> transférer le pilotage à OR. OR ne pilote plus le spawn (cf. EX-004 — tool
+> `Agent` retiré du frontmatter d'OR).
+
+**Team fixe** (toujours pré-spawnée) : `or, po, tl, rv, qa`.
+**DS** : pré-spawné dans le même batch **ssi** `PRD.md` frontmatter porte
+`has_ui: true`. Sinon, DS n'est jamais spawné.
+**DV** : **non** spawné au bootstrap. DV est émis en lazy après
+`PLANNING:CHECKPOINT_TASKS` (cf. §Responsabilité — DV-lazy batch).
+
+**Critères opposables** (EX-002) :
+- Au sortir de `BOOTSTRAP:SPAWN_TEAM`, `wf/needs/<name>/.team-registry.json`
+  contient au minimum les rôles `or, po, tl, rv, qa` (et `ds` si `has_ui:true`).
+- Aucun `spawn_request` n'est émis par OR pour ces rôles fixes durant la
+  totalité du workflow (TF-005).
+- OR est cantonné au pilotage state-machine post-bootstrap : `--query`,
+  dispatch, `step_advanced` notifications.
+
+**Ordonnancement** : `--init` (cf. EX-005, exécuté via skill `wf-new`) →
+batch spawn (5 ou 6 Agent() en un seul tour PM) → émission `bootstrap_need`
+à OR au format `intent + context_files:` (cf. §Gabarits de briefs).
+
+---
+
 ## Bootstrap — Spawn with configured models
 
 When PM receives a `spawn_request` from OR with `role: <role>`, use the model from config:
@@ -195,6 +221,90 @@ IF config.agent_mode == "team" (default — INV-006):
   Reply to OR: spawn_confirmed { request_id, teammate_name, model }
   (absence of channel = team, backward-compat)
 ```
+
+---
+
+## Responsabilité — DV-lazy batch (EX-007)
+
+> **Déclencheur** : juste après `PLANNING:CHECKPOINT_TASKS` validé (state avance
+> à `PLANNING:ASSIGN_WORKTREES` ou step suivant). **Pas avant** — 0 spawn DV
+> avant ce checkpoint (TF-015).
+
+**Algorithme** :
+
+```
+1. Read wf/needs/<name>/tasks.md → liste des tâches DV (ID, dépendances).
+2. Read .wf-config.json → planning.max_dv (optionnel).
+3. Build DAG des dépendances tâches.
+4. N = max(parallélisme du chemin critique)
+       = largeur max d'un niveau topologique du DAG.
+   Si tasks.md porte `suggested_dv: K` en frontmatter, PM peut prendre N=K
+   (autoritatif côté PM, K reste indicatif).
+5. Si planning.max_dv défini : N = min(N, planning.max_dv).
+6. Si N == 0 (need pure-doc, aucune tâche DV) :
+     bash scripts/wf-orchestrate.sh <name> --log \
+       --msg "[DV-LAZY] N=0 justification=no_dv_tasks tasks=0"
+     advance state machine (skip spawn).
+     return.
+7. Log obligatoire (UNE seule ligne, format normatif TF-016) :
+     bash scripts/wf-orchestrate.sh <name> --log \
+       --msg "[DV-LAZY] N=<N> justification=<critical_path_width=K|max_dv=K> tasks=<count>"
+8. Émettre UN SEUL batch de spawn (pas N spawn_request unitaires) :
+     - mode subagent : N appels Agent(subagent_type: wf-dv, prompt: …) en un seul tour PM
+     - mode team    : un seul SendMessage à plugin/team manager pour le batch
+9. Update tracking.md avec la composition de la team DV (idN → tâches assignées).
+10. Notify OR via step_advanced.
+```
+
+**Critères opposables** (EX-007) :
+- 0 spawn DV avant `PLANNING:CHECKPOINT_TASKS` (TF-015).
+- Une et une seule ligne `[DV-LAZY] N=<N>` dans `or.log` après le checkpoint
+  (TF-016 — regex `^\S+ \[DV-LAZY\] N=[0-9]+`, count = 1).
+- N=0 sur need pure-doc → aucune erreur, state machine avance (TF-017 / UC-5).
+
+---
+
+## Gabarits de briefs (EX-001 / F1 — INV-005)
+
+> **Discipline brief opposable** : tout brief émis par PM doit porter `intent:`
+> + `context_files:`, sans paraphrase du contenu des fichiers cités. Corps hors
+> `context_files:` < 20 lignes. Anti-pattern : reproduire le contenu de
+> `PRD.md`/`tasks.md`/etc. dans un message — utiliser le path.
+
+### Gabarit `bootstrap_need` (PM → OR, au démarrage)
+
+```yaml
+type: bootstrap_need
+need: <name>
+intent: <1 phrase ≤ 200 caractères décrivant la mission>
+context_files:
+  - wf/needs/<name>/PRD.md
+config:
+  agent_mode: <subagent|team>
+  dark_factory: <on|off>
+  language: <fr|en>
+# corps libre ≤ 20 lignes — pas de paraphrase de PRD.md
+```
+
+### Gabarit brief PM → teammate (spawn ou re-brief)
+
+```yaml
+type: <spawn_request|task_assignment|step_brief>
+role: <po|tl|rv|qa|ds|dv>
+intent: <1 phrase ≤ 200 caractères>
+context_files:
+  - <chemin1>
+  - <chemin2>
+context_overrides:    # optionnel, ≤ 5 bullets
+  - <override1>
+# corps libre ≤ 20 lignes
+```
+
+**Critères opposables** (EX-001 / TF-001 / TF-020) :
+- Champ `intent:` présent, ≤ 200 caractères.
+- Champ `context_files:` présent (liste non vide si des artéfacts sont à lire).
+- Corps hors `context_files:` < 20 lignes.
+- Aucune duplication du contenu des artéfacts cités.
 
 ---
 
