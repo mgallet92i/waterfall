@@ -13,10 +13,10 @@ declare -gA STEP_AGENT=(
   ["BOOTSTRAP:DETERMINE_NAME"]="pm"
   ["BOOTSTRAP:RUN_BOOTSTRAP"]="pm"
   ["BOOTSTRAP:STORE_PATH"]="pm"
-  ["BOOTSTRAP:COLLECT_CARD_NUM"]="pm"
-  ["BOOTSTRAP:COLLECT_BRANCH_TYPE"]="pm"
-  ["BOOTSTRAP:CREATE_BRANCH_Q"]="pm"
-  ["BOOTSTRAP:SPAWN_TEAM"]="pm"
+  ["BOOTSTRAP:COLLECT_CARD_NUM"]="or"   # was "pm" + ALWAYS_OR — EX-001, EX-002
+  ["BOOTSTRAP:COLLECT_BRANCH_TYPE"]="or" # was "pm" + ALWAYS_OR — EX-001, EX-002
+  ["BOOTSTRAP:CREATE_BRANCH_Q"]="or"    # was "pm" + ALWAYS_OR — EX-001, EX-002
+  ["BOOTSTRAP:SPAWN_TEAM"]="or"         # was "pm" + ALWAYS_OR — EX-001, EX-002
   # REQUIREMENTS
   ["REQUIREMENTS:COLLECT_PRD"]="pm"
   ["REQUIREMENTS:GENERATE_PRD"]="pm"
@@ -41,12 +41,12 @@ declare -gA STEP_AGENT=(
   # PLANNING
   ["PLANNING:GENERATE_TASKS"]="tl"
   ["PLANNING:ASSIGN_WORKTREES"]="tl"
-  ["PLANNING:CHECKPOINT_TASKS"]="pm"
+  ["PLANNING:CHECKPOINT_TASKS"]="pm"    # DEC-001: reste pm (HO checkpoint)
   # IMPLEMENTATION
   ["IMPLEMENTATION:DV_IMPLEMENT"]="or"
   ["IMPLEMENTATION:TL_SUPERVISE"]="tl"
-  ["IMPLEMENTATION:CHECKPOINT_IMPL"]="pm"
-  ["IMPLEMENTATION:MERGE_WORKTREES"]="pm"
+  ["IMPLEMENTATION:CHECKPOINT_IMPL"]="pm" # DEC-001: reste pm (HO checkpoint)
+  ["IMPLEMENTATION:MERGE_WORKTREES"]="or"  # was "pm" + ALWAYS_OR — EX-001, EX-002
   # CODE_REVIEW
   ["CODE_REVIEW:TL_REVIEW"]="tl"
   ["CODE_REVIEW:CHECK_CR_EXIT"]="or"
@@ -56,31 +56,25 @@ declare -gA STEP_AGENT=(
   ["VALIDATION:PO_VALIDATE"]="qa"
   ["VALIDATION:QA_ACCEPTANCE_TEST"]="qa"
   ["VALIDATION:HO_VALIDATE"]="pm"
-  ["VALIDATION:CHECKPOINT_VALID"]="pm"
+  ["VALIDATION:CHECKPOINT_VALID"]="pm"  # DEC-001: reste pm (HO checkpoint)
   # CLOSURE
-  ["CLOSURE:CLEANUP_WORKTREES"]="pm"
+  ["CLOSURE:CLEANUP_WORKTREES"]="tl"    # was "pm" — EX-001 (worktrees = domaine TL)
   ["CLOSURE:COMMIT"]="pm"
-  ["CLOSURE:PUSH"]="pm"
+  ["CLOSURE:PUSH"]="or"                 # was "pm" — EX-001
   ["CLOSURE:PR_CREATE"]="pm"
-  ["CLOSURE:HO_MERGE"]="pm"
+  ["CLOSURE:HO_MERGE"]="or"             # was "pm" — EX-001, ADR-002
   ["CLOSURE:BILAN"]="pm"
   ["CLOSURE:LOG_AUDIT"]="or"
-  ["CLOSURE:CLEANUP"]="pm"
-  ["CLOSURE:ARCHIVE"]="pm"
-  ["CLOSURE:PR_TRIAGE"]="pm"
+  ["CLOSURE:CLEANUP"]="or"              # was "pm" — EX-001
+  ["CLOSURE:ARCHIVE"]="or"              # was "pm" — EX-001
+  ["CLOSURE:PR_TRIAGE"]="or"            # was "pm" — EX-001
 )
 
-# OR self-complete overrides (fix ping-pong HO↔OR/PM, fact-ff2d1fd7).
-#
-# STEP_AGENT_ALWAYS_OR: steps where PM was a passthrough — OR self-completes
-# regardless of dark_factory (NOOPs, bootstrap auto-fillable, OR-driven spawn).
-declare -gA STEP_AGENT_ALWAYS_OR=(
-  ["BOOTSTRAP:COLLECT_CARD_NUM"]=1
-  ["BOOTSTRAP:COLLECT_BRANCH_TYPE"]=1
-  ["BOOTSTRAP:CREATE_BRANCH_Q"]=1
-  ["BOOTSTRAP:SPAWN_TEAM"]=1
-  ["IMPLEMENTATION:MERGE_WORKTREES"]=1
-)
+# STEP_AGENT_ALWAYS_OR: emptied post-refonte (EX-002, INV-003, ADR-001).
+# The 5 steps that were overridden here are now directly "or" in STEP_AGENT[].
+# This table is kept as an empty declaration for backward compatibility with any
+# code that may reference it, but it has no functional effect.
+declare -gA STEP_AGENT_ALWAYS_OR=()
 
 # STEP_AGENT_DARK_OVERRIDE: steps reassigned to OR only when dark_factory=on.
 # These are HO checkpoints that have no human in the loop in dark_factory — OR
@@ -97,16 +91,14 @@ declare -gA STEP_AGENT_DARK_OVERRIDE=(
 
 # resolve_step_agent <PHASE:STEP> <dark_factory:on|off>
 # Returns the effective agent for the step, applying override rules above.
+# Post-refonte (EX-004, ADR-001): ALWAYS_OR bloc removed — STEP_AGENT_ALWAYS_OR
+# is empty and the reventilated steps are directly "or" in STEP_AGENT[].
 resolve_step_agent() {
   local step_key="$1"
   local dark_factory="${2:-off}"
   local base="${STEP_AGENT[$step_key]:-}"
   if [[ -z "$base" ]]; then
     echo ""
-    return
-  fi
-  if [[ -n "${STEP_AGENT_ALWAYS_OR[$step_key]:-}" ]]; then
-    echo "or"
     return
   fi
   if [[ "$dark_factory" == "on" && -n "${STEP_AGENT_DARK_OVERRIDE[$step_key]:-}" ]]; then

@@ -42,6 +42,7 @@ Do not wait for OR to complete on your behalf.
 | REVIEW | ITERATE_DESIGN | rv.md, design.md | design.md *(corrections)* | `--complete REVIEW:ITERATE_DESIGN` |
 | PLANNING | GENERATE_TASKS | design.md, review.md, tracking.md | tasks.md | `--complete PLANNING:GENERATE_TASKS` |
 | CODE_REVIEW | REVIEW_CODE | tasks.md, design.md, *(source code)* | tasks.md *(verdict APPROVED/REJECTED)* | `--complete CODE_REVIEW:REVIEW_CODE` |
+| CLOSURE | CLEANUP_WORKTREES | tasks.md *(liste des DVs)* | *(worktrees supprimés)* | `--complete CLOSURE:CLEANUP_WORKTREES` |
 
 ---
 
@@ -349,7 +350,16 @@ DVs work in isolated worktrees (INV-009). After APPROVED, TL copies the modified
 DVs are shut down in CLOSURE phase only (not after the last task).
 Reason: if HO rejects validation and the workflow returns to IMPLEMENTATION, the DVs are still warm with their context.
 
-TL removes the worktrees in CLOSURE: `git worktree remove worktrees/<need>/<dvN>` for each DV after shutdown.
+TL removes the worktrees in CLOSURE at step `CLOSURE:CLEANUP_WORKTREES` (EX-010, post-refonte):
+
+```bash
+# For each DV in the pool (dv1, dv2, dv3 as applicable):
+git worktree remove worktrees/<need>/<dvN>
+# If uncommitted changes remain (should not happen — all changes committed):
+git worktree remove --force worktrees/<need>/<dvN>
+```
+
+After removing all worktrees, TL runs `--complete CLOSURE:CLEANUP_WORKTREES`. The auth hook expects `agent=tl` for this step — PM must not attempt it.
 
 ---
 
