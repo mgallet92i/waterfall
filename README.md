@@ -31,11 +31,11 @@ Built on Claude Code's experimental **[Agent Teams](https://code.claude.com/docs
 
 Marketplace listing coming soon. In the meantime, install from a local clone in three slash commands.
 
-1. Clone the repository locally (e.g. `C:\projets\waterfall` on Windows, `~/projects/waterfall` on macOS/Linux).
+1. Clone the repository locally to `<path-to-repo>` (e.g. `C:\repo\waterfall` on Windows, `~/repo/waterfall` on macOS/Linux).
 2. Register the clone as a local marketplace, then install the plugin:
 
 ```
-/plugin marketplace add C:\projets\waterfall
+/plugin marketplace add <path-to-repo>
 /plugin install waterfall@waterfall-local
 ```
 
