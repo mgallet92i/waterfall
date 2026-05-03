@@ -105,10 +105,14 @@ Wait for `spawn_confirmed` from OR before continuing.
 
 ### Step 5.ter — Conditional watchdog (belt-and-suspenders)
 
-**System-critical**: the cron wakes PM up to detect STUCK agents. Double enforcement PM + OR.
+**System-critical (team mode only)**: the cron wakes PM up to detect STUCK teammates. Skipped in `subagent` mode — subagents are not idle between messages (they resume on each `SendMessage`), so there is no "idle-muet teammate" to repoke; PM stays in charge of every spawn and already knows the workflow state.
 
 ```bash
-if [[ "$WF_WATCHDOG_INTERVAL" != "off" ]]; then
+if [[ "$WF_AGENT_MODE" == "subagent" ]]; then
+  # No watchdog in subagent mode (no idle teammates to wake up).
+  # HO message: "Watchdog skipped (agent_mode=subagent)"
+  :
+elif [[ "$WF_WATCHDOG_INTERVAL" != "off" ]]; then
   DELAY_MIN="${WF_WATCHDOG_INTERVAL//min/}"  # "3min" → "3"
   # 1. PM invokes CronCreate (harness tool)
   CronCreate(cron: "*/${DELAY_MIN} * * * *", prompt: "watchdog tick wf-<name>", recurring: true)
@@ -118,7 +122,7 @@ if [[ "$WF_WATCHDOG_INTERVAL" != "off" ]]; then
 fi
 ```
 
-If PM forgets this step: OR detects the absence of `.watchdog-cron-active` and creates the cron itself (see `agents/wf-or.md` §Watchdog — belt-and-suspenders).
+If PM forgets this step (team mode only): OR detects the absence of `.watchdog-cron-active` and creates the cron itself (see `agents/wf-or.md` §Watchdog — belt-and-suspenders).
 
 ### Step 5.bis — Register OR in the registry (traceability, optional)
 For spawn traceability:

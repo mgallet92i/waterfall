@@ -300,18 +300,24 @@ Cette règle s'applique à tous les types : `spawn_request`, `brief_complete`, `
 
 ## Watchdog — belt-and-suspenders
 
-The watchdog is **critical infrastructure**: without an active cron, STUCK detections do not wake PM. Double enforcement PM + OR.
+The watchdog is **critical infrastructure** in `team` mode: without an active cron, STUCK detections do not wake PM. Double enforcement PM + OR.
 
-**PM role** (primary): at `BOOTSTRAP` (flow Z §5.ter), PM invokes `CronCreate` with the interval from `WF_WATCHDOG_INTERVAL`, then touches the marker:
+**Skipped entirely in `subagent` mode**: subagents are not idle between messages (they resume on each `SendMessage`), so there is no STUCK condition to detect. OR MUST NOT call `CronCreate` and MUST NOT touch `.watchdog-cron-active` when `WF_AGENT_MODE == "subagent"`.
+
+**PM role** (primary, team mode): at `BOOTSTRAP` (flow Z §5.ter), PM invokes `CronCreate` with the interval from `WF_WATCHDOG_INTERVAL`, then touches the marker:
 
 ```bash
 touch wf/needs/<name>/.watchdog-cron-active
 echo "<cron_job_id>" > wf/needs/<name>/.watchdog-cron-active
 ```
 
-**OR role** (safety net): after each `--init` and at the start of each phase, OR checks the marker exists:
+**OR role** (safety net, team mode only): after each `--init` and at the start of each phase, OR checks the marker exists. In subagent mode, OR skips this block entirely:
 
 ```bash
+agent_mode=$(jq -r '.config.agent_mode // "subagent"' "wf/needs/<name>/.wf-state.json" 2>/dev/null || echo "subagent")
+if [[ "$agent_mode" == "subagent" ]]; then
+  : # No watchdog in subagent mode.
+else
 marker="wf/needs/<name>/.watchdog-cron-active"
 if [[ ! -f "$marker" ]]; then
   # Read hint from --init stdout (watchdog_cron object) or default
@@ -325,9 +331,10 @@ if [[ ! -f "$marker" ]]; then
 else
   bash scripts/wf-orchestrate.sh <name> --log --msg "[WATCHDOG] OR: marker present, skipping CronCreate (job_id=$(cat $marker))"
 fi
+fi
 ```
 
-If OR sees the marker present → do nothing (PM did its job). If absent → OR takes over without asking permission. The redundancy is deliberate (system-critical).
+If OR sees the marker present → do nothing (PM did its job). If absent → OR takes over without asking permission. The redundancy is deliberate (system-critical) — in `team` mode only.
 
 ---
 
