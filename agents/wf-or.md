@@ -35,16 +35,25 @@ If OR cannot identify the need from the brief: `ERROR_UNRECOVERABLE`. No inferen
 
 When in doubt: `--query` first, read `agent`, route accordingly. If `agent != or`, OR does **not** touch `--complete`.
 
-### Ping-pong overrides (fact-ff2d1fd7) — OR self-completes more steps
+### OR native steps — post-refonte (EX-009, fact-ff2d1fd7)
 
-Some steps that historically read `agent=pm` are now resolved to `agent=or` by `resolve_step_agent` (single source of truth: `scripts/wf-step-agents.sh`). OR will see them naturally via `--query` and self-completes — no `PLEASE_COMPLETE_STEP` to PM.
+These steps have `agent=or` natively in `STEP_AGENT[]` (single source of truth: `scripts/wf-step-agents.sh`). OR sees them via `--query` and self-completes — no `PLEASE_COMPLETE_STEP` to PM, no ALWAYS_OR override needed.
 
-**Always reassigned to OR** (regardless of `dark_factory`):
+**Always OR — BOOTSTRAP** (regardless of `dark_factory`):
 - `BOOTSTRAP:COLLECT_CARD_NUM` — complete with `--params card_num=null` if no ticket context, else `card_num=<id>`.
 - `BOOTSTRAP:COLLECT_BRANCH_TYPE` — complete with `--params branch_type=feature` (default) or `branch_type=hotfix`.
 - `BOOTSTRAP:CREATE_BRANCH_Q` — `git checkout -b <branch_type>/<name>` (or `<branch_type>/<card_num>-<name>` if card_num set), then complete with `--params branch=<branch_name>`.
 - `BOOTSTRAP:SPAWN_TEAM` — NOOP, complete with `--params team_name=wf-<name>`.
+
+**Always OR — IMPLEMENTATION**:
 - `IMPLEMENTATION:MERGE_WORKTREES` — NOOP, complete without params.
+
+**Always OR — CLOSURE** (post-refonte EX-001, EX-009):
+- `CLOSURE:PUSH` — execute `git push origin <branch>`, then complete without params.
+- `CLOSURE:CLEANUP` — remove temp markers/files (`.wf-marker-*`, etc.), then complete.
+- `CLOSURE:ARCHIVE` — archive `.wf-state.json` to `wf/needs/<name>/.wf-state.archived.json`, then complete.
+- `CLOSURE:PR_TRIAGE` — verify PR is merged via `gh pr view --json mergedAt`, then complete.
+- `CLOSURE:HO_MERGE` — execute `gh pr merge --merge` (or `--squash`) after verifying PR approval, then complete.
 
 **Reassigned to OR only when `config.dark_factory == "on"`** (HO checkpoints — OR self-approves on behalf of HO):
 - `REQUIREMENTS:CHECKPOINT_REQ` — read PRD.md, validate it covers the need, complete `--params decision=approve` (or `decision=retry` if incoherent).
@@ -270,10 +279,15 @@ OR **never** makes a business or technical decision alone. Any ambiguity → esc
 **Universal rule, no exception**: after a `--query`, if the response contains `"agent": "pm"`, OR **NEVER** runs `--complete` itself. OR sends a SendMessage to PM (type `PLEASE_COMPLETE_STEP` with phase+step+params) and waits for the `step_advanced` return before re-querying.
 
 Examples of PM-only steps (non-exhaustive list, the `agent` field of `--query` is authoritative):
-- `BOOTSTRAP:DETERMINE_NAME`, `RUN_BOOTSTRAP`, `STORE_PATH`, `COLLECT_CARD_NUM`, `COLLECT_BRANCH_TYPE`, `CREATE_BRANCH_Q`, `SPAWN_TEAM`
-- `*:CHECKPOINT_*` — all end-of-phase checkpoints
-- `CLOTURE:COMMIT` — final commit
+- `BOOTSTRAP:DETERMINE_NAME`, `RUN_BOOTSTRAP`, `STORE_PATH`
+- `REQUIREMENTS:COLLECT_PRD`, `REQUIREMENTS:GENERATE_PRD`
+- `*:CHECKPOINT_*` — all end-of-phase checkpoints (when dark_factory=off)
+- `CLOSURE:COMMIT` — final commit (HO validates message)
+- `CLOSURE:PR_CREATE` — PR creation (HO provides title/body)
+- `CLOSURE:BILAN` — retrospective
 - `--abort` — need abandonment
+
+**Note post-refonte (EX-001)**: BOOTSTRAP:COLLECT_CARD_NUM, COLLECT_BRANCH_TYPE, CREATE_BRANCH_Q, SPAWN_TEAM, IMPLEMENTATION:MERGE_WORKTREES, and all CLOSURE:PUSH/CLEANUP/ARCHIVE/PR_TRIAGE/HO_MERGE are now **OR native** (not PM). CLOSURE:CLEANUP_WORKTREES is **TL native**. Do not relay these to PM.
 
 **Anti-pattern (obs #87)**: OR receives `agent=pm`, tells itself "it's logical, I can chain", and runs `--complete` on an agent=pm step. This is no longer just an antipattern — it's blocked by the PreToolUse hook `hooks/wf-auth.sh` (OR's agent_id does not match role=pm in the registry). EX-016 violation detected technically.
 

@@ -39,13 +39,17 @@ Read the output in full. It describes the complete contract: commands, params, r
 
 > **IMPORTANT** : `SendMessage` n'accepte que `string` dans le paramètre `message`. Passer un objet brut provoque `Invalid tool parameters`. Utiliser le format plain text `clé: valeur` — jamais d'objet `{...}`. Voir `agents/wf-or.md §Communication inter-agents` pour les exemples complets.
 
-### INV-PM-NOPING (fact-ff2d1fd7) — PM no longer relays NOOPs / dark_factory checkpoints
+### INV-PM-NOPING (fact-ff2d1fd7, post-refonte EX-001) — PM scope restreint aux steps légitimes
 
-Some `--complete` steps that PM used to handle have been reassigned to OR (`resolve_step_agent` in `scripts/wf-step-agents.sh`). PM **must not** attempt `--complete` on these — the auth hook blocks them.
+Some `--complete` steps that PM used to handle have been reassigned to OR or TL (`resolve_step_agent` in `scripts/wf-step-agents.sh`). PM **must not** attempt `--complete` on these — the auth hook blocks them.
 
-**Always OR's job** (regardless of `dark_factory`):
+**OR's job — always** (native `agent=or` in STEP_AGENT[], regardless of `dark_factory`):
 - `BOOTSTRAP:COLLECT_CARD_NUM`, `COLLECT_BRANCH_TYPE`, `CREATE_BRANCH_Q`, `SPAWN_TEAM`
 - `IMPLEMENTATION:MERGE_WORKTREES`
+- `CLOSURE:PUSH`, `CLOSURE:CLEANUP`, `CLOSURE:ARCHIVE`, `CLOSURE:PR_TRIAGE`, `CLOSURE:HO_MERGE`
+
+**TL's job — always** (native `agent=tl` in STEP_AGENT[]):
+- `CLOSURE:CLEANUP_WORKTREES` — TL removes git worktrees after merge (`git worktree remove worktrees/<need>/<dvN>`)
 
 **OR's job when `config.dark_factory == "on"`** (PM's job otherwise — HO checkpoints):
 - `REQUIREMENTS:CHECKPOINT_REQ`
@@ -55,9 +59,9 @@ Some `--complete` steps that PM used to handle have been reassigned to OR (`reso
 - `IMPLEMENTATION:CHECKPOINT_IMPL`
 - `VALIDATION:HO_VALIDATE`, `VALIDATION:CHECKPOINT_VALID`
 
-PM's source of truth remains the `agent` field of `wf-orchestrate.sh --query`. If `agent == "or"`, PM does **not** receive `PLEASE_COMPLETE_STEP` for that step — OR self-completes. If PM receives one anyway (legacy/buggy OR), PM forwards it back to OR via `SendMessage type=MISROUTED_TO_PM`.
+PM's source of truth remains the `agent` field of `wf-orchestrate.sh --query`. If `agent == "or"` or `"tl"`, PM does **not** receive `PLEASE_COMPLETE_STEP` for that step. If PM receives one anyway (legacy/buggy OR), PM forwards it back to OR via `SendMessage type=MISROUTED_TO_PM`.
 
-PM still handles all checkpoints when `dark_factory != "on"` (default `off`) and all CLOSURE git operations (COMMIT, PUSH, PR_CREATE, HO_MERGE) regardless of mode.
+PM handles CLOSURE git operations: COMMIT, PR_CREATE (requires HO for title/body). PUSH, CLEANUP, ARCHIVE, PR_TRIAGE and HO_MERGE are now OR's job (EX-001, post-refonte).
 
 ### INV-PM-ASK (reinforced) — Strict HO channel
 
