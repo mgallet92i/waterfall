@@ -38,6 +38,18 @@ PROJECT_ROOT="${CLAUDE_PROJECT_DIR:-$PWD}"
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
+# _wf_normalize_agent_type — strip plugin prefix injected by Claude Code.
+# When agents are spawned via the waterfall plugin, agent_type arrives as
+# "waterfall:wf-<role>" (e.g. "waterfall:wf-or"). Strip to canonical "<role>".
+_wf_normalize_agent_type() {
+  local raw="$1"
+  if [[ "$raw" =~ ^waterfall:wf-(.+)$ ]]; then
+    echo "${BASH_REMATCH[1]}"
+  else
+    echo "$raw"
+  fi
+}
+
 _wf_auth_log() {
   local need="$1" decision="$2" step="$3" agent_type="$4" expected="$5" reason="${6:-}"
   local log_file="$PROJECT_ROOT/wf/needs/$need/wf-auth.log"
@@ -99,6 +111,7 @@ _wf_codewrite_guard() {
 
   tool_name=$(echo "$payload" | jq -r '.tool_name // ""')
   agent_type=$(echo "$payload" | jq -r '.agent_type // ""')
+  agent_type="$(_wf_normalize_agent_type "$agent_type")"
   [[ -z "$agent_type" || "$agent_type" == "null" ]] && agent_type="pm"
 
   # Step 1 — pass-through for known non-OR agents (INV-005).
@@ -207,6 +220,7 @@ args_after="${args_after#"$name_from_cmd"}"
 if [[ "$args_after" == *"--fast-path-skip"* ]]; then
   local_name="$name_from_cmd"
   agent_type_fps=$(echo "$payload" | jq -r '.agent_type // ""')
+  agent_type_fps="$(_wf_normalize_agent_type "$agent_type_fps")"
   if [[ -z "$agent_type_fps" || "$agent_type_fps" == "null" ]]; then
     agent_type_fps="pm"
   fi
@@ -258,6 +272,7 @@ fi
 # 7. Extract agent_type from payload (DEC-001: stable identity key).
 # Main agent (PM) has no agent_type in the harness payload -> fallback "pm" (DEC-002).
 agent_type=$(echo "$payload" | jq -r '.agent_type // ""')
+agent_type="$(_wf_normalize_agent_type "$agent_type")"
 if [[ -z "$agent_type" || "$agent_type" == "null" ]]; then
   agent_type="pm"
 fi
