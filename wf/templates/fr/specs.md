@@ -4,27 +4,30 @@ need: "{{name}}"
 phase: "FUNCTIONAL_SPECS"
 status: "DRAFT"
 ---
-# Functional Specifications — {{name}}
+# Spécifications fonctionnelles — {{name}}
 
-<!-- Sections that are not relevant can be marked N/A -->
+<!-- Sections non pertinentes : marquer N/A. -->
+<!-- Format imposé : tableaux de synthèse pour les codes (EX/INV). -->
+<!-- Garder une description par ligne — ne pas créer une sous-section par code. -->
+<!-- Détails longs (use cases, exemples) : prose dans la section dédiée. -->
 
-## Functional Requirements
-<!-- Each requirement: EX-xxx — Title (MoSCoW: MUST / SHOULD / COULD / WONT) -->
-<!-- Format: clear description, acceptance criteria, dependencies -->
+## Exigences fonctionnelles
+<!-- Une ligne par EX-xxx. MoSCoW : MUST / SHOULD / COULD / WONT. -->
+<!-- Description = critère vérifiable, dépendances éventuelles entre parenthèses. -->
 
-### EX-001 — (MUST)
-
-n/a
+| Code | Titre | MoSCoW | Description |
+|------|-------|--------|-------------|
+| EX-001 |  | MUST |  |
 
 ## Invariants
-<!-- Business rules that MUST always hold true, regardless of user actions -->
-<!-- Each INV-xxx must be verifiable by at least one TF-xxx in acceptance.md -->
+<!-- Règles métier qui DOIVENT toujours être vraies, indépendamment des actions utilisateur. -->
+<!-- Chaque INV-xxx doit être vérifiable par au moins un TF-xxx dans acceptance.md / tf.md. -->
 
-### INV-001 —
+| Code | Titre | Description |
+|------|-------|-------------|
+| INV-001 |  |  |
 
-n/a
-
-## Use Cases
-<!-- Nominal and alternative scenarios, actor → system → result -->
+## Cas d'usage
+<!-- Scénarios nominaux et alternatifs : acteur → système → résultat. Prose libre. -->
 
 n/a

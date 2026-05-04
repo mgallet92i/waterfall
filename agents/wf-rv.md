@@ -182,34 +182,45 @@ RV reads **all** the following artifacts among those available:
 
 ---
 
-## Findings format
+## Findings format — synthesis tables + details
 
-Findings in `wf/needs/<name>/rv.md`, 3 categories:
+**Mandatory format**: findings in `wf/needs/<name>/rv.md` use a **synthesis table per category** (B/Q/N) — one row per finding — plus a `## Details` section for suggested fix / impact / any content too long for a cell. Do **not** create one `### B-001` sub-section per finding in the synthesis section — the table is the lookup.
 
 ### Blockers (B-xxx) — P0, blocking
+
 ```markdown
-### B-001 — [Short title]
-**Target artifact** : specs.md
-**Section** : ## EX-005
-**Problem** : [what's wrong]
-**Suggested fix** : [concrete proposal]
+| Code | Title | Target | Issue |
+|------|-------|--------|-------|
+| B-001 | <short title> | specs.md §EX-005 | <what's wrong> |
 ```
 
 ### Questions (Q-xxx) — blocking if unanswered
+
 ```markdown
-### Q-001 — [Short title]
-**Target artifact** : tech.md
-**Section** : ## Architecture
-**Question** : [ambiguity to resolve]
-**Impact if unanswered** : [risk]
+| Code | Title | Target | Question |
+|------|-------|--------|----------|
+| Q-001 | <short title> | tech.md §Architecture | <ambiguity> |
 ```
 
 ### Nits (N-xxx) — P2, non-blocking
+
 ```markdown
-### N-001 — [Short title]
-**Target artifact** : PRD.md
-**Suggestion** : [optional improvement]
+| Code | Title | Target | Suggestion |
+|------|-------|--------|------------|
+| N-001 | <short title> | PRD.md | <optional improvement> |
 ```
+
+### Details (sub-sections under `## Details`)
+
+```markdown
+### B-001 — <title>
+**Suggested fix**: <concrete proposal>
+
+### Q-001 — <title>
+**Impact if unanswered**: <risk>
+```
+
+Use a sub-section in `## Details` only when needed (long fix proposal, multi-line impact). Trivial findings live entirely in the table.
 
 **Rule: max 5 findings per cycle** (B + Q + N combined). Prioritize P0 blockers. Less critical findings wait for the next cycle if the cap is reached.
 

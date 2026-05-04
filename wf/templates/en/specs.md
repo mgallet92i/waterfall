@@ -6,27 +6,28 @@ status: "DRAFT"
 ---
 # Functional Specifications — {{name}}
 
-<!-- TODO: traduction EN à compléter -->
-
-<!-- Sections that are not relevant can be marked N/A -->
+<!-- Sections that are not relevant can be marked N/A. -->
+<!-- Mandatory format: synthesis tables for codes (EX/INV). -->
+<!-- One description per row — do not create a sub-section per code. -->
+<!-- Long details (use cases, examples) go in the dedicated prose section. -->
 
 ## Functional Requirements
-<!-- Each requirement: EX-xxx — Title (MoSCoW: MUST / SHOULD / COULD / WONT) -->
-<!-- Format: clear description, acceptance criteria, dependencies -->
+<!-- One row per EX-xxx. MoSCoW: MUST / SHOULD / COULD / WONT. -->
+<!-- Description = verifiable criterion, with dependencies in parentheses if any. -->
 
-### EX-001 — (MUST)
-
-n/a
+| Code | Title | MoSCoW | Description |
+|------|-------|--------|-------------|
+| EX-001 |  | MUST |  |
 
 ## Invariants
-<!-- Business rules that MUST always hold true, regardless of user actions -->
-<!-- Each INV-xxx must be verifiable by at least one TF-xxx in acceptance.md -->
+<!-- Business rules that MUST always hold true, regardless of user actions. -->
+<!-- Each INV-xxx must be verifiable by at least one TF-xxx in acceptance.md / tf.md. -->
 
-### INV-001 —
-
-n/a
+| Code | Title | Description |
+|------|-------|-------------|
+| INV-001 |  |  |
 
 ## Use Cases
-<!-- Nominal and alternative scenarios, actor → system → result -->
+<!-- Nominal and alternative scenarios: actor → system → result. Free prose. -->
 
 n/a

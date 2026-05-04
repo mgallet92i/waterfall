@@ -1,13 +1,13 @@
 {
   "models": {
-    "pm": "sonnet",
-    "or": "sonnet",
-    "po": "sonnet",
+    "pm": "opus",
+    "or": "opus",
+    "po": "opus",
     "tl": "opus",
     "rv": "opus",
-    "qa": "sonnet",
-    "dv": "sonnet",
-    "ds": "sonnet"
+    "qa": "opus",
+    "dv": "opus",
+    "ds": "opus"
   },
   "review_loops": {
     "artifacts": 2,
@@ -16,8 +16,8 @@
   "watchdog": {
     "interval": "3min"
   },
-  "agent_mode": "team",
-  "dark_factory": "on",
+  "agent_mode": "subagent",
+  "dark_factory": "off",
   "statusline": false,
   "tools": {
     "semgrep": "off"

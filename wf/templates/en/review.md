@@ -8,14 +8,13 @@ verdict: "PENDING"
 ---
 # Review Report — {{name}}
 
-<!-- TODO: traduction EN à compléter -->
-
-<!-- Written by RV during REVIEW phase -->
+<!-- Written by RV during REVIEW phase. -->
 <!-- Verdict rules:
-  APPROVED        → 0 Blockers, 0 Questions
-  NEEDS_REVISION  → ≥1 Blocker OR ≥1 Question
-  Max 3 iterations before PM escalation (DEC-xxx in tracking.md)
+  CONVERGE  → 0 Blockers, 0 Questions
+  ITERATE   → ≥1 Blocker OR ≥1 Question
+  Max 3 iterations before PM escalation (DEC-xxx in tracking.md).
 -->
+<!-- Mandatory format: synthesis table per category (B/Q/N) + "Details" section for suggested fix / impact / responses. -->
 
 ## Iteration 1 — YYYY-MM-DD
 
@@ -29,41 +28,39 @@ PENDING
 - ui.md (v1.0) [if has_ui:true]
 - acceptance.md (v1.0)
 
-## Blockers
-<!-- MUST be fixed before APPROVED -->
-<!--
-Format:
-### B-1 — [Short title]
-**Target artifact**: [PRD.md | specs.md | design.md | ui.md | acceptance.md]
-**Target section**: [section path in the artifact]
-**Issue**: [what's wrong]
-**Suggested fix**: [concrete suggestion]
--->
+## Blockers (B-xxx) — P0, blocking
 
-n/a
+| Code | Title | Target | Issue |
+|------|-------|--------|-------|
+| B-001 |  | specs.md §EX-xxx |  |
 
-## Recommendations
-<!-- Improvements — can be ignored at the author's discretion -->
+## Questions (Q-xxx) — blocking if unanswered
 
-n/a
+| Code | Title | Target | Question |
+|------|-------|--------|----------|
+| Q-001 |  | tech.md §… |  |
 
-## Questions
-<!-- Clarifications needed before approving -->
-<!--
-Format:
-### Q-1 — [Short question]
-**Target**: [artifact + section]
-**Question**: [the question]
--->
+## Nits (N-xxx) — P2, non-blocking
+
+| Code | Title | Target | Suggestion |
+|------|-------|--------|------------|
+| N-001 |  | PRD.md |  |
+
+## Details
+<!-- One sub-section per finding for suggested fix, impact, or any content too long for the cell. -->
+
+### B-001 — [Title]
+**Suggested fix**: [concrete proposal]
+
+### Q-001 — [Title]
+**Impact if unanswered**: [risk]
 
 n/a
 
 ## Responses
-<!-- Filled by PO/TL/DS after revision to address Blockers and Questions -->
-<!--
-Format:
-### Response to B-1
+<!-- Filled by PO/TL/DS after revision. One sub-section per addressed B-xxx or Q-xxx. -->
+
+### Response to B-001
 Fixed in [artifact §section]: [what was changed]
--->
 
 n/a

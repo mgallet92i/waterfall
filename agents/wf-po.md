@@ -99,17 +99,44 @@ The frontmatter of `PRD.md` MUST contain `has_ui: true` if the need involves UI/
 - Each EX-xxx MUST have at least one TF-xxx covering it
 - Each INV-xxx SHOULD be verifiable by at least one TF-xxx
 
-### TF-xxx format (tf.md)
+### Format imposé — tableau de synthèse + détails
+
+**Règle générale** : tout artefact contenant des codes (EX, INV, TF) DOIT utiliser un tableau de synthèse en tête (une ligne par code) + une section "Détail" en dessous pour ce qui ne tient pas dans une cellule (WHEN/THEN, exemples, prose). Pas une sous-section `### EX-001` par code dans la partie synthèse — la lisibilité prime.
+
+#### specs.md
 
 ```markdown
-#### TF-xxx — <title>
-- **Type** : web-ui | api | cli | file | manual-ux | e2e-playwright
-- **Automatable** : yes | no
-- **Requires** : <prerequisites>
-- **Related** : EX-xxx, INV-xxx
-- WHEN <condition>
-- THEN <expected result>
+## Exigences fonctionnelles
+| Code | Titre | MoSCoW | Description |
+|------|-------|--------|-------------|
+| EX-001 | <titre> | MUST | <description vérifiable> |
+
+## Invariants
+| Code | Titre | Description |
+|------|-------|-------------|
+| INV-001 | <titre> | <règle> |
 ```
+
+#### tf.md / acceptance.md
+
+```markdown
+## Synthèse des scénarios
+| Code | Titre | Type | Automatable | Related |
+|------|-------|------|-------------|---------|
+| TF-001 | <titre> | api | yes | EX-001, INV-002 |
+
+## Détail des scénarios
+### TF-001 — <titre>
+- **Requires** : <prérequis>
+- **Test file** : <chemin .spec.ts si e2e-playwright>
+- **Test name** : <nom du test pour -g>
+
+**Scénario** :
+- WHEN <condition>
+- THEN <résultat attendu>
+```
+
+Types valides : `web-ui | api | cli | file | manual-ux | e2e-playwright`. Automatable : `yes | no`.
 
 ## ⚠️ First turn after spawn — IMMEDIATE ACTION REQUIRED
 

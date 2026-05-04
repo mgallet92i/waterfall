@@ -4,44 +4,49 @@ need: "{{name}}"
 phase: "FUNCTIONAL_SPECS"
 status: "DRAFT"
 ---
-# Acceptance Tests — {{name}}
+# Tests d'acceptation — {{name}}
 
-<!-- Written by PO during FUNCTIONAL_SPECS phase -->
-<!-- Each TF-xxx must cover at least one EX-xxx or INV-xxx -->
-<!-- Each TF-xxx MUST declare Type and Automatable -->
+<!-- Rédigé par PO pendant la phase FUNCTIONAL_SPECS. -->
+<!-- Chaque TF-xxx doit couvrir au moins un EX-xxx ou INV-xxx. -->
+<!-- Chaque TF-xxx DOIT déclarer Type et Automatable. -->
+<!-- Format imposé : tableau de synthèse + section "Détail des scénarios" pour WHEN/THEN. -->
 
-## Test Types Reference
+## Référence des types de test
 <!--
-  web-ui         — chrome-devtools MCP interactions (quick checks)
-  api            — Bash + curl for API endpoints
-  cli            — Bash for command-line tools
-  file           — Read + stats for file existence/content checks
-  manual-ux      — Human judgment required (not automatable)
-  e2e-playwright — Full E2E test via Playwright (*.spec.ts file)
+  web-ui         — interactions chrome-devtools MCP (vérifications rapides)
+  api            — Bash + curl pour les endpoints API
+  cli            — Bash pour les outils en ligne de commande
+  file           — Read + stats pour vérifier existence/contenu de fichiers
+  manual-ux      — jugement humain requis (non automatisable)
+  e2e-playwright — test E2E complet via Playwright (fichier *.spec.ts)
 -->
 
-## Scenarios
+## Synthèse des scénarios
+<!-- Une ligne par TF-xxx. Détails (Requires, Test file, WHEN/THEN) dans la section suivante. -->
 
-#### TF-001 — [Title]
-**Type**: [web-ui | api | cli | file | manual-ux | e2e-playwright]
-**Automatable**: [yes | no]
-**Requires**: [prerequisites: running app URL, credentials, data setup...]
-**Test file**: [if e2e-playwright: path to .spec.ts file, e.g. e2e/auth.spec.ts]
-**Test name**: [if e2e-playwright: test name for -g flag]
-**Related**: [EX-xxx, INV-xxx]
+| Code | Titre | Type | Automatable | Related |
+|------|-------|------|-------------|---------|
+| TF-001 |  |  | yes |  |
 
-**Scenario**:
-- **WHEN** [trigger/action]
-- **THEN** [expected outcome]
-- **AND** [additional assertions]
+## Détail des scénarios
+<!-- Une sous-section par TF-xxx contenant les prérequis et le scénario WHEN/THEN. -->
+
+### TF-001 — [Titre]
+- **Requires** : [prérequis : URL app lancée, credentials, données…]
+- **Test file** : [si e2e-playwright : chemin .spec.ts, ex. e2e/auth.spec.ts]
+- **Test name** : [si e2e-playwright : nom du test pour le flag -g]
+
+**Scénario** :
+- **WHEN** [déclencheur/action]
+- **THEN** [résultat attendu]
+- **AND** [assertions additionnelles]
 
 n/a
 
-## Execution Results
-<!-- Populated by wf-qa after VALIDATION phase -->
-<!-- Full details in acceptance-report.md -->
+## Résultats d'exécution
+<!-- Rempli par wf-qa après la phase VALIDATION. Détails complets dans acceptance-report.md. -->
 
-| TF | Status | Notes |
+| TF | Statut | Notes |
 |----|--------|-------|
 |    |        |       |
 

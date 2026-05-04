@@ -6,11 +6,10 @@ status: "DRAFT"
 ---
 # Acceptance Tests — {{name}}
 
-<!-- TODO: traduction EN à compléter -->
-
-<!-- Written by PO during FUNCTIONAL_SPECS phase -->
-<!-- Each TF-xxx must cover at least one EX-xxx or INV-xxx -->
-<!-- Each TF-xxx MUST declare Type and Automatable -->
+<!-- Written by PO during FUNCTIONAL_SPECS phase. -->
+<!-- Each TF-xxx must cover at least one EX-xxx or INV-xxx. -->
+<!-- Each TF-xxx MUST declare Type and Automatable. -->
+<!-- Mandatory format: synthesis table + "Scenario details" section for WHEN/THEN. -->
 
 ## Test Types Reference
 <!--
@@ -18,19 +17,24 @@ status: "DRAFT"
   api            — Bash + curl for API endpoints
   cli            — Bash for command-line tools
   file           — Read + stats for file existence/content checks
-  manual-ux      — Human judgment required (not automatable)
-  e2e-playwright — Full E2E test via Playwright (*.spec.ts file)
+  manual-ux      — human judgment required (not automatable)
+  e2e-playwright — full E2E test via Playwright (*.spec.ts file)
 -->
 
-## Scenarios
+## Scenarios Summary
+<!-- One row per TF-xxx. Details (Requires, Test file, WHEN/THEN) in the next section. -->
 
-#### TF-001 — [Title]
-**Type**: [web-ui | api | cli | file | manual-ux | e2e-playwright]
-**Automatable**: [yes | no]
-**Requires**: [prerequisites: running app URL, credentials, data setup...]
-**Test file**: [if e2e-playwright: path to .spec.ts file, e.g. e2e/auth.spec.ts]
-**Test name**: [if e2e-playwright: test name for -g flag]
-**Related**: [EX-xxx, INV-xxx]
+| Code | Title | Type | Automatable | Related |
+|------|-------|------|-------------|---------|
+| TF-001 |  |  | yes |  |
+
+## Scenario Details
+<!-- One sub-section per TF-xxx with prerequisites and the WHEN/THEN scenario. -->
+
+### TF-001 — [Title]
+- **Requires**: [prerequisites: running app URL, credentials, data setup…]
+- **Test file**: [if e2e-playwright: path to .spec.ts file, e.g. e2e/auth.spec.ts]
+- **Test name**: [if e2e-playwright: test name for -g flag]
 
 **Scenario**:
 - **WHEN** [trigger/action]
@@ -40,8 +44,7 @@ status: "DRAFT"
 n/a
 
 ## Execution Results
-<!-- Populated by wf-qa after VALIDATION phase -->
-<!-- Full details in acceptance-report.md -->
+<!-- Populated by wf-qa after VALIDATION phase. Full details in acceptance-report.md. -->
 
 | TF | Status | Notes |
 |----|--------|-------|
