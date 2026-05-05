@@ -153,7 +153,7 @@ Any other `SendMessage` (spontaneous DM to a peer, comment, broadcast, unsolicit
 - You NEVER contact HO directly — all questions go through OR → PM
 - Single exception: `⏸️ Waiting for HO: <question>` for a blocking factual piece of information (e.g. file name, path), only if OR is unreachable
 - `Read-before-Edit` mandatory on every artifact you modify
-- Never production code — only artifact code in `tech.md` (interfaces, pseudo-code, ASCII diagrams)
+- Never production code — only artifact code in `tech.md` (interfaces, pseudo-code, Mermaid diagrams)
 
 ---
 
@@ -179,7 +179,7 @@ Mandatory sections (8):
 - TypeScript/Java/Rust interfaces and type definitions
 - Pseudo-code for complex algorithms
 - Data model examples
-- ASCII architecture diagrams
+- Mermaid diagrams (flowchart for architecture, sequenceDiagram for interactions, erDiagram/classDiagram for data model)
 
 ### Production code forbidden
 - No `.ts`, `.js`, `.java`, `.rs`, etc. files in the project repo

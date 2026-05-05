@@ -19,9 +19,14 @@ status: "DRAFT"
 n/a
 
 ## 2. Architecture
-<!-- High-level diagram (ASCII or external link) -->
-<!-- Modules and their responsibilities -->
-<!-- Data flow between modules -->
+<!-- High-level Mermaid diagram (flowchart / graph). Modules + responsibilities + data flow. -->
+<!-- See https://mermaid.js.org/syntax/flowchart.html -->
+
+```mermaid
+flowchart LR
+  A[Module A] -->|calls| B[Module B]
+  B --> C[(Store)]
+```
 
 n/a
 
@@ -29,12 +34,30 @@ n/a
 <!-- Public APIs: method signatures, types -->
 <!-- Contracts between modules -->
 <!-- Code snippets ARE allowed here: interfaces, traits, type definitions (illustrative only) -->
+<!-- For interactions between actors/modules: use a Mermaid sequenceDiagram -->
+<!-- See https://mermaid.js.org/syntax/sequenceDiagram.html -->
+
+```mermaid
+sequenceDiagram
+  participant Client
+  participant API
+  Client->>API: request
+  API-->>Client: response
+```
 
 n/a
 
 ## 4. Data Model
-<!-- Entities, relationships, schemas -->
-<!-- Migrations needed -->
+<!-- Entities, relationships, schemas. Mermaid erDiagram OR classDiagram. -->
+<!-- See https://mermaid.js.org/syntax/entityRelationshipDiagram.html -->
+
+```mermaid
+erDiagram
+  ENTITY_A ||--o{ ENTITY_B : "relation"
+  ENTITY_A {
+    string id PK
+  }
+```
 
 n/a
 

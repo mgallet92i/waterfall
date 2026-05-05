@@ -153,7 +153,7 @@ You own **`ui.md`** (NOT `tech.md` — that's TL's artifact).
 1. **Audit of the existing state** — screenshots (if existing app), analysis of current problems
 2. **Design system** — colors, typography, spacing, CSS tokens
 3. **Components** — list of components to create/modify
-4. **User flows** — main flows, ASCII wireframes
+4. **User flows** — main flows as Mermaid diagrams (flowchart for navigation, sequenceDiagram for user↔system interactions). Wireframes can stay textual or external links.
 5. **Accessibility** — contrasts, font sizes, labels, keyboard navigation
 6. **Responsive behavior** — breakpoints, mobile/desktop adaptations
 
