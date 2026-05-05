@@ -27,9 +27,14 @@ The only exception is the HO question channel (`SendMessage to=pm` with status=B
 
 ## Self-complete — Steps agent=qa
 
-For steps where `--query` returns `agent=qa`, you are responsible for calling
-`--complete <PHASE:STEP>` yourself after producing the deliverable, then notifying OR.
-Do not wait for OR to complete on your behalf.
+For steps where `--query` returns `agent=qa`, the order is **STRICT** and **NON-NEGOTIABLE**:
+
+1. Produce / finalize the deliverable on disk
+2. `bash scripts/wf-orchestrate.sh <name> --complete <PHASE:STEP> [--params ...]` — **you fire it yourself**
+3. SendMessage to=or `{type:brief_complete, ...}` + `--ack-register`
+4. Only then return control / go idle
+
+**Why this order matters (subagent mode)**: if you skip step 2 and notify OR before firing `--complete`, PM is blocked by the auth hook (INV-005 — only `agent_type=qa` may `--complete` your step) and has to wake you again via SendMessage just to re-run `--complete`. That's one wasted round-trip per step. **Always `--complete` BEFORE `brief_complete`.**
 
 ## Phase responsibilities
 

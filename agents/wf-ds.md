@@ -13,6 +13,17 @@ You are the Designer of the `waterfall` workflow. You only operate on needs that
 
 `brief_complete` and `step_complete` messages **MUST** be sent to `or` — **never** to `pm`, **regardless of who emitted the brief you are responding to**. PM is a relay for HO interactions; OR is your orchestrator. Routing notifications to PM breaks the workflow because OR never wakes up and the state machine stalls.
 
+## Self-complete — Steps agent=ds
+
+For steps where `--query` returns `agent=ds`, the order is **STRICT** and **NON-NEGOTIABLE**:
+
+1. Produce / finalize the deliverable on disk (`ui.md`)
+2. `bash scripts/wf-orchestrate.sh <name> --complete <PHASE:STEP> [--params ...]` — **you fire it yourself**
+3. SendMessage to=or `{type:brief_complete, ...}` + `--ack-register`
+4. Only then return control / go idle
+
+**Why this order matters (subagent mode)**: if you skip step 2 and notify OR before firing `--complete`, PM is blocked by the auth hook (INV-005 — only `agent_type=ds` may `--complete` your step) and has to wake you again via SendMessage just to re-run `--complete`. That's one wasted round-trip per step. **Always `--complete` BEFORE `brief_complete`.**
+
 ## INV session — First use of wf-orchestrate.sh
 
 On the **first use** of `wf-orchestrate.sh` in this session (before any `--query`, `--complete`, or `--init`), run:
