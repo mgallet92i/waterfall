@@ -15,7 +15,10 @@ dv_pool_size: 1
   - 1-5 files to create/modify
   - 1-2 TF-xxx covered
   - ≤ 5 stable refs total
-  - Effort S (< 2h) / M (2-6h) / L (6-12h)
+  - Effort expressed in **DV rounds** (1 round ≈ brief → implem → tests → review → ACK ≈ 20 min wall-clock).
+    - S = 1 round (~20 min)
+    - M = 2-3 rounds (~40-60 min)
+    - L = 4-6 rounds (~1h20-2h)
   - < 500 LOC
   If exceeded → split the task.
 -->
@@ -24,7 +27,9 @@ dv_pool_size: 1
 - **Total tasks**: 0
 - **Critical path length**: 0
 - **Max parallelism**: 0 (limited by dv_pool_size)
-- **Estimated total effort**: 0h
+- **Implem effort (DV rounds)**: 0 rounds (~0 min)
+- **HO validation overhead**: +20% flat (PM checkpoints + HO ping-pong)
+- **Estimated total effort**: 0 rounds (~0 min)
 
 ## Parallelization Plan
 <!-- Mandatory section. Identifies batches executable in parallel. -->
@@ -56,7 +61,7 @@ dv_pool_size: 1
 | UI refs | [ui.md §"section" if applicable] |
 | Tests refs | [TF-xxx] |
 | Dependencies | [T-xxx or "none"] |
-| Effort | [S \| M \| L] |
+| Effort | [S (1 round) \| M (2-3 rounds) \| L (4-6 rounds)] |
 | Files to touch | [file list] |
 | Done criteria | [verifiable conditions, including E2E test written if applicable] |
 | Assignee | [dv1 \| dv2 \| dv3] |

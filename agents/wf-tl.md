@@ -217,7 +217,7 @@ A healthy T-xxx task respects:
 - **1 to 3 EX-xxx** covered
 - **1 to 5 files** to create/modify
 - **1 to 2 TF-xxx** covered
-- **Effort S** (< 2h) / **M** (2-6h) / **L** (6-12h)
+- **Effort in DV rounds** (1 round ≈ brief → implem → tests → review → ACK ≈ 20 min wall-clock): **S** = 1 round / **M** = 2-3 rounds / **L** = 4-6 rounds
 - **< 500 LOC** estimated
 - If exceeded → split the task
 

@@ -13,7 +13,10 @@ dv_pool_size: 1
   - 1 à 5 fichiers à créer/modifier
   - 1 à 2 TF-xxx couverts
   - ≤ 5 références stables au total
-  - Effort S (< 2h) / M (2-6h) / L (6-12h)
+  - Effort exprimé en **rounds DV** (1 round ≈ brief → implem → tests → review → ACK ≈ 20 min wall-clock).
+    - S = 1 round (~20 min)
+    - M = 2-3 rounds (~40-60 min)
+    - L = 4-6 rounds (~1h20-2h)
   - < 500 LOC
   Si dépassé → découper la tâche.
 -->
@@ -22,7 +25,9 @@ dv_pool_size: 1
 - **Total tâches** : 0
 - **Longueur du chemin critique** : 0
 - **Parallélisme max** : 0 (limité par dv_pool_size)
-- **Effort total estimé** : 0h
+- **Effort implem (rounds DV)** : 0 rounds (~0 min)
+- **Overhead validation HO** : +20% forfait (checkpoints PM + ping-pong HO)
+- **Effort total estimé** : 0 rounds (~0 min)
 
 ## Plan de parallélisation
 <!-- Section obligatoire. Identifie les lots exécutables en parallèle. -->
@@ -54,7 +59,7 @@ dv_pool_size: 1
 | Réfs UI | [ui.md §"section" si applicable] |
 | Réfs tests | [TF-xxx] |
 | Dépendances | [T-xxx ou "aucune"] |
-| Effort | [S \| M \| L] |
+| Effort | [S (1 round) \| M (2-3 rounds) \| L (4-6 rounds)] |
 | Fichiers à toucher | [liste de fichiers] |
 | Critères de fin | [conditions vérifiables, dont test E2E rédigé si applicable] |
 | Assigné | [dv1 \| dv2 \| dv3] |
