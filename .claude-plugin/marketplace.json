@@ -8,7 +8,7 @@
       "name": "waterfall",
       "source": "./",
       "description": "Multi-agent specification-driven development (SDD) framework for Claude Code.",
-      "version": "0.1.4"
+      "version": "1.0.0"
     }
   ]
 }
