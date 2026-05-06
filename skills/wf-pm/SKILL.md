@@ -286,6 +286,8 @@ Triggered by `/waterfall:new`:
    - ERROR_UNRECOVERABLE    → escalate to HO (retry / abort / investigate)
    - STATUS_REPORT          → relay to HO
    - watchdog.alert non-empty → watchdog_alert handler (§ below)
+   - "watchdog tick wf-<name>" (cron user-prompt) → watchdog_tick handler (§ below — 1-tick poke rule)
+   - stale PLEASE_COMPLETE_STEP / spawn_request (team mode race) → state_clarification handler (§ below)
    - stuck_peer             → apply watchdog flow §6.4 design (H1/H2 → re-poke or shutdown+re-spawn)
    - brief_complete / step_complete from non-OR/PM agent (po, tl, rv, qa, ds, dv*) → MISROUTED_TO_PM handler (§ below)
    - request_codewrite_bypass → CODEWRITE_BYPASS handler (§ below)
@@ -577,6 +579,64 @@ PM monitors `watchdog.alert` in its reactive loop. Triggering condition: file no
 
 **Note**: PM checks `watchdog.alert` on each loop iteration (after handling OR messages). If the file is empty or absent, no action.
 
+### watchdog_tick (1-tick poke rule)
+
+Triggered when the watchdog cron fires its user-prompt "watchdog tick wf-<name>" — distinct from `watchdog.alert` (which is a file populated by external decide logic).
+
+**Rule** : `1 tick muet post-message PM = poke immédiat`. Ne PAS attendre 2-3 ticks.
+
+```
+1. Identify all teammates <T> for which the last PM→T SendMessage was of type
+   {bootstrap_need, spawn_confirmed, step_advanced, relay_brief_complete, relay_step_complete, state_clarification}.
+
+2. For each such <T> :
+   - Check whether <T> has sent ANY message to PM since that last PM→T send
+     (any type — PLEASE_COMPLETE_STEP, brief_complete, spawn_request, idle_notification, status_update, etc.).
+   - If <T> has sent NOTHING AND ≥1 tick (~3min) has elapsed since PM→T :
+     → SendMessage to=<T> :
+         type: poke
+         from: pm
+         note: Watchdog tick, no message received since <type/ts of last PM→T>. Status? Log [OBS] if blocked.
+     → Log :
+         bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log \
+           --msg "watchdog:{decision:poke_silent_post_step,agent:<T>,elapsed_min:>=3,ts:<iso>}"
+
+3. If <T> has been poked at the previous tick AND still silent at this tick :
+   → escalate to STUCK_PEER flow (H1/H2) instead of re-poking.
+
+4. Then continue with the watchdog_alert handler (read watchdog.alert) — independent flow.
+```
+
+**Important distinction from `Idle rule — silence by default`** :
+- `Idle rule` applies to teammate `idle_notification` messages with non-actionable summary → silence.
+- `watchdog_tick` is the cron explicit signal that PM must verify progress → never silence on a teammate that hasn't responded since spawn/step_advanced.
+
+**Why** : observed bug 2026-05-06 on `test-hook-pedagogy-team` — PM let OR silent for ~9 min (3 ticks) after a `bootstrap_need`, mistakenly applying the Idle rule. Cf. memory `feedback_pm_watchdog_poke`.
+
+### state_clarification (team mode race tolerance)
+
+Triggered when PM receives a message that is **stale** relative to the current state machine — common in team mode due to inbox latency / message ordering races.
+
+**Detection** :
+- `PLEASE_COMPLETE_STEP` whose `phase:step` is **earlier** than `.wf-state.json:phase:step`.
+- `spawn_request` for a `role` whose teammate is **already present** in `.team-registry.json` / current team.
+
+```
+1. Read .wf-state.json to confirm current phase:step.
+2. SendMessage to=<sender> :
+     type: state_clarification
+     from: pm
+     state_file_says: phase=<current>, step=<current>
+     note: ton message référence <stale_step> mais le state machine est sur <current>. Race d'ordering team mode (cf. project_team_mode_inbox_race). Refais --query pour rafraîchir, n'envoie pas de doublon.
+3. Do NOT re-execute --complete (idempotence — déjà fait).
+4. Do NOT re-spawn (teammate déjà présent — renvoyer un spawn_confirmed simple suffit si le sender en a besoin).
+5. Log :
+     bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log \
+       --msg "race:{type:<stale_please_complete_step|stale_spawn_request>,sender:<X>,referenced:<old>,actual:<current>,ts:<iso>}"
+```
+
+**Why** : observé en mode team (cf. `project_team_mode_inbox_race`) — OR a renvoyé des messages avant de lire mes step_advanced/spawn_confirmed correspondants. Pattern récurrent, à traiter avec tolérance plutôt que d'exécuter en double.
+
 ### STUCK_PEER
 
 > **INV-004**: this handler **ignores** `config.dark_factory`. HO escalation via `AskUserQuestion` (if `respawn_count >= 1`) remains mandatory even if `dark_factory == "on"`. No auto-validation possible.
@@ -659,6 +719,8 @@ If the PM context is cleared mid-workflow:
 ## Idle rule — silence by default
 
 PM **NEVER** reacts to a teammate's idle notification if that notification contains neither an actionable summary nor an error.
+
+> **Scope** : cette règle concerne uniquement les `idle_notification` passifs des teammates. Elle **ne s'applique pas** aux ticks watchdog du cron (`watchdog tick wf-<name>`) — ces ticks sont des signaux explicites de vérification de progression, traités par le handler `watchdog_tick` (cf. § supra). Pas de silence sur un teammate qui n'a rien envoyé depuis un message PM.
 
 ### Definition of "actionable summary"
 

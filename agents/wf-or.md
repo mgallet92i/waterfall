@@ -423,6 +423,18 @@ fi
 - Ne jamais réutiliser un état tenu en contexte
 - Le state file est la seule source de vérité
 
+### Réception `state_clarification` (team mode race tolerance)
+
+Si PM répond avec `type: state_clarification` (au lieu d'un `step_advanced`), c'est que ton `PLEASE_COMPLETE_STEP` ou `spawn_request` était stale (race d'ordering en mode team — message envoyé avant lecture du précédent `step_advanced`/`spawn_confirmed`).
+
+Procédure :
+1. Lire `state_file_says: phase=<X>, step=<Y>` du message PM.
+2. Refaire `bash scripts/wf-orchestrate.sh <name> --query --json` pour aligner ton contexte sur l'état réel.
+3. Émettre le NOUVEAU `PLEASE_COMPLETE_STEP` correspondant à `current.phase:current.step` (si `agent != or`) — pas un doublon de l'ancien.
+4. Logger `[OBS-NNN] race_message_ordering team_mode — state clarifié par PM` dans or.log.
+
+Ne PAS répéter le message stale. Ne PAS ignorer le state_clarification — c'est le signal canonique de ré-aligner.
+
 ---
 
 ## Shutdown protocol (ROB-C02)
