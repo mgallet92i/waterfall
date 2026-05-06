@@ -80,6 +80,32 @@ _wf_auth_allow() {
   exit 0
 }
 
+# ─── Artifact ownership map (INV-001) ────────────────────────────────────────
+# Returns the canonical agent owner for a business artifact basename.
+# Used by error messages to redirect blocked agents to the correct delegation flow.
+_wf_artifact_owner() {
+  case "$1" in
+    PRD.md|tracking.md|retro.md) echo "pm" ;;
+    specs.md|acceptance.md)      echo "po" ;;
+    design.md|tasks.md)          echo "tl" ;;
+    ui.md)                       echo "ds" ;;
+    review.md)                   echo "rv" ;;
+    *)                           echo "unknown" ;;
+  esac
+}
+
+# _wf_redirect_hint — pedagogical suffix appended to OR block messages.
+# Reminds the agent to delegate via spawn_request instead of attempting a workaround.
+_wf_redirect_hint() {
+  local artifact="$1" owner
+  owner="$(_wf_artifact_owner "$artifact")"
+  if [[ "$owner" == "pm" ]]; then
+    echo "Owner: pm. Emit PLEASE_COMPLETE_STEP to PM via SendMessage. Do NOT attempt a workaround (PowerShell, heredoc, etc.) — confusing yourself with PM is exactly the drift this hook prevents."
+  else
+    echo "Owner: $owner. Emit spawn_request (or PLEASE_COMPLETE_STEP) to PM via SendMessage. Do NOT attempt a workaround (PowerShell, heredoc, etc.) — confusing yourself with $owner is exactly the drift this hook prevents."
+  fi
+}
+
 # ─── Codewrite guard helpers ──────────────────────────────────────────────────
 
 # _wf_resolve_need — best-effort: most recently modified active need (by .wf-state.json mtime).
@@ -162,7 +188,7 @@ _wf_codewrite_guard() {
     artifact_basename="$(basename "$target_path")"
     case "$artifact_basename" in
       PRD.md|specs.md|design.md|ui.md|tasks.md|review.md|acceptance.md|tracking.md)
-        echo "wf-auth: OR write blocked on artifact: $artifact_basename" >&2
+        echo "wf-auth: OR cannot write artifact $artifact_basename. $(_wf_redirect_hint "$artifact_basename")" >&2
         _wf_cw_log "$need_name" "block" "$tool_name" "$target_path" "$agent_type" "forbidden_artifact"
         exit 2
         ;;
@@ -229,7 +255,7 @@ _wf_bash_guard() {
         _wf_cw_log "$need_name" "allow" "Bash" "$matched_artifact" "$agent_type" "pm_owned_bash_write"
         exit 0
       fi
-      echo "wf-auth: PM bash write blocked on non-owned artifact: $matched_artifact" >&2
+      echo "wf-auth: PM cannot write non-owned artifact $matched_artifact. $(_wf_redirect_hint "$(basename "$matched_artifact")")" >&2
       _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "non_owned_bash_write"
       exit 2
       ;;
@@ -238,7 +264,7 @@ _wf_bash_guard() {
         _wf_cw_log "$need_name" "allow" "Bash" "$matched_artifact" "$agent_type" "po_owned_bash_write"
         exit 0
       fi
-      echo "wf-auth: PO bash write blocked on non-owned artifact: $matched_artifact" >&2
+      echo "wf-auth: PO cannot write non-owned artifact $matched_artifact. $(_wf_redirect_hint "$(basename "$matched_artifact")")" >&2
       _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "non_owned_bash_write"
       exit 2
       ;;
@@ -247,7 +273,7 @@ _wf_bash_guard() {
         _wf_cw_log "$need_name" "allow" "Bash" "$matched_artifact" "$agent_type" "tl_owned_bash_write"
         exit 0
       fi
-      echo "wf-auth: TL bash write blocked on non-owned artifact: $matched_artifact" >&2
+      echo "wf-auth: TL cannot write non-owned artifact $matched_artifact. $(_wf_redirect_hint "$(basename "$matched_artifact")")" >&2
       _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "non_owned_bash_write"
       exit 2
       ;;
@@ -256,7 +282,7 @@ _wf_bash_guard() {
         _wf_cw_log "$need_name" "allow" "Bash" "$matched_artifact" "$agent_type" "ds_owned_bash_write"
         exit 0
       fi
-      echo "wf-auth: DS bash write blocked on non-owned artifact: $matched_artifact" >&2
+      echo "wf-auth: DS cannot write non-owned artifact $matched_artifact. $(_wf_redirect_hint "$(basename "$matched_artifact")")" >&2
       _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "non_owned_bash_write"
       exit 2
       ;;
@@ -265,24 +291,24 @@ _wf_bash_guard() {
         _wf_cw_log "$need_name" "allow" "Bash" "$matched_artifact" "$agent_type" "rv_owned_bash_write"
         exit 0
       fi
-      echo "wf-auth: RV bash write blocked on non-owned artifact: $matched_artifact" >&2
+      echo "wf-auth: RV cannot write non-owned artifact $matched_artifact. $(_wf_redirect_hint "$(basename "$matched_artifact")")" >&2
       _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "non_owned_bash_write"
       exit 2
       ;;
     qa|qa-[0-9]*|qa[0-9]*|dv|dv[0-9]*|dv-[0-9]*)
       # QA and DV are not authors of any business artifact (INV-001).
-      echo "wf-auth: $agent_type bash write blocked on non-owned artifact: $matched_artifact" >&2
+      echo "wf-auth: $agent_type cannot write non-owned artifact $matched_artifact (QA/DV are not authors of any artifact). $(_wf_redirect_hint "$(basename "$matched_artifact")")" >&2
       _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "non_owned_bash_write"
       exit 2
       ;;
     or|or-[0-9]*|or[0-9]*)
       # OR never writes business artifacts (B2 / EX-006 core invariant).
-      echo "wf-auth: OR bash write blocked on artifact: $matched_artifact (B2)" >&2
+      echo "wf-auth: OR cannot write artifact $matched_artifact via Bash (B2 / EX-006). $(_wf_redirect_hint "$(basename "$matched_artifact")")" >&2
       _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "or_bash_bypass"
       exit 2
       ;;
     *)
-      echo "wf-auth: unknown agent_type=$agent_type bash write blocked on $matched_artifact" >&2
+      echo "wf-auth: unknown agent_type=$agent_type cannot write $matched_artifact. $(_wf_redirect_hint "$(basename "$matched_artifact")")" >&2
       _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "unknown_agent_bash"
       exit 2
       ;;

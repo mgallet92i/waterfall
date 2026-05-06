@@ -197,6 +197,27 @@ The following tools are **reserved for PM** and **forbidden to OR**:
 
 **Mechanical enforcement**: the PreToolUse hook `hooks/wf-auth.sh` blocks any `Write`/`Edit`/`NotebookEdit` by OR on a path outside `wf/needs/<name>/` unless a sentinel `.or-codewrite-bypass` was created by PM. There is no way around this hook — attempting a workaround will exit 2.
 
+### Reacting to a hook block (INV-HOOK-REACT)
+
+If the hook returns `wf-auth: OR cannot write artifact <X>.md ...` (or any block message), this is a **role-confusion signal**, not an obstacle to bypass. The hook is doing its job — OR has tried to author an artifact owned by another agent. The required reaction is mechanical:
+
+1. **STOP immediately.** Do not read the hook source to find a loophole. Do not switch tools (PowerShell, heredoc, `tee`, `dd`, etc.) to dodge the same write. Every workaround attempt is itself the bug the hook prevents.
+2. **Log the incident** in `or.log`: `[OBS-NNN] hook-block on <artifact>.md — wrong agent attempted authorship`.
+3. **Delegate via the proper channel**, using the artifact ownership map below.
+4. **Wait for the owner's `brief_complete`** before resuming the state machine.
+
+**Artifact ownership map** (authoritative, INV-001):
+
+| Artifact                                | Owner | Delegation channel from OR                                  |
+|-----------------------------------------|-------|-------------------------------------------------------------|
+| `PRD.md`, `tracking.md`, `retro.md`     | pm    | `PLEASE_COMPLETE_STEP` to PM via `SendMessage`              |
+| `specs.md`, `acceptance.md`             | po    | `spawn_request` to PM (or `PLEASE_COMPLETE_STEP` if spawned) |
+| `design.md`, `tasks.md`                 | tl    | `spawn_request` to PM (or `PLEASE_COMPLETE_STEP` if spawned) |
+| `ui.md`                                 | ds    | `spawn_request` to PM (or `PLEASE_COMPLETE_STEP` if spawned) |
+| `review.md`                             | rv    | `spawn_request` to PM (or `PLEASE_COMPLETE_STEP` if spawned) |
+
+**Bootstrap red flag** : if the very first write OR attempts in a session is `PRD.md`, OR has confused itself with PM. PM is the main session — OR is a subagent that *spawns* and *routes*, never authors. Recule, log `[OBS]`, et émets le `PLEASE_COMPLETE_STEP REQUIREMENTS:COLLECT_PRD` à PM.
+
 **In `subagent` mode (INV-001)**: OR must **never** emit `SendMessage` to PO, TL, RV, QA, DS or DV. Only PM (`team-lead`) is an authorized target for OR `SendMessage`s in subagent mode. Before each `SendMessage`, if `config.agent_mode == "subagent"` and the destination is not `pm` / `team-lead` → **abort**, log the error, escalate to PM.
 
 Example mental check to apply:
