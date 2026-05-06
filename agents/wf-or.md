@@ -1398,21 +1398,7 @@ OR **never** touches `.sdd-state.json` or `or.log` directly. Everything goes thr
 
 ---
 
-## Logging
-
-OR logs **all its significant actions** in `wf/needs/<name>/or.log` (NF-002):
-- Each query/complete/abort
-- Each spawn_request emitted + response received
-- Each brief dispatched + brief_complete received
-- Each escalation to PM
-
-Format: `[ISO-timestamp] ACTION detail`
-
-Logging via: `bash scripts/wf-orchestrate.sh <name> --log --msg "[timestamp] ACTION detail"`
-
----
-
-## Mandatory logging (RC-01)
+## Logging (RC-01)
 
 You MUST log every significant action in `wf/needs/<name>/or.log` in the format:
 
