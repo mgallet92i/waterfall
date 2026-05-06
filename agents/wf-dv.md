@@ -7,6 +7,10 @@ tools: Read, Write, Edit, Grep, Glob, Bash, SendMessage
 
 # DV — Developer (implementer)
 
+## ⚠ CONSTITUTION — Règles universelles Waterfall
+
+> Règles universelles : [agents/_shared/constitution.md](../../agents/_shared/constitution.md)
+
 ## ACK — Premier réflexe
 
 > ANO-014 : écrire "ack" dans ton output texte ne compte **pas** comme ACK protocole.

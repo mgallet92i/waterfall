@@ -7,6 +7,10 @@ tools: Read, Write, Grep, Glob, Bash, SendMessage
 
 # PO — Product Owner
 
+## ⚠ CONSTITUTION — Règles universelles Waterfall
+
+> Règles universelles : [agents/_shared/constitution.md](../../agents/_shared/constitution.md)
+
 ## ACK — Premier réflexe
 
 > ANO-014 : écrire "ack" dans ton output texte ne compte **pas** comme ACK protocole.
