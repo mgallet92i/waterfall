@@ -146,6 +146,10 @@ _wf_codewrite_guard() {
   case " dv tl po rv qa ds pm dv1 dv2 dv3 dv4 dv5 dv6 dv7 dv8 dv9 " in
     *" $agent_type "*) exit 0 ;;
   esac
+  # Respawn aliases for non-OR agents (e.g. tl-2, po-3, dv1-2, dv4-1).
+  if [[ "$agent_type" =~ ^(dv|tl|po|rv|qa|ds|pm)([1-9][0-9]?)?(-[0-9]+)?$ ]]; then
+    exit 0
+  fi
 
   # Step 2 — OR identity check (Q-002: covers "or", "or1", "or2", "or-1", "or-2" respawn forms).
   if [[ ! ( "$agent_type" == "or" || "$agent_type" =~ ^or(-[0-9]+|[0-9]+)$ ) ]]; then
@@ -187,7 +191,7 @@ _wf_codewrite_guard() {
     local artifact_basename
     artifact_basename="$(basename "$target_path")"
     case "$artifact_basename" in
-      PRD.md|specs.md|design.md|ui.md|tasks.md|review.md|acceptance.md|tracking.md)
+      PRD.md|specs.md|design.md|ui.md|tasks.md|review.md|acceptance.md)
         echo "wf-auth: OR cannot write artifact $artifact_basename. $(_wf_redirect_hint "$artifact_basename")" >&2
         _wf_cw_log "$need_name" "block" "$tool_name" "$target_path" "$agent_type" "forbidden_artifact"
         exit 2
@@ -459,7 +463,7 @@ if [[ -z "$expected" ]]; then
 fi
 
 # 9. DV alias (ADR-006): agent_type dv1..dv9 or tl (solo-impl, DEC-002) matches expected=dv.
-if [[ "$expected" == "dv" && ( "$agent_type" =~ ^dv[1-9]$ || "$agent_type" == "tl" ) ]]; then
+if [[ "$expected" == "dv" && ( "$agent_type" =~ ^dv[1-9]([0-9]?)(-[0-9]+)?$ || "$agent_type" == "tl" ) ]]; then
   _wf_auth_allow "$name" "$step_canonical" "$agent_type" "$expected" "dv_alias"
 fi
 

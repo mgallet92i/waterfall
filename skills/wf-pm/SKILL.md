@@ -33,6 +33,29 @@ PM is a **team lead and a relay**, not a technical executor. It does not write a
 
 ---
 
+## Brief Discipline (INV-BRIEF-DISCIPLINE)
+
+> Invariant complet : `agents/_shared/constitution.md §Invariants universels — INV-BRIEF-DISCIPLINE`.
+
+**Règle** : toute évolution de spec ou de tâche se matérialise **uniquement** par l'édition de l'artefact source-of-truth désigné (`design.md`, `tech.md`, `tasks.md`). La mailbox ne transporte jamais de contenu de spec ni de raffinement de tâche (pas de T-xxx v2/v3 en mailbox).
+
+**Procédure après édition d'artefact** :
+
+1. Éditer l'artefact cible (`design.md`, `tech.md`, `tasks.md` — section §X concernée).
+2. Envoyer un poke minimaliste aux agents concernés :
+   ```
+   type: poke
+   note: "relire §X de <artefact> — mis à jour."
+   ```
+3. L'agent destinataire relit l'artefact sur disque depuis `§X` — jamais depuis le contenu du message reçu.
+
+**Interdictions** :
+- Ne jamais envoyer le nouveau contenu de la spec dans un SendMessage.
+- Ne jamais envoyer un "brief v2" en mailbox pour remplacer un brief précédent.
+- Ne jamais inférer une évolution de spec depuis un message mailbox non accompagné d'une édition d'artefact.
+
+---
+
 ## 4 Responsibilities
 
 ### 1. Sole team lead (TeamCreate)

@@ -2347,6 +2347,493 @@ process.stdout.write(JSON.stringify(result, null, 2) + '\n');
 ENDJS
 }
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Section 6c4 : CONTEXT BUDGET (T-004)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --ctx-count --teammate <role> --mode team|subagent [--kb <estimated_kb>]
+handle_ctx_count() {
+  local name="$1"; shift
+
+  local teammate="" mode="" kb_arg=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --teammate) teammate="${2:-}"; shift 2 ;;
+      --mode)     mode="${2:-}"; shift 2 ;;
+      --kb)       kb_arg="${2:-}"; shift 2 ;;
+      *)          shift ;;
+    esac
+  done
+
+  if [[ -z "$teammate" ]]; then
+    emit_error "Missing --teammate argument" "USAGE"
+  fi
+  if [[ -z "$mode" ]]; then
+    emit_error "Missing --mode argument (team|subagent)" "USAGE"
+  fi
+
+  local need_dir="$PROJECT_ROOT/wf/needs/$name"
+  local tracking_file="$need_dir/tracking.md"
+  local logfile="$need_dir/or.log"
+  local config_file="$PROJECT_ROOT/.wf-config.json"
+
+  # Read thresholds from .wf-config.json (defaults: msgs=40, kb=80)
+  local threshold_msgs=40
+  local threshold_kb=80
+
+  if [[ -f "$config_file" ]]; then
+    local _cfg_path
+    _cfg_path="$(winpath "$config_file")"
+    export _WF_CTX_CFG_PATH="$_cfg_path"
+    local cfg_out
+    cfg_out=$(node --input-type=module <<'END_CTX_CFG' 2>/dev/null || echo "40 80"
+import { readFileSync } from 'fs';
+try {
+  const c = JSON.parse(readFileSync(process.env._WF_CTX_CFG_PATH, 'utf8'));
+  const t = c.consolidate_brief_threshold || {};
+  const msgs = (t.msgs != null) ? t.msgs : 40;
+  const kb   = (t.kb   != null) ? t.kb   : 80;
+  process.stdout.write(msgs + ' ' + kb);
+} catch(e) { process.stdout.write('40 80'); }
+END_CTX_CFG
+    )
+    threshold_msgs=$(echo "$cfg_out" | awk '{print $1}')
+    threshold_kb=$(echo "$cfg_out" | awk '{print $2}')
+  fi
+
+  # Ensure tracking.md has a context_budget section; read current row for teammate
+  # If tracking.md does not exist, create a minimal one
+  if [[ ! -f "$tracking_file" ]]; then
+    mkdir -p "$need_dir"
+    printf '# Tracking — %s\n\n' "$name" > "$tracking_file"
+  fi
+
+  # Ensure context_budget section exists
+  if ! grep -q '^## context_budget' "$tracking_file"; then
+    printf '\n## context_budget\n\n| Teammate | Msgs | KB | Threshold Msgs | Threshold KB | consolidate_pending | mode | Dernière MAJ |\n|----------|------|----|----------------|--------------|---------------------|------|--------------|\n' >> "$tracking_file"
+  fi
+
+  # Parse current values for this teammate from the table using Node.js
+  local _tracking_path
+  _tracking_path="$(winpath "$tracking_file")"
+  export _WF_CTX_TRACKING_PATH="$_tracking_path"
+  export _WF_CTX_TEAMMATE="$teammate"
+  export _WF_CTX_KB_ARG="${kb_arg:-0}"
+  export _WF_CTX_THRESHOLD_MSGS="$threshold_msgs"
+  export _WF_CTX_THRESHOLD_KB="$threshold_kb"
+  export _WF_CTX_MODE="$mode"
+
+  local result
+  result=$(node --input-type=module <<'END_CTX_MAIN'
+import { readFileSync, writeFileSync } from 'fs';
+
+const trackingPath = process.env._WF_CTX_TRACKING_PATH;
+const teammate = process.env._WF_CTX_TEAMMATE;
+const kbArg = parseFloat(process.env._WF_CTX_KB_ARG) || 0;
+const thresholdMsgs = parseInt(process.env._WF_CTX_THRESHOLD_MSGS) || 40;
+const thresholdKb = parseFloat(process.env._WF_CTX_THRESHOLD_KB) || 80;
+
+let content = readFileSync(trackingPath, 'utf8');
+
+// Find or create table row for this teammate
+// Use a split-based approach to find the context_budget section boundaries
+const lines = content.split('\n');
+let sectionStart = -1;
+let sectionEnd = lines.length;
+
+for (let i = 0; i < lines.length; i++) {
+  if (lines[i].trim() === '## context_budget') {
+    sectionStart = i;
+  } else if (sectionStart >= 0 && i > sectionStart && lines[i].match(/^## /)) {
+    sectionEnd = i;
+    break;
+  }
+}
+
+let rows = {};
+
+if (sectionStart >= 0) {
+  const sectionLines = lines.slice(sectionStart + 1, sectionEnd);
+  for (const line of sectionLines) {
+    if (!line.startsWith('|')) continue;
+    if (line.match(/^\|[-\s|]+\|$/)) continue; // separator
+    const cols = line.split('|').map(c => c.trim()).filter((_, i) => i > 0 && i <= 8);
+    if (cols.length >= 7 && !cols[0].match(/^Teammate$/i) && cols[0].length > 0) {
+      rows[cols[0]] = {
+        msgs: parseInt(cols[1]) || 0,
+        kb: parseFloat(cols[2]) || 0,
+        consolidate_pending: cols[5] === 'true',
+        mode: cols[6] || '-'
+      };
+    }
+  }
+}
+
+// Current values for this teammate
+const current = rows[teammate] || { msgs: 0, kb: 0, consolidate_pending: false, mode: '-' };
+
+// Increment
+current.msgs += 1;
+current.kb += kbArg;
+
+// Evaluate threshold (EX-012: idempotence — if already pending, just_triggered=false)
+let just_triggered = false;
+const over_threshold = (current.msgs >= thresholdMsgs) || (current.kb >= thresholdKb);
+
+if (over_threshold && !current.consolidate_pending) {
+  current.consolidate_pending = true;
+  just_triggered = true;
+}
+
+rows[teammate] = current;
+
+// Rebuild the context_budget section
+const now = new Date().toISOString().slice(0,16).replace('T',' ');
+const header = '| Teammate | Msgs | KB | Threshold Msgs | Threshold KB | consolidate_pending | mode | Dernière MAJ |\n|----------|------|----|----------------|--------------|---------------------|------|--------------|';
+const rowLines = Object.entries(rows).map(([tm, r]) => {
+  return `| ${tm} | ${r.msgs} | ${parseFloat(r.kb.toFixed(2))} | ${thresholdMsgs} | ${thresholdKb} | ${r.consolidate_pending} | ${r.mode} | ${now} |`;
+});
+const newSectionLines = ['## context_budget', '', header, ...rowLines];
+
+// Replace or append section
+let newLines;
+if (sectionStart >= 0) {
+  newLines = [
+    ...lines.slice(0, sectionStart),
+    ...newSectionLines,
+    '',
+    ...lines.slice(sectionEnd)
+  ];
+} else {
+  newLines = [...lines, '', ...newSectionLines, ''];
+}
+
+writeFileSync(trackingPath, newLines.join('\n'), 'utf8');
+
+const output = {
+  msgs: current.msgs,
+  kb: parseFloat(current.kb.toFixed(2)),
+  threshold_msgs: thresholdMsgs,
+  threshold_kb: thresholdKb,
+  consolidate_pending: current.consolidate_pending,
+  just_triggered
+};
+
+process.stdout.write(JSON.stringify(output, null, 2) + '\n');
+END_CTX_MAIN
+  )
+
+  # Log to or.log
+  local msgs_val kb_val cp_val
+  msgs_val=$(echo "$result" | node --input-type=module -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{try{const o=JSON.parse(d);process.stdout.write(String(o.msgs))}catch(e){process.stdout.write("?")}})' 2>/dev/null || echo "?")
+  kb_val=$(echo "$result" | node --input-type=module -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{try{const o=JSON.parse(d);process.stdout.write(String(o.kb))}catch(e){process.stdout.write("?")}})' 2>/dev/null || echo "?")
+  cp_val=$(echo "$result" | node --input-type=module -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{try{const o=JSON.parse(d);process.stdout.write(String(o.consolidate_pending))}catch(e){process.stdout.write("?")}})' 2>/dev/null || echo "?")
+
+  # Parse values more efficiently using env var
+  export _WF_CTX_RESULT="$result"
+  local parsed_vals
+  parsed_vals=$(node --input-type=module <<'END_CTX_PARSE'
+const o = JSON.parse(process.env._WF_CTX_RESULT || '{}');
+process.stdout.write([o.msgs||0, o.kb||0, o.just_triggered||false, o.consolidate_pending||false].join(' '));
+END_CTX_PARSE
+  )
+  msgs_val=$(echo "$parsed_vals" | awk '{print $1}')
+  kb_val=$(echo "$parsed_vals" | awk '{print $2}')
+  local jt_val cp_val2
+  jt_val=$(echo "$parsed_vals" | awk '{print $3}')
+  cp_val2=$(echo "$parsed_vals" | awk '{print $4}')
+
+  mkdir -p "$need_dir"
+  printf '%s [CTX] teammate=%s msgs=%s kb=%s threshold_msgs=%s threshold_kb=%s\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$teammate" "$msgs_val" "$kb_val" "$threshold_msgs" "$threshold_kb" >> "$logfile"
+
+  if [[ "$jt_val" == "true" ]]; then
+    printf '%s [CTX] consolidate_pending=true teammate=%s msgs=%s\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$teammate" "$msgs_val" >> "$logfile"
+  fi
+
+  printf '%s\n' "$result"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Section 6c5 : CONTEXT OVERFLOW REACTIVE HANDLER (T-007)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# --ctx-overflow --teammate <role> [--task <T-xxx>]
+handle_ctx_overflow() {
+  local name="$1"; shift
+
+  local teammate="" task_id=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --teammate) teammate="${2:-}"; shift 2 ;;
+      --task)     task_id="${2:-}"; shift 2 ;;
+      *)          shift ;;
+    esac
+  done
+
+  if [[ -z "$teammate" ]]; then
+    emit_error "Missing --teammate argument" "USAGE"
+  fi
+
+  local need_dir="$PROJECT_ROOT/wf/needs/$name"
+  local tracking_file="$need_dir/tracking.md"
+  local logfile="$need_dir/or.log"
+
+  # Log to or.log — EX-011
+  local task_log_val="${task_id:-null}"
+  mkdir -p "$need_dir"
+  printf '%s [CTX] context_overflow detected teammate=%s mode=degraded task=%s\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$teammate" "$task_log_val" >> "$logfile"
+
+  # Ensure tracking.md exists
+  if [[ ! -f "$tracking_file" ]]; then
+    printf '# Tracking — %s\n\n' "$name" > "$tracking_file"
+  fi
+
+  # Ensure context_budget section exists
+  if ! grep -q '^## context_budget' "$tracking_file"; then
+    printf '\n## context_budget\n\n| Teammate | Msgs | KB | Threshold Msgs | Threshold KB | consolidate_pending | mode | Dernière MAJ |\n|----------|------|----|----------------|--------------|---------------------|------|--------------|\n' >> "$tracking_file"
+  fi
+
+  # Update tracking.md: set consolidate_pending=true AND mode=degraded for this teammate
+  local _tracking_path
+  _tracking_path="$(winpath "$tracking_file")"
+  export _WF_CTX_OVF_TRACKING="$_tracking_path"
+  export _WF_CTX_OVF_TEAMMATE="$teammate"
+
+  node --input-type=module <<'END_CTX_OVF'
+import { readFileSync, writeFileSync } from 'fs';
+
+const trackingPath = process.env._WF_CTX_OVF_TRACKING;
+const teammate = process.env._WF_CTX_OVF_TEAMMATE;
+
+let content = readFileSync(trackingPath, 'utf8');
+const lines = content.split('\n');
+
+let sectionStart = -1;
+let sectionEnd = lines.length;
+
+for (let i = 0; i < lines.length; i++) {
+  if (lines[i].trim() === '## context_budget') {
+    sectionStart = i;
+  } else if (sectionStart >= 0 && i > sectionStart && lines[i].match(/^## /)) {
+    sectionEnd = i;
+    break;
+  }
+}
+
+let rows = {};
+let thresholdMsgs = 40;
+let thresholdKb = 80;
+
+if (sectionStart >= 0) {
+  const sectionLines = lines.slice(sectionStart + 1, sectionEnd);
+  for (const line of sectionLines) {
+    if (!line.startsWith('|')) continue;
+    if (line.match(/^\|[-\s|]+\|$/)) continue;
+    const cols = line.split('|').map(c => c.trim()).filter((_, i) => i > 0 && i <= 8);
+    if (cols.length >= 7 && !cols[0].match(/^Teammate$/i) && cols[0].length > 0) {
+      rows[cols[0]] = {
+        msgs: parseInt(cols[1]) || 0,
+        kb: parseFloat(cols[2]) || 0,
+        threshold_msgs: parseInt(cols[3]) || 40,
+        threshold_kb: parseFloat(cols[4]) || 80,
+        consolidate_pending: cols[5] === 'true',
+        mode: cols[6] || '-'
+      };
+      if (cols[0] === teammate) {
+        thresholdMsgs = parseInt(cols[3]) || 40;
+        thresholdKb = parseFloat(cols[4]) || 80;
+      }
+    }
+  }
+}
+
+// Create row if not present
+if (!rows[teammate]) {
+  rows[teammate] = { msgs: 0, kb: 0, threshold_msgs: thresholdMsgs, threshold_kb: thresholdKb, consolidate_pending: false, mode: '-' };
+}
+
+// Set mode=degraded and consolidate_pending=true
+rows[teammate].consolidate_pending = true;
+rows[teammate].mode = 'degraded';
+
+const now = new Date().toISOString().slice(0,16).replace('T',' ');
+const header = '| Teammate | Msgs | KB | Threshold Msgs | Threshold KB | consolidate_pending | mode | Dernière MAJ |\n|----------|------|----|----------------|--------------|---------------------|------|--------------|';
+const rowLines = Object.entries(rows).map(([tm, r]) => {
+  return `| ${tm} | ${r.msgs} | ${parseFloat((r.kb||0).toFixed(2))} | ${r.threshold_msgs||40} | ${r.threshold_kb||80} | ${r.consolidate_pending} | ${r.mode} | ${now} |`;
+});
+const newSectionLines = ['## context_budget', '', header, ...rowLines];
+
+let newLines;
+if (sectionStart >= 0) {
+  newLines = [
+    ...lines.slice(0, sectionStart),
+    ...newSectionLines,
+    '',
+    ...lines.slice(sectionEnd)
+  ];
+} else {
+  newLines = [...lines, '', ...newSectionLines, ''];
+}
+
+writeFileSync(trackingPath, newLines.join('\n'), 'utf8');
+END_CTX_OVF
+
+  # Return JSON
+  local task_json_val
+  if [[ -n "$task_id" ]]; then
+    task_json_val="\"$task_id\""
+  else
+    task_json_val="null"
+  fi
+
+  node --input-type=module <<ENDJSON
+process.stdout.write(JSON.stringify({
+  action: "respawn_degraded",
+  teammate: "${teammate}",
+  logged: true,
+  task_interrupted: ${task_json_val}
+}, null, 2) + '\n');
+ENDJSON
+}
+
+handle_ctx_consolidate_respawn() {
+  local name="$1"; shift
+
+  local teammate="" mode="nominal" trigger="brief_complete"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --teammate) teammate="${2:-}"; shift 2 ;;
+      --mode)     mode="${2:-nominal}"; shift 2 ;;
+      --trigger)  trigger="${2:-brief_complete}"; shift 2 ;;
+      *)          shift ;;
+    esac
+  done
+
+  if [[ -z "$teammate" ]]; then
+    emit_error "Missing --teammate argument" "USAGE"
+  fi
+
+  local need_dir="$PROJECT_ROOT/wf/needs/$name"
+  local tracking_file="$need_dir/tracking.md"
+  local logfile="$need_dir/or.log"
+
+  mkdir -p "$need_dir"
+
+  # Log to or.log
+  printf '%s [CTX] consolidate_respawn teammate=%s mode=%s trigger=%s\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$teammate" "$mode" "$trigger" >> "$logfile"
+
+  # Ensure tracking.md exists
+  if [[ ! -f "$tracking_file" ]]; then
+    printf '# Tracking — %s\n\n' "$name" > "$tracking_file"
+  fi
+
+  # Ensure context_budget section exists
+  if ! grep -q '^## context_budget' "$tracking_file"; then
+    printf '\n## context_budget\n\n| Teammate | Msgs | KB | Threshold Msgs | Threshold KB | consolidate_pending | mode | Dernière MAJ |\n|----------|------|----|----------------|--------------|---------------------|------|--------------|\n' >> "$tracking_file"
+  fi
+
+  # Reset context_budget row for this teammate: msgs=0, kb=0, consolidate_pending=false, mode=nominal
+  local _tracking_path
+  _tracking_path="$(winpath "$tracking_file")"
+  export _WF_CTX_RSP_TRACKING="$_tracking_path"
+  export _WF_CTX_RSP_TEAMMATE="$teammate"
+
+  node --input-type=module <<'END_CTX_RSP'
+import { readFileSync, writeFileSync } from 'fs';
+
+const trackingPath = process.env._WF_CTX_RSP_TRACKING;
+const teammate = process.env._WF_CTX_RSP_TEAMMATE;
+
+let content = readFileSync(trackingPath, 'utf8');
+const lines = content.split('\n');
+
+let sectionStart = -1;
+let sectionEnd = lines.length;
+
+for (let i = 0; i < lines.length; i++) {
+  if (lines[i].trim() === '## context_budget') {
+    sectionStart = i;
+  } else if (sectionStart >= 0 && i > sectionStart && lines[i].match(/^## /)) {
+    sectionEnd = i;
+    break;
+  }
+}
+
+let rows = {};
+let thresholdMsgs = 40;
+let thresholdKb = 80;
+
+if (sectionStart >= 0) {
+  const sectionLines = lines.slice(sectionStart + 1, sectionEnd);
+  for (const line of sectionLines) {
+    if (!line.startsWith('|')) continue;
+    if (line.match(/^\|[-\s|]+\|$/)) continue;
+    const cols = line.split('|').map(c => c.trim()).filter((_, i) => i > 0 && i <= 8);
+    if (cols.length >= 7 && !cols[0].match(/^Teammate$/i) && cols[0].length > 0) {
+      rows[cols[0]] = {
+        msgs: parseInt(cols[1]) || 0,
+        kb: parseFloat(cols[2]) || 0,
+        threshold_msgs: parseInt(cols[3]) || 40,
+        threshold_kb: parseFloat(cols[4]) || 80,
+        consolidate_pending: cols[5] === 'true',
+        mode: cols[6] || '-'
+      };
+      if (cols[0] === teammate) {
+        thresholdMsgs = parseInt(cols[3]) || 40;
+        thresholdKb = parseFloat(cols[4]) || 80;
+      }
+    }
+  }
+}
+
+// Create row if not present, or reset existing
+rows[teammate] = {
+  msgs: 0,
+  kb: 0,
+  threshold_msgs: rows[teammate] ? rows[teammate].threshold_msgs : thresholdMsgs,
+  threshold_kb:   rows[teammate] ? rows[teammate].threshold_kb   : thresholdKb,
+  consolidate_pending: false,
+  mode: 'nominal'
+};
+
+const now = new Date().toISOString().slice(0,16).replace('T',' ');
+const header = '| Teammate | Msgs | KB | Threshold Msgs | Threshold KB | consolidate_pending | mode | Dernière MAJ |\n|----------|------|----|----------------|--------------|---------------------|------|--------------|';
+const rowLines = Object.entries(rows).map(([tm, r]) => {
+  return `| ${tm} | ${r.msgs} | ${parseFloat((r.kb||0).toFixed(2))} | ${r.threshold_msgs||40} | ${r.threshold_kb||80} | ${r.consolidate_pending} | ${r.mode} | ${now} |`;
+});
+const newSectionLines = ['## context_budget', '', header, ...rowLines];
+
+let newLines;
+if (sectionStart >= 0) {
+  newLines = [
+    ...lines.slice(0, sectionStart),
+    ...newSectionLines,
+    '',
+    ...lines.slice(sectionEnd)
+  ];
+} else {
+  newLines = [...lines, '', ...newSectionLines, ''];
+}
+
+writeFileSync(trackingPath, newLines.join('\n'), 'utf8');
+END_CTX_RSP
+
+  # Return JSON
+  node --input-type=module <<ENDJSON
+process.stdout.write(JSON.stringify({
+  action: "consolidate_respawn",
+  teammate: "${teammate}",
+  mode: "${mode}",
+  trigger: "${trigger}",
+  logged: true
+}, null, 2) + '\n');
+ENDJSON
+}
+
 handle_help() {
   local step_filter="${1:-}"
 
@@ -2403,6 +2890,9 @@ const contract = {
     { command: "<name> --ack-confirm --msg-id <id>", args: "",                  description: "Mark an ACK entry as 'acked' (idempotent — no-op if already acked or escalated). Called by emitter on reception of ack:<msg_id>, or by receiver after emitting the ACK.", example: "bash scripts/wf-orchestrate.sh my-need --ack-confirm --msg-id po-step_complete-COLLECT_PRD-1713340800-001" },
     { command: "<name> --ack-query",  args: "[--from <role>] [--to <role>]",   description: "Return JSON of pending ACK entries, filtered by from/to role. Each entry includes elapsed=now-last_sent_at. Call BEFORE every significant action (check-before-act pattern).", example: "bash scripts/wf-orchestrate.sh my-need --ack-query --from po" },
     { command: "<name> --ack-escalate --msg-id <id>", args: "",                description: "Mark a pending ACK entry as 'escalated' after 3 failed retries. Precondition: status must be pending.", example: "bash scripts/wf-orchestrate.sh my-need --ack-escalate --msg-id po-step_complete-COLLECT_PRD-1713340800-001" },
+    { command: "<name> --ctx-count --teammate <role> --mode team|subagent", args: "[--kb <estimated_kb>]", description: "Increment context budget counter for a teammate. Returns JSON: { msgs, kb, threshold_msgs, threshold_kb, consolidate_pending, just_triggered }. Reads thresholds from .wf-config.json (default: msgs=40, kb=80). Idempotent: if consolidate_pending already true, just_triggered=false. Logs [CTX] entry to or.log. Updates tracking.md §context_budget.", example: "bash scripts/wf-orchestrate.sh my-need --ctx-count --teammate dv1 --mode team" },
+    { command: "<name> --ctx-overflow --teammate <role>", args: "[--task <T-xxx>]", description: "Reactive overflow handler — triggered when 'Context limit reached' is detected for a teammate. Sets mode=degraded and consolidate_pending=true in tracking.md §context_budget. Logs [CTX] context_overflow detected to or.log. Returns JSON: { action: 'respawn_degraded', teammate, logged: true, task_interrupted }. OR/PM must then shutdown and respawn the teammate with a consolidated brief.", example: "bash scripts/wf-orchestrate.sh my-need --ctx-overflow --teammate dv1 --task T-006bis" },
+    { command: "<name> --ctx-consolidate-respawn --teammate <role>", args: "[--mode nominal|degraded] [--trigger brief_complete|threshold|other]", description: "Reset context budget for a teammate after a successful consolidate-and-respawn cycle. Logs [CTX] consolidate_respawn to or.log. Resets tracking.md §context_budget row: msgs=0, kb=0, consolidate_pending=false, mode=nominal. Returns JSON: { action: 'consolidate_respawn', teammate, mode, trigger, logged: true }. Idempotent — safe to call twice. Call BEFORE spawning the fresh teammate instance.", example: "bash scripts/wf-orchestrate.sh my-need --ctx-consolidate-respawn --teammate dv1 --mode nominal --trigger brief_complete" },
     { command: "[<name>] --help",   args: "[PHASE:STEP]",                      description: "Show this contract, or expected_params for a specific step.", example: "bash scripts/wf-orchestrate.sh --help BOOTSTRAP:COLLECT_CARD_NUM" }
   ],
 
@@ -2727,7 +3217,19 @@ case "$MODE" in
     shift
     handle_fast_path_skip "$NAME" "$@"
     ;;
+  --ctx-count)
+    shift
+    handle_ctx_count "$NAME" "$@"
+    ;;
+  --ctx-overflow)
+    shift
+    handle_ctx_overflow "$NAME" "$@"
+    ;;
+  --ctx-consolidate-respawn)
+    shift
+    handle_ctx_consolidate_respawn "$NAME" "$@"
+    ;;
   *)
-    emit_error "Unknown command: $MODE. Use --init, --query, --complete, --abort, --fast-path-skip, --status, --log, --list, --validate, --reactivate, --ack-register, --ack-confirm, --ack-query, --ack-escalate, or --help." "UNKNOWN_COMMAND"
+    emit_error "Unknown command: $MODE. Use --init, --query, --complete, --abort, --fast-path-skip, --status, --log, --list, --validate, --reactivate, --ack-register, --ack-confirm, --ack-query, --ack-escalate, --ctx-count, --ctx-overflow, --ctx-consolidate-respawn, or --help." "UNKNOWN_COMMAND"
     ;;
 esac

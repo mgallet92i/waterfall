@@ -458,6 +458,30 @@ These 4 types of messages to PM **ignore** `dark_factory` and remain escalated w
 
 ---
 
+## Brief Discipline (INV-BRIEF-DISCIPLINE)
+
+> Référence : `agents/_shared/constitution.md §INV-BRIEF-DISCIPLINE`
+
+Toute évolution de spec ou de tâche se matérialise **uniquement** par l'édition de l'artefact source-of-truth (`design.md`, `tasks.md`, `specs.md`). La mailbox ne transporte **jamais** de contenu de spec ni de raffinement de tâche.
+
+**Règle opérationnelle pour OR** :
+
+1. Si OR identifie une correction ou un ajout à apporter à un artefact (`design.md`, `tasks.md`, etc.) :
+   - Émettre un `spawn_request` vers l'agent owner (TL pour `design.md`/`tasks.md`, PO pour `specs.md`/`PRD.md`)
+   - Le `context_overrides` du trigger peut inclure `- "relire §X"` (poke minimaliste)
+   - **Jamais** de prose de raffinement inline dans le brief ou le `SendMessage`
+2. Si OR reçoit un `SendMessage` contenant une spec ou un raffinement de tâche en prose (v2/v3 d'une T-xxx) :
+   - Ne pas traiter le contenu inline
+   - Demander à l'émetteur d'éditer l'artefact + renvoyer un poke `"relire §X"`
+3. Après édition de l'artefact, OR envoie le poke minimal à l'agent concerné :
+   ```
+   type: relire_artefact
+   artefact: wf/needs/<name>/tasks.md
+   section: §T-xxx
+   ```
+
+---
+
 ## Main loop
 
 > **⚠️ First turn after spawn — IMMEDIATE ACTION REQUIRED**
@@ -483,12 +507,47 @@ These 4 types of messages to PM **ignore** `dark_factory` and remain escalated w
 5. If agent == "or" → run the §Self-execution — agent=or steps protocol (no wait for SendMessage; same-turn complete then re-query).
 5b. If a SendMessage from PM indicates an advanced step → immediate return to step 3 (re-query)
 6. (only when step 4 dispatched to a teammate) Wait for brief_complete (timeout 5 min → retry 1× → ERROR_UNRECOVERABLE). Before advancing, run [FS-CHECK] per §INV-001 (Auto-test filesystem).
+   [CTX-CHECK] À réception de brief_complete d'un teammate, OR vérifie consolidate_pending :
+     result=$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ctx-count \
+       --teammate <role> --mode team|subagent)
+     pending=$(echo "$result" | jq -r '.consolidate_pending')
+     if [[ "$pending" == "true" ]]; then
+       # 1. Appeler --ctx-consolidate-respawn AVANT le respawn (reset compteur + log)
+       bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ctx-consolidate-respawn \
+         --teammate <role> --mode nominal --trigger brief_complete
+       # 2. Préparer un brief consolidé minimal (format §3.5 du design) et émettre un spawn_request
+       # avec le brief consolidé — respawn nominal AVANT d'avancer le step
+     fi
 7. Complete the step:
    bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete <step> [--params k=v]
 8. Check whether PM escalation is needed (checkpoint, CLOSURE, error)
 9. Log: bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log --msg "<action>"
 10. Return to step 3
 ```
+
+### Annotation ctx-count — appel obligatoire à chaque SendMessage vers un teammate (EX-005, EX-009)
+
+À chaque `SendMessage` émis par OR vers un teammate (mode team), OR DOIT appeler `--ctx-count` immédiatement après l'émission :
+
+```bash
+# [CTX] — après chaque SendMessage vers un teammate en mode team
+msg_kb=$(echo -n "$msg_content" | wc -c | awk '{printf "%.2f", $1/1024}')
+result=$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh $NEED --ctx-count \
+  --teammate <role> --mode team --kb "$msg_kb")
+just_triggered=$(echo "$result" | jq -r '.just_triggered')
+# Si just_triggered=true : OR logge [CTX] consolidate_pending et attend le prochain brief_complete pour respawner
+```
+
+En mode subagent, l'appel `--ctx-count` est effectué lors de chaque `spawn_request` (taille du `initial_brief` comme estimation KB) :
+
+```bash
+# [CTX] — lors de chaque spawn_request (mode subagent)
+brief_kb=$(echo -n "$initial_brief" | wc -c | awk '{printf "%.2f", $1/1024}')
+result=$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh $NEED --ctx-count \
+  --teammate <role> --mode subagent --kb "$brief_kb")
+```
+
+**Règle consolidate_pending à brief_complete (EX-005, EX-009)** : OR ne doit jamais respawner un teammate en cours de tâche. Le respawn nominal est uniquement déclenché au moment de la réception d'un `brief_complete` (frontière naturelle — la tâche est terminée). Si `consolidate_pending=true` à ce moment, OR prépare le brief consolidé minimal (cf. `design.md §3.5`) et émet un nouveau `spawn_request` AVANT de compléter le step courant.
 
 ---
 
