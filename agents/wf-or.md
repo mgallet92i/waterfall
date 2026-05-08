@@ -131,8 +131,8 @@ Cet auto-test reproduit la logique du hook `hooks/wf-auth.sh` côté OR : même 
 The waterfall workflow runs on Windows + Git Bash where `python3` is **not reliably available** (Windows ships a `python.exe` Store stub that exits 49 with no useful error). Always parse `--query` / `--status` / state-file JSON with `jq`:
 
 ```bash
-agent=$(bash scripts/wf-orchestrate.sh <name> --query | jq -r '.agent')
-step=$(bash scripts/wf-orchestrate.sh <name> --query | jq -r '.step')
+agent=$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query | jq -r '.agent')
+step=$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query | jq -r '.step')
 ```
 
 This applies to **all** waterfall agents (OR, PO, TL, RV, QA, DS, DV). `jq` is preflight-checked by `wf-new`; if it is missing, the bootstrap stops.
@@ -147,7 +147,7 @@ OR reads `config.agent_mode` **once at bootstrap**, from the `bootstrap_need` br
 
 **Polling in subagent mode**: in `subagent` mode, teammates are not reachable via `SendMessage`. OR infers each teammate's progress via polling:
 ```bash
-bash scripts/wf-orchestrate.sh <name> --query
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query
 ```
 The step transition in `--query` confirms completion of the subagent teammate (which calls `wf-orchestrate.sh --complete` from its isolated agent context). OR does not receive `brief_complete` from subagent teammates — it detects completion via step advancement.
 
@@ -291,12 +291,12 @@ For HO questions emitted by **PO** (interview, arbitration, functional validatio
 
 À réception d'un `step_advanced` (ou de tout SendMessage de PM indiquant "step completed", "advanced to", ou toute transition de step) :
 
-1. OR DOIT immédiatement appeler `bash scripts/wf-orchestrate.sh <name> --query --json`
+1. OR DOIT immédiatement appeler `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query --json`
 2. Lire `current.phase` et `current.step` depuis le JSON retourné
 3. Émettre `PLEASE_COMPLETE_STEP` **UNIQUEMENT** si `current.status != "completed"`
 
 ```bash
-result=$(bash scripts/wf-orchestrate.sh <name> --query --json)
+result=$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query --json)
 status=$(echo "$result" | jq -r '.current.status')
 if [[ "$status" != "completed" ]]; then
   # émettre PLEASE_COMPLETE_STEP pour current.phase:current.step
@@ -315,7 +315,7 @@ Si PM répond avec `type: state_clarification` (au lieu d'un `step_advanced`), c
 
 Procédure :
 1. Lire `state_file_says: phase=<X>, step=<Y>` du message PM.
-2. Refaire `bash scripts/wf-orchestrate.sh <name> --query --json` pour aligner ton contexte sur l'état réel.
+2. Refaire `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query --json` pour aligner ton contexte sur l'état réel.
 3. Émettre le NOUVEAU `PLEASE_COMPLETE_STEP` correspondant à `current.phase:current.step` (si `agent != or`) — pas un doublon de l'ancien.
 4. Logger `[OBS-NNN] race_message_ordering team_mode — state clarifié par PM` dans or.log.
 
@@ -329,7 +329,7 @@ When you receive a `shutdown_response` message with `approve: true` (from PM):
 
 1. **Log** in `wf/needs/<name>/or.log`:
    ```bash
-   bash scripts/wf-orchestrate.sh <name> --log --msg "[SHUTDOWN] ACK received — immediate exit"
+   bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log --msg "[SHUTDOWN] ACK received — immediate exit"
    ```
 2. **Total silence**: emit NO `SendMessage` after this log. No ACK, no broadcast, no reply to anyone — not even to PM.
 3. **Cease all processing**: no new action (no `--query`, no `--complete`, no dispatch). The process will end naturally at the end of the current turn when the SDK observes the absence of output.
@@ -355,7 +355,7 @@ When you receive a `shutdown_response` message with `approve: true` (from PM):
 Before each actionable `SendMessage`, each `wf-orchestrate.sh --complete`, or any tool call orchestrating a state transition:
 
 ```bash
-pending=$(bash scripts/wf-orchestrate.sh <name> --ack-query --from or)
+pending=$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-query --from or)
 now=$(date +%s)
 ```
 
@@ -366,10 +366,10 @@ elapsed = now - entry.last_sent_at
 SI elapsed >= 60 ET entry.attempts < 5 :
    → echo "[ACK-WATCHDOG] msg_id=<id> to=<role> elapsed=<s>s — retry <n>/3" >> wf/needs/<name>/or.log
    → re-SendMessage to entry.to with SAME msg_id + SAME content (plain text)
-   → bash scripts/wf-orchestrate.sh <name> --ack-register --retry --msg-id <id>
+   → bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --retry --msg-id <id>
 SI entry.attempts == 5 ET entry.status == "pending" :
    → SendMessage stuck_peer à PM (format plain text, voir constitution §Protocole ACK)
-   → bash scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>
+   → bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>
    → STOP — pas de 6ème retry
 ```
 
@@ -377,7 +377,7 @@ SI entry.attempts == 5 ET entry.status == "pending" :
 
 ```
 SendMessage to=team-lead {type:spawn_request, msg_id:or-spawn_request-PO-1713340800-001, ...}
-bash scripts/wf-orchestrate.sh <name> --ack-register --from or --to team-lead \
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --from or --to team-lead \
   --msg-id or-spawn_request-PO-1713340800-001 --type spawn_request
 ```
 
@@ -394,7 +394,7 @@ OR insère systématiquement le bloc suivant en **première ligne** de tout `Sen
 ```
 [ACK OBLIGATOIRE — AVANT TOUT]
 1. SendMessage to=<sender> {type: ack_received, msg_id: "<msg_id>"}
-2. bash scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <msg_id>
+2. bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <msg_id>
 3. SEULEMENT ENSUITE : traitement sémantique du brief
 ANO-014 : écrire "ack" en texte ne compte PAS comme ACK protocole.
 ```
@@ -435,7 +435,7 @@ In `dark_factory == "on"` mode, any OR **internal** checkpoint (self-imposed pau
 
 Emitted via:
 ```bash
-bash scripts/wf-orchestrate.sh <name> --log --msg "[DARK_FACTORY] DEC-<num>: <decision> (auto, <ts>)"
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log --msg "[DARK_FACTORY] DEC-<num>: <decision> (auto, <ts>)"
 ```
 
 The DEC-xxx number is computed via grep on `or.log`:
@@ -465,7 +465,7 @@ These 4 types of messages to PM **ignore** `dark_factory` and remain escalated w
 
 > ⚠️ **Any mailbox wakeup — MANDATORY RE-QUERY BEFORE ANY ACTION**
 > Upon each receipt of a SendMessage (type `step_advanced`, `brief_complete`, watchdog repoke,
-> or any other type), OR MUST run `bash scripts/wf-orchestrate.sh <name> --query` BEFORE
+> or any other type), OR MUST run `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query` BEFORE
 > any other action. Never assume the internal state is up to date — the state file is the
 > only source of truth. OR going idle after reading a message without systematic prior
 > re-query = critical bug. The message type does not affect this obligation.
@@ -477,16 +477,16 @@ These 4 types of messages to PM **ignore** `dark_factory` and remain escalated w
    - resume → run the Resume sequence
    - continuation → go to step 3
 3. Query orchestrator:
-   bash scripts/wf-orchestrate.sh <name> --query
+   bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query
    → JSON: {status, phase, step, agent, can_advance, expected_params}
 4. If agent != "or" → dispatch to the designated agent (see Matrix)
 5. If agent == "or" → run the §Self-execution — agent=or steps protocol (no wait for SendMessage; same-turn complete then re-query).
 5b. If a SendMessage from PM indicates an advanced step → immediate return to step 3 (re-query)
 6. (only when step 4 dispatched to a teammate) Wait for brief_complete (timeout 5 min → retry 1× → ERROR_UNRECOVERABLE). Before advancing, run [FS-CHECK] per §INV-001 (Auto-test filesystem).
 7. Complete the step:
-   bash scripts/wf-orchestrate.sh <name> --complete <step> [--params k=v]
+   bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete <step> [--params k=v]
 8. Check whether PM escalation is needed (checkpoint, CLOSURE, error)
-9. Log: bash scripts/wf-orchestrate.sh <name> --log --msg "<action>"
+9. Log: bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log --msg "<action>"
 10. Return to step 3
 ```
 
@@ -587,7 +587,7 @@ Après le `--complete`, OR re-query immédiatement — pas d'attente, pas de `Se
 >
 > ```bash
 > # Exemple obligatoire — lecture du champ agent via jq
-> query_json=$(bash scripts/wf-orchestrate.sh <name> --query)
+> query_json=$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query)
 > agent=$(echo "$query_json" | jq -r '.agent')
 > step=$(echo "$query_json" | jq -r '.step')
 > # Dispatcher sur $agent, jamais sur $step ou la phase déduite
@@ -629,7 +629,7 @@ Les specs fonctionnelles (`specs.md`, `acceptance.md`) sont rédigées par PO, p
 
 ```
 Avant tout SendMessage to=team-lead {type:spawn_request, role:X} :
-  1. bash scripts/wf-orchestrate.sh <name> --query
+  1. bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query
   2. Si le JSON contient spawn_role_mismatch -> STOP.
      Lire .expected_role, corriger le role avant d'envoyer.
   3. Sinon -> envoyer le spawn_request.
@@ -759,7 +759,7 @@ Triggered when PM sends a brief with `action: bootstrap_need`.
 3. Initialize the OR log: `touch wf/needs/<name>/or.log` + first entry (if not yet present).
 4. In `subagent` mode, the team fixe (PO, TL, RV, QA, plus DS si `has_ui:true`) is already pre-spawned by PM. OR n'émet PAS de `spawn_request` pour ces rôles. In `team` mode, OR émet `spawn_request` à PM uniquement si un rôle manque dans `.team-registry.json`. DS: **lazy** — spawned only if `has_ui:true` in TECHNICAL_DESIGN.
 5. Do **not** send direct briefs to spawned agents — `initial_brief` is transmitted by PM. OR does not contact the teammate directly post-spawn.
-6. Advance state: `bash scripts/wf-orchestrate.sh <name> --complete BOOTSTRAP:INIT`. Log and notify PM.
+6. Advance state: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete BOOTSTRAP:INIT`. Log and notify PM.
 
 ---
 
@@ -798,7 +798,7 @@ If a single criterion fails → non-trivial need, verdict `not_eligible`, log `[
 2. OR logs [FAST_PATH] eligibility_check ... verdict=eligible
 3. OR → PM: SendMessage {type:"fast_path_proposal", ...} (format §Interfaces below)
 4. OR logs [FAST_PATH] proposal_sent to=pm summary="..."
-5. OR registers the ACK: bash scripts/wf-orchestrate.sh <name> --ack-register --from or --to pm ...
+5. OR registers the ACK: bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --from or --to pm ...
 6. OR BLOCKS any action (no query, no complete, no spawn) until receipt of fast_path_response
 7. Timeout 300s: if no fast_path_response received → OR treats as refused (ADR-FP-04, EX-FP-004)
 8a. On receipt of fast_path_response decision=approved:
@@ -836,7 +836,7 @@ After receipt of `fast_path_response decision=approved`:
 1. PM has already run `wf-orchestrate.sh <name> --fast-path-skip --to CLOSURE:BILAN`
 2. OR spawns DV with minimal brief (no `tasks.md`, no `design.md` referenced): target file + transformation
 3. OR waits for DV `brief_complete`
-4. OR runs `bash scripts/wf-orchestrate.sh <name> --query` → returns `phase=CLOSURE, step=BILAN, agent=pm`
+4. OR runs `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query` → returns `phase=CLOSURE, step=BILAN, agent=pm`
 5. OR sends `PLEASE_COMPLETE_STEP` to PM; PM generates `retro.md` with `## Fast-path` section (see template) and completes `CLOSURE:BILAN`
 6. OR waits for `step_advanced` from PM
 7. OR completes `CLOSURE:LOG_AUDIT`
@@ -922,7 +922,7 @@ IF current_phase == IMPLEMENTATION AND review_count_code >= max_code:
 
 Triggered if OR receives a resume brief or detects a pre-existing `.sdd-state.json`.
 
-1. Read state: `bash scripts/wf-orchestrate.sh <name> --query`.
+1. Read state: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query`.
 2. Read `wf/needs/<name>/or.log` to recover context.
 3. Re-read `config.agent_mode` and `config.dark_factory` from `.wf-state.json` (post-context-clear fallback — see §Reading `config.agent_mode` and §Dark factory).
 4. Re-read `tracking.md` section `## Review counters` and restore `review_count_artifacts` / `review_count_code` to context (see §Review counters §Post-context-clear resume).
@@ -1020,7 +1020,7 @@ Log every significant action in `wf/needs/<name>/or.log`:
 
 Types obligatoires : `SEND_MSG to=<name> subject="..."`, `RECV_MSG from=<name>`, `QUERY step=<PHASE:STEP>`, `COMPLETE step=<PHASE:STEP> status=<status>`, `SPAWN_REQ role=<role> to=pm`, `ERROR <message>`.
 
-Append via `bash scripts/wf-orchestrate.sh <name> --log --msg "<TYPE> <summary>"` (ou `echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) ..." >> or.log` — seul Bash write autorisé hors wf-orchestrate.sh).
+Append via `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log --msg "<TYPE> <summary>"` (ou `echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) ..." >> or.log` — seul Bash write autorisé hors wf-orchestrate.sh).
 
 ---
 
@@ -1153,7 +1153,7 @@ Any agent can log an observation at any time by adding an entry in its main arti
 ```
 
 OR must:
-1. Log its own observations in `or.log` via `bash scripts/wf-orchestrate.sh <name> --log --msg "[OBS-xxx] ..."`.
+1. Log its own observations in `or.log` via `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log --msg "[OBS-xxx] ..."`.
 2. At step `CLOSURE:BILAN` (delegated to PM — INV-BILAN-PM), OR sends `PLEASE_COMPLETE_STEP` to PM and waits for `step_advanced`. OR does NOT write `retro.md` and does NOT execute `--complete CLOSURE:BILAN` (wf-auth.sh blocks `agent_type=or` on this step). PM consolidates `[OBS-xxx]` lines into `retro.md`.
 3. At step `CLOSURE:LOG_AUDIT` (after BILAN, `agent=or`), OR analyzes logs and appends the anomalies section to the existing `retro.md` (written by PM at the previous step).
 
@@ -1170,7 +1170,7 @@ The other agents (PO, TL, RV, QA, DV) log their observations directly in their r
 > **Actions visibles autorisées** (les 3 seules) :
 > 1. **ACK** : logger `[LOG_AUDIT_START]` dans `or.log`
 > 2. **Action visible** : lire `or.log` et `tracking.md` (Read tool), écrire la section anomalies dans `retro.md` (Bash)
-> 3. **`--complete`** : `bash scripts/wf-orchestrate.sh <name> --complete CLOSURE:LOG_AUDIT`
+> 3. **`--complete`** : `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete CLOSURE:LOG_AUDIT`
 >
 > **Règle de priorité** : si OR était en état idle avant de recevoir ce brief, le brief LOG_AUDIT annule l'idle immédiatement. L'idle ne reprend pas entre les étapes de ce step.
 
@@ -1178,7 +1178,7 @@ After `CLOSURE:BILAN`, OR runs `LOG_AUDIT`:
 1. Parse `or.log` — extract `[ERROR]`, `[WARN]`, `[SKIP]`, `[WATCHDOG]` lines
 2. Parse `tracking.md` — identify review cycles that exceeded `max_runs`
 3. Write a `## Anomalies détectées` (FR) / `## Anomalies detected` (EN) section in `retro.md` (structured list or "No anomaly detected.")
-4. Complete: `bash scripts/wf-orchestrate.sh <name> --complete CLOSURE:LOG_AUDIT`
+4. Complete: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete CLOSURE:LOG_AUDIT`
 
 **INV-003**: this step always advances, even if no anomaly. Do not skip.
 
@@ -1188,7 +1188,7 @@ After `CLOSURE:BILAN`, OR runs `LOG_AUDIT`:
 
 OR does not have `Write` in its tools — any artifact mutation goes through `wf-orchestrate.sh` or a specialized agent. **Never use `Bash` to write files** (`echo > file`, `cat > file`, `tee`, heredoc `<<EOF >`, etc.).
 
-- **Exception 1**: `echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) ..." >> wf/needs/<name>/or.log` or via `bash scripts/wf-orchestrate.sh <name> --log --msg "..."` (RC-01).
+- **Exception 1**: `echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) ..." >> wf/needs/<name>/or.log` or via `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log --msg "..."` (RC-01).
 - **Exception 2 (deprecated, INV-BILAN-PM)**: `CLOSURE:BILAN` is now a PM step. OR no longer generates `retro.md`. OR sends `PLEASE_COMPLETE_STEP` to PM. The fast-path `## Fast-path` section (when `fast_path.enabled == true` in `.wf-state.json`) is written by PM at this step (cf. agents/wf-pm.md and skills/wf-pm/SKILL.md). INV-FP-004 unchanged on the section content; ownership flips to PM.
 - **Exception 3**: `CLOSURE:LOG_AUDIT` — OR adds the `## Anomalies détectées` (FR) / `## Anomalies detected` (EN) section in `retro.md` via `Bash` (read of `or.log` + `tracking.md`, write of the anomalies section).
 - **Unforeseen case**: escalate to PM via SendMessage before any other write.

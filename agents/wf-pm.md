@@ -77,7 +77,7 @@ PM's source of truth is the `agent` field of `wf-orchestrate.sh --query`. If `ag
 
 À réception de tout message portant un `msg_id` :
 ```bash
-bash scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>
 # OU envoyer un SendMessage ack_received à l'émetteur
 ```
 
@@ -182,11 +182,11 @@ IF config.agent_mode == "team" (default):
    Si tasks.md porte `suggested_dv: K` en frontmatter, PM peut prendre N=K.
 5. Si planning.max_dv défini : N = min(N, planning.max_dv).
 6. Si N == 0 (need pure-doc, aucune tâche DV) :
-     bash scripts/wf-orchestrate.sh <name> --log \
+     bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log \
        --msg "[DV-LAZY] N=0 justification=no_dv_tasks tasks=0"
      advance state machine (skip spawn). return.
 7. Log obligatoire (UNE seule ligne) :
-     bash scripts/wf-orchestrate.sh <name> --log \
+     bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log \
        --msg "[DV-LAZY] N=<N> justification=<critical_path_width=K|max_dv=K> tasks=<count>"
 8. Émettre UN SEUL batch de spawn :
      - mode subagent : N appels Agent() en un seul tour PM
@@ -252,7 +252,7 @@ justification: <text>
 size: <int>
 target_files: <path1>,<path2>
 ```
-Immediately ACK: `bash scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <or_msg_id>`
+Immediately ACK: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <or_msg_id>`
 
 ### Step 2 — Reformulate in business intent for HO
 
@@ -349,14 +349,14 @@ Before transitioning to `VALIDATION:QA_ACCEPTANCE_TEST`, PM verifies that QA is 
 1. PM lit le template : `wf/templates/<lang>/retro.md`.
 2. PM parse : `or.log`, `tracking.md`, `.wf-state.json`.
 3. PM rédige `wf/needs/<name>/retro.md` via `Write`. Si `.wf-state.json` contient `fast_path.enabled == true`, PM inclut une section `## Fast-path`.
-4. PM exécute : `bash scripts/wf-orchestrate.sh <name> --complete CLOSURE:BILAN`
+4. PM exécute : `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete CLOSURE:BILAN`
 5. PM envoie `step_advanced` à OR via SendMessage.
 6. OR re-query → `step=CLOSURE:LOG_AUDIT, agent=or` → OR appendra `## Anomalies détectées` dans retro.md.
 
 ## CLOTURE — PR_CREATE step
 
 - Run: `gh pr create --title "<title>" --body "<body>"`
-- Complete: `bash scripts/wf-orchestrate.sh <name> --complete CLOSURE:PR_CREATE --params pr_url=<url>`
+- Complete: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete CLOSURE:PR_CREATE --params pr_url=<url>`
 
 ---
 
@@ -366,13 +366,13 @@ PM is the **sole writer** of `.team-registry.json` (documentary invariant). No o
 
 ```bash
 # Bootstrap (optional traceability)
-bash scripts/wf-registry.sh init <name>
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-registry.sh init <name>
 
 # Spawn (optional traceability)
-bash scripts/wf-registry.sh add <name> <agent_id> <role>
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-registry.sh add <name> <agent_id> <role>
 
 # Resume (optional traceability)
-bash scripts/wf-registry.sh clear <name>
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-registry.sh clear <name>
 ```
 
 ---
@@ -389,7 +389,7 @@ bash scripts/wf-registry.sh clear <name>
 
 On each reactive loop turn:
 ```bash
-bash scripts/wf-orchestrate.sh <name> --ack-query
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-query
 ```
 If a `pending` entry has `now - last_sent_at > 180s`, PM pokes the sender.
 
@@ -520,7 +520,7 @@ else:
 ### The 3 sources
 
 1. **Agent inboxes**: `~/.claude/teams/<team>/inboxes/<agent>.json` — read `read: false` messages.
-2. **ACK registry**: `bash scripts/wf-orchestrate.sh <need> --ack-query` — returns pending ACKs with `elapsed`.
+2. **ACK registry**: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <need> --ack-query` — returns pending ACKs with `elapsed`.
 3. **Workflow state**: `wf/needs/<need>/.wf-state.json` — read `phase` and `last_transition_at`.
 
 ### `scan_result` object
@@ -699,7 +699,7 @@ The watchdog is **intra-session only**. On Claude Code restart, HO must re-run `
 <!-- WATCHDOG-LOG-FORMAT-START -->
 ## Watchdog loop — `[WATCHDOG]` log convention
 
-Each watchdog event: `bash scripts/wf-orchestrate.sh <name> --log --msg '<json_line>'`
+Each watchdog event: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log --msg '<json_line>'`
 
 ### Events table
 

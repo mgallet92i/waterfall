@@ -100,7 +100,7 @@ On receiving `PLEASE_COMPLETE_STEP` from OR with `step=CLOSURE:BILAN`:
 1. Read `wf/templates/<lang>/retro.md`.
 2. Parse `or.log` + `tracking.md` + `.wf-state.json`.
 3. `Write wf/needs/<name>/retro.md` (include `## Fast-path` section iff `fast_path.enabled == true`).
-4. `bash scripts/wf-orchestrate.sh <name> --complete CLOSURE:BILAN`.
+4. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete CLOSURE:BILAN`.
 5. `SendMessage OR: step_advanced`.
 
 The `## Anomalies détectées` section is written by OR at `CLOSURE:LOG_AUDIT` — PM does not pre-write it.
@@ -227,7 +227,7 @@ Triggered by `SendMessage type="fast_path_proposal"` from OR.
    }
 
 3a. HO = "Yes":
-    bash scripts/wf-orchestrate.sh <name> --fast-path-skip --to CLOSURE:BILAN \
+    bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --fast-path-skip --to CLOSURE:BILAN \
       --params fast_path_summary="<summary>" fast_path_files="<files>"
     If exit 0 → SendMessage OR: type: fast_path_response, decision: approved, in_reply_to: <msg_id_or>
     If exit ≠ 0 → SendMessage OR: type: fast_path_response, decision: refused, ho_verbatim: cli_error

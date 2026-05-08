@@ -18,7 +18,7 @@ tools: Read, Write, Grep, Glob, Bash, SendMessage
 
 À réception de **tout** message actionnable :
 1. `SendMessage to=<émetteur> {type: ack_received, msg_id: "<id>"}`
-2. `bash scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>`
+2. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>`
 3. Traitement sémantique
 
 Règle : ACK **avant** traitement. Pas après. Pas "en même temps". Avant.
@@ -34,7 +34,7 @@ The only exception is the HO question channel (`SendMessage to=pm` with `brief_c
 For steps where `--query` returns `agent=po`, the order is **STRICT** and **NON-NEGOTIABLE**:
 
 1. Produce / finalize the deliverable on disk
-2. `bash scripts/wf-orchestrate.sh <name> --complete <PHASE:STEP> [--params ...]` — **you fire it yourself**
+2. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete <PHASE:STEP> [--params ...]` — **you fire it yourself**
 3. SendMessage to=or `{type:brief_complete, ...}` + `--ack-register`
 4. Only then return control / go idle
 
@@ -58,7 +58,7 @@ For steps where `--query` returns `agent=po`, the order is **STRICT** and **NON-
 On the **first use** of `wf-orchestrate.sh` in this session (before any `--query`, `--complete`, or `--init`), run:
 
 ```bash
-bash scripts/wf-orchestrate.sh --help
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh --help
 ```
 
 Read the output in full. It describes the complete contract: commands, params, routing, error codes, golden rules. This step is **mandatory** — skipping `--help` causes identity or param errors that are hard to debug.
@@ -220,7 +220,7 @@ In the REVIEW phase, RV may address Blockers/Questions to you targeting `PRD.md`
 ### STEP 0 — check-before-act (before any significant action)
 
 ```bash
-pending=$(bash scripts/wf-orchestrate.sh <name> --ack-query --from po)
+pending=$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-query --from po)
 now=$(date +%s)
 ```
 
@@ -229,17 +229,17 @@ For each `pending` entry:
 elapsed = now - entry.last_sent_at
 IF elapsed >= 60 AND entry.attempts < 3:
    → re-SendMessage to entry.to with SAME msg_id + SAME content
-   → bash scripts/wf-orchestrate.sh <name> --ack-register --retry --msg-id <id>
+   → bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --retry --msg-id <id>
 ELSE IF entry.attempts >= 3 AND entry.status == "pending":
    → SendMessage stuck_peer to PM
-   → bash scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>
+   → bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>
 ```
 
 ### Emission rule
 
 After each actionable `SendMessage` emitted:
 ```bash
-bash scripts/wf-orchestrate.sh <name> --ack-register \
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register \
   --from po --to <dest> --msg-id <msg_id> --type <type>
 ```
 `msg_id` format: `po-<type>-<topic>-<unix_ts>-<seq>` (seq = monotonic counter, incremented on each registration).
@@ -248,7 +248,7 @@ bash scripts/wf-orchestrate.sh <name> --ack-register \
 
 For each incoming actionable message:
 1. Immediately emit `ack:<msg_id>` via SendMessage to the sender
-2. `bash scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>`
+2. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>`
 3. Process the message semantically
 
 Keep a set of already-processed `msg_id` in context — if a physical retry is received: re-emit `ack:<msg_id>` without re-processing semantically.
@@ -265,12 +265,12 @@ attempts: 3
 first_sent_at: <iso>
 last_retry_at: <iso>
 ```
-Then: `bash scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>`
+Then: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>`
 
 Example — emission of a `brief_complete` to OR:
 ```
 SendMessage to=or {type:brief_complete, msg_id:po-brief_complete-INTERVIEW_SPECS-1713340800-001, ...}
-bash scripts/wf-orchestrate.sh <name> --ack-register --from po --to or \
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --from po --to or \
   --msg-id po-brief_complete-INTERVIEW_SPECS-1713340800-001 --type brief_complete
 ```
 

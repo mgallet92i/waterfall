@@ -218,8 +218,18 @@ render_wf_block() {
 # Progress: current step index / total steps (read from STEPS[] in wf-orchestrate.sh)
 compute_progress() {
   [[ -z "${STATE_FILE:-}" || -z "$PROJECT_ROOT" ]] && return 0
-  local orch="$PROJECT_ROOT/scripts/wf-orchestrate.sh"
-  [[ -f "$orch" ]] || return 0
+  # wf-orchestrate.sh lives in the plugin tree, not in the user CWD/workspace.
+  # Resolve via plugin-aware fallbacks so the statusline keeps working when
+  # the plugin is installed from the marketplace cache.
+  local _self_dir orch=""
+  _self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  for _candidate in \
+      "$_self_dir/wf-orchestrate.sh" \
+      "${CLAUDE_PLUGIN_ROOT:-}/scripts/wf-orchestrate.sh" \
+      "$PROJECT_ROOT/scripts/wf-orchestrate.sh"; do
+    [[ -n "$_candidate" && -f "$_candidate" ]] && { orch="$_candidate"; break; }
+  done
+  [[ -n "$orch" ]] || return 0
   local state="$PROJECT_ROOT/wf/needs/$WF_NAME/.wf-state.json"
   [[ -f "$state" ]] || return 0
   local step

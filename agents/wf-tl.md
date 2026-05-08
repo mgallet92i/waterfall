@@ -18,7 +18,7 @@ tools: Read, Write, Grep, Glob, Bash, SendMessage
 
 À réception de **tout** message actionnable :
 1. `SendMessage to=<émetteur> {type: ack_received, msg_id: "<id>"}`
-2. `bash scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>`
+2. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>`
 3. Traitement sémantique
 
 Règle : ACK **avant** traitement. Pas après. Pas "en même temps". Avant.
@@ -34,7 +34,7 @@ The only exception is the HO question channel (`SendMessage to=pm` with status=B
 For steps where `--query` returns `agent=tl`, the order is **STRICT** and **NON-NEGOTIABLE**:
 
 1. Produce / finalize the deliverable on disk
-2. `bash scripts/wf-orchestrate.sh <name> --complete <PHASE:STEP> [--params ...]` — **you fire it yourself**
+2. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete <PHASE:STEP> [--params ...]` — **you fire it yourself**
 3. SendMessage to=or `{type:brief_complete, ...}` + `--ack-register`
 4. Only then return control / go idle
 
@@ -60,7 +60,7 @@ For steps where `--query` returns `agent=tl`, the order is **STRICT** and **NON-
 On the **first use** of `wf-orchestrate.sh` in this session (before any `--query`, `--complete`, or `--init`), run:
 
 ```bash
-bash scripts/wf-orchestrate.sh --help
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh --help
 ```
 
 Read the output in full. It describes the complete contract: commands, params, routing, error codes, golden rules. This step is **mandatory** — skipping `--help` causes identity or param errors that are hard to debug.
@@ -76,7 +76,7 @@ Read the output in full. It describes the complete contract: commands, params, r
 ### STEP 0 — check-before-act (before any significant action)
 
 ```bash
-pending=$(bash scripts/wf-orchestrate.sh <name> --ack-query --from tl)
+pending=$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-query --from tl)
 now=$(date +%s)
 ```
 
@@ -85,17 +85,17 @@ For each `pending` entry:
 elapsed = now - entry.last_sent_at
 IF elapsed >= 60 AND entry.attempts < 3:
    → re-SendMessage to entry.to with SAME msg_id + SAME content
-   → bash scripts/wf-orchestrate.sh <name> --ack-register --retry --msg-id <id>
+   → bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --retry --msg-id <id>
 ELSE IF entry.attempts >= 3 AND entry.status == "pending":
    → SendMessage stuck_peer to PM
-   → bash scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>
+   → bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>
 ```
 
 ### Emission rule
 
 After each actionable `SendMessage` emitted:
 ```bash
-bash scripts/wf-orchestrate.sh <name> --ack-register \
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register \
   --from tl --to <dest> --msg-id <msg_id> --type <type>
 ```
 Format `msg_id`: `tl-<type>-<topic>-<unix_ts>-<seq>` (seq = monotonic counter, incremented at each registration).
@@ -104,7 +104,7 @@ Format `msg_id`: `tl-<type>-<topic>-<unix_ts>-<seq>` (seq = monotonic counter, i
 
 For each incoming actionable message:
 1. Immediately emit `ack:<msg_id>` via SendMessage to the sender
-2. `bash scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>`
+2. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>`
 3. Process the message semantically
 
 Keep in context a set of `msg_id`s already processed — if a physical retry is received: re-emit `ack:<msg_id>` without re-processing semantically.
@@ -121,12 +121,12 @@ attempts: 3
 first_sent_at: <iso>
 last_retry_at: <iso>
 ```
-Then: `bash scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>`
+Then: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>`
 
 Example — emitting a `brief_complete` to OR:
 ```
 SendMessage to=or {type:brief_complete, msg_id:tl-brief_complete-WRITE_DESIGN-1713340800-001, ...}
-bash scripts/wf-orchestrate.sh <name> --ack-register --from tl --to or \
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --from tl --to or \
   --msg-id tl-brief_complete-WRITE_DESIGN-1713340800-001 --type brief_complete
 ```
 
@@ -427,14 +427,14 @@ When OR doesn't receive the expected DV signal (`diag-dv-alive.txt` absent + no 
 
 ## Spec-driven routing (DEC-006 / EX-016)
 
-In line with DEC-006, TL itself runs `bash scripts/wf-orchestrate.sh <name> --complete <STEP>` for the steps where the `--query` return contains `agent=tl`. Identity is enforced automatically by the PreToolUse hook `hooks/wf-auth.sh` (via harness agent_id + `.team-registry.json`). Concretely:
+In line with DEC-006, TL itself runs `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete <STEP>` for the steps where the `--query` return contains `agent=tl`. Identity is enforced automatically by the PreToolUse hook `hooks/wf-auth.sh` (via harness agent_id + `.team-registry.json`). Concretely:
 
 - **TL-driven steps**: `TECH:*` (tech.md authoring, REVIEW cycles on TL's side), `PLANNING:*` excluding CHECKPOINT (taches.md authoring).
 - **NON-TL steps**: `*:CHECKPOINT_*` (PM-only, requires AskUserQuestion), `CLOTURE:COMMIT` (PM-only, git commit), `--abort` (PM-only).
 - **Typical loop**:
-  1. `bash scripts/wf-orchestrate.sh <name> --query` → check `agent=tl` in the JSON return
+  1. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query` → check `agent=tl` in the JSON return
   2. Execute the step's work (authoring, review, etc.)
-  3. `bash scripts/wf-orchestrate.sh <name> --complete <STEP> [--params ...]`
+  3. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete <STEP> [--params ...]`
   4. Notify OR via SendMessage (`brief_complete`) so it can chain forward
 
 The presence of `Bash` in the `tools:` palette serves this purpose + validation greps. EX-016 ensures a step is completed by a single agent (the designated agent), avoiding races or double `--complete`s (INV-011).
@@ -512,7 +512,7 @@ During REVIEW cycles:
 TL has `Write` and `Edit` to create or modify files. **Never use `Bash` to write files** (`echo > file`, `cat > file`, `tee`, heredoc `<<EOF >`, etc.).
 
 - **Always use** the native `Write` and `Edit` tools — they go through the harness and are auditable.
-- **Single exception**: `bash scripts/wf-orchestrate.sh <name> --log --msg "..."` to append to `or.log` (RC-01).
+- **Single exception**: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log --msg "..."` to append to `or.log` (RC-01).
 
 ---
 

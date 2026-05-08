@@ -406,7 +406,21 @@ step_raw="${BASH_REMATCH[1]}"
 
 # 6. STEP_AGENT source of truth and canonicalisation.
 # shellcheck source=../../scripts/wf-step-agents.sh
-if ! source "$PROJECT_ROOT/scripts/wf-step-agents.sh" 2>/dev/null; then
+# wf-step-agents.sh lives in the plugin tree, NOT in the user CWD.
+# Resolve relative to this hook's own location (hooks/ -> ../scripts/),
+# with fallbacks to CLAUDE_PLUGIN_ROOT then PROJECT_ROOT for legacy layouts.
+_wf_auth_hook_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_wf_step_agents=""
+for _candidate in \
+    "$_wf_auth_hook_dir/../scripts/wf-step-agents.sh" \
+    "${CLAUDE_PLUGIN_ROOT:-}/scripts/wf-step-agents.sh" \
+    "$PROJECT_ROOT/scripts/wf-step-agents.sh"; do
+  if [[ -f "$_candidate" ]]; then
+    _wf_step_agents="$_candidate"
+    break
+  fi
+done
+if [[ -z "$_wf_step_agents" ]] || ! source "$_wf_step_agents" 2>/dev/null; then
   echo "wf-auth: cannot source wf-step-agents.sh. Blocked." >&2
   exit 2
 fi
