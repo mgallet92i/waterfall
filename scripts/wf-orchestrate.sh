@@ -377,15 +377,17 @@ ENDJS
 }
 
 # Load max cycles from config precedence:
-# 1. hardcoded default=3
-# 2. wf/config.json (if exists)
+# 1. hardcoded default (review=2, codeReview=3 — aligned with .wf-config.example.json)
+# 2. .wf-config.json review_loops.{artifacts,code} (if exists)
 # 3. .wf-state.json config override (highest priority)
 get_max_cycles() {
   local state_json="$1"
   local kind="$2"   # "review" or "codeReview"
   local default_val=3
 
-  local config_file="$PROJECT_ROOT/wf/config.json"
+  # Schema: .wf-config.json with { review_loops: { artifacts, code } }.
+  # `kind` is "review" or "codeReview" — map to the actual config field.
+  local config_file="$PROJECT_ROOT/.wf-config.json"
   local from_config="$default_val"
 
   if [[ -f "$config_file" ]]; then
@@ -397,7 +399,9 @@ import { readFileSync } from 'fs';
 try {
   const c = JSON.parse(readFileSync(process.env._WF_CFG_PATH, 'utf8'));
   const kind = process.env._WF_CFG_KIND;
-  const val = c[kind] && c[kind].maxCycles ? c[kind].maxCycles : 3;
+  const field = kind === 'review' ? 'artifacts' : (kind === 'codeReview' ? 'code' : null);
+  const loops = c.review_loops || {};
+  const val = (field && loops[field] != null) ? loops[field] : (kind === 'codeReview' ? 3 : 2);
   process.stdout.write(String(val));
 } catch(e) { process.stdout.write('3'); }
 ENDJS
