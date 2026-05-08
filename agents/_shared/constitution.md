@@ -24,6 +24,9 @@ Avant chaque action, tout agent doit pouvoir répondre au test « pourquoi est-c
 - **INV-NO-HO-DIRECT** : aucun agent (hors PM) ne contacte directement le HO. Toute escalade passe par la chaîne DV → TL → OR → PM → HO.
 - **INV-ARTIFACT-OWNER** : chaque artefact a un owner désigné (voir §Mapping artefacts → owners). Un agent qui n'est pas le owner ne modifie pas l'artefact.
 - **INV-SCOPE** : tout agent n'opère que sur les fichiers dans son `work_dir` ou dans le périmètre de son rôle. Aucune modification hors scope.
+- **INV-BRIEF-DISCIPLINE** : toute évolution de spec ou de tâche se matérialise **uniquement** par l'édition de l'artefact source-of-truth désigné (`design.md`, `tech.md`, `tasks.md`). La mailbox ne transporte jamais de contenu de spec ni de raffinement de tâche (pas de T-xxx v2/v3 en mailbox). Après édition de l'artefact, PM ou OR envoie un poke minimaliste "relire §X" au(x) agent(s) concerné(s). L'agent raffiné relit l'artefact sur disque — jamais depuis le message reçu.
+
+  **Côté récepteur (DV)** : un teammate ne doit jamais accumuler plus de **2 itérations** d'une même tâche T-xxx dans son contexte. Au-delà, le DV émet `request_respawn` (texte ou SendMessage selon mode) plutôt que de continuer. Respawn fresh devient la règle, pas l'exception.
 
 ---
 

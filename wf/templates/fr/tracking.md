@@ -41,6 +41,13 @@ n/a
 
 n/a
 
+## context_budget
+
+| Teammate | Msgs | KB   | Threshold Msgs | Threshold KB | consolidate_pending | mode | Dernière MAJ |
+|----------|------|------|----------------|--------------|---------------------|------|--------------|
+| dv1      | 0    | 0    | 40             | 80           | false               | -    | -            |
+| tl       | 0    | 0    | 40             | 80           | false               | -    | -            |
+
 ## Cross-cycle directives
 
 | Date | Directive | Source | Agent cible | Appliquée |

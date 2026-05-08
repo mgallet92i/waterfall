@@ -21,5 +21,11 @@
   "statusline": false,
   "tools": {
     "semgrep": "off"
-  }
+  },
+  "consolidate_brief_threshold": {
+    "msgs": 40,
+    "kb": 80
+  },
+  "overflow_timeout_minutes": 10,
+  "overflow_polling_ticks": 3
 }
