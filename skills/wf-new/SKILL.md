@@ -102,8 +102,14 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-registry.sh init <name>
 
 ```bash
 bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> \
-  --init --team wf-<name> --session "${CLAUDE_SESSION_ID}"
+  --init --team wf-<name> --session "${CLAUDE_SESSION_ID}" \
+  --agent-mode "${WF_AGENT_MODE}" --dark-factory "${WF_DARK_FACTORY}"
 ```
+
+> **Propagation config (fix bug-3eec8bce)** : les flags `--agent-mode` et
+> `--dark-factory` overrident les valeurs lues par `handle_init` depuis
+> `.wf-config.json`. Source de vérité = les env vars résolues au Step 2.bis
+> par `wf-read-config.sh`, pas le fichier projet (qui peut être absent).
 
 **Idempotence** (TF-021) — si `.wf-state.json` existe déjà :
 - soit le script renvoie exit 0 idempotent (no-op)
@@ -112,6 +118,29 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> \
 
 **Critère opposable** (TF-010) : après cette étape, `wf/needs/<name>/.wf-state.json`
 existe et contient `phase`, `step`, `session_id` non nul.
+
+### Step 4.quater — Pré-complete des steps BOOTSTRAP pm-owned (subagent only — fix bug-3eec8bce)
+
+> **Subagent only**. En mode team, ces 2 steps sont complétés par le PM
+> teammate après que OR ait émis `PLEASE_COMPLETE_STEP`. En mode subagent,
+> PM = main agent (hors team), donc OR ne peut pas le contacter via
+> `SendMessage` (no addressable agent) → deadlock au BOOTSTRAP. PM doit
+> donc pré-compléter ces steps **avant** le spawn d'OR.
+
+```bash
+if [[ "$WF_AGENT_MODE" == "subagent" ]]; then
+  bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete BOOTSTRAP:DETERMINE_NAME
+  bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete BOOTSTRAP:RUN_BOOTSTRAP
+fi
+```
+
+Après ces 2 `--complete`, le state machine arrive à `BOOTSTRAP:COLLECT_CARD_NUM`
+(agent=or — cf. `wf-step-agents.sh`). OR peut piloter à partir de là sans
+toucher à un step pm-owned. Note : `RUN_BOOTSTRAP` chain-noop automatique
+jusqu'à `COLLECT_CARD_NUM` via `_wf_chain_noop` (wf-orchestrate.sh L1140).
+
+**Critère opposable** : après ce step en mode subagent, `--query` retourne
+`agent=or step=COLLECT_CARD_NUM` (et non `agent=pm step=DETERMINE_NAME`).
 
 ### Step 5 — Pré-spawn batch de la team fixe (EX-002 / F3)
 

@@ -1807,6 +1807,7 @@ handle_init() {
   local name="$1"
   shift
   local desc="" card_num="" team_name="" session_flag=""
+  local agent_mode_flag="" dark_factory_flag=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -1814,6 +1815,8 @@ handle_init() {
       --card-num) card_num="${2:-}"; shift 2 ;;
       --team)    team_name="${2:-}"; shift 2 ;;
       --session) session_flag="${2:-}"; shift 2 ;;
+      --agent-mode)   agent_mode_flag="${2:-}"; shift 2 ;;
+      --dark-factory) dark_factory_flag="${2:-}"; shift 2 ;;
       *)         shift ;;
     esac
   done
@@ -1868,6 +1871,8 @@ handle_init() {
   export _WF_INIT_DESC="${desc:-}"
   export _WF_INIT_CARD_NUM="${card_num:-}"
   export _WF_INIT_SESSION_ID="$session_id"
+  export _WF_INIT_AGENT_MODE="${agent_mode_flag:-}"
+  export _WF_INIT_DARK_FACTORY="${dark_factory_flag:-}"
   export _WF_INIT_STATE_PATH
   _WF_INIT_STATE_PATH="$(winpath "$state_file")"
   export _WF_INIT_PROJECT_ROOT
@@ -1903,6 +1908,11 @@ if (existsSync(configPath)) {
     };
   } catch (_) { /* malformed config — keep defaults */ }
 }
+// CLI flags override .wf-config.json (caller-driven config propagation)
+const cliAgentMode = process.env._WF_INIT_AGENT_MODE;
+const cliDarkFactory = process.env._WF_INIT_DARK_FACTORY;
+if (cliAgentMode) configFields.agent_mode = cliAgentMode;
+if (cliDarkFactory) configFields.dark_factory = cliDarkFactory;
 
 // Schema .wf-state.json (DA-1, SPEC-7, design §2.7):
 // - session_segments: [{start: ISO-8601, end: ISO-8601|null}] — source of truth for the wf timer
