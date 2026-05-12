@@ -259,6 +259,20 @@ _wf_bash_guard() {
         _wf_cw_log "$need_name" "allow" "Bash" "$matched_artifact" "$agent_type" "pm_owned_bash_write"
         exit 0
       fi
+      # EX-014: in subagent-light mode, PM is the sole author of specs.md (INV-002).
+      if echo "$cmd" | grep -qE "wf/needs/[^[:space:]]+/specs\.md"; then
+        local _sbl_need
+        _sbl_need=$(echo "$cmd" | grep -oE "wf/needs/([^/[:space:]]+)/" | head -1 | cut -d'/' -f3)
+        local _sbl_state="$PROJECT_ROOT/wf/needs/$_sbl_need/.wf-state.json"
+        if [[ -f "$_sbl_state" ]]; then
+          local _sbl_mode
+          _sbl_mode=$(jq -r '.config.agent_mode // ""' "$_sbl_state" 2>/dev/null)
+          if [[ "$_sbl_mode" == "subagent-light" ]]; then
+            _wf_cw_log "$_sbl_need" "allow" "Bash" "$matched_artifact" "$agent_type" "pm_specs_subagent_light"
+            exit 0
+          fi
+        fi
+      fi
       echo "wf-auth: PM cannot write non-owned artifact $matched_artifact. $(_wf_redirect_hint "$(basename "$matched_artifact")")" >&2
       _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "non_owned_bash_write"
       exit 2

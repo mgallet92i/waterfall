@@ -12,6 +12,7 @@ Multi-agent **Specification-Driven Development (SDD)** framework for Claude Code
 
 Waterfall turns a single Claude Code session into a coordinated team of agents, each with a narrow role:
 
+- **HO** — human operator, the user driving the workflow. Interacts exclusively through PM (questions, checkpoints, validation, commit approval).
 - **PM** — project manager, owns the team registry and handoffs
 - **OR** — orchestrator, drives the state machine
 - **PO** — product owner, owns the PRD and acceptance criteria

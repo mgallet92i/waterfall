@@ -62,7 +62,7 @@ _in() {  # _in <val> <choice1> <choice2> ...
 
 _in "$WF_WATCHDOG_INTERVAL" off 3min 5min 10min || errors+=("watchdog.interval='$WF_WATCHDOG_INTERVAL' (expected:off|3min|5min|10min)")
 _in "$WF_LANGUAGE" fr en                        || errors+=("WF_LANGUAGE='$WF_LANGUAGE' (expected:fr|en — auto-detected from \$LANG, override via env)")
-_in "$WF_AGENT_MODE" team subagent               || errors+=("agent_mode='$WF_AGENT_MODE' (expected:team|subagent)")
+_in "$WF_AGENT_MODE" team subagent subagent-light || errors+=("agent_mode='$WF_AGENT_MODE' (expected:team|subagent|subagent-light)")
 _in "$WF_DARK_FACTORY" on off                    || errors+=("dark_factory='$WF_DARK_FACTORY' (expected:on|off)")
 _in "$WF_TOOLS_SEMGREP" on off                   || errors+=("tools.semgrep='$WF_TOOLS_SEMGREP' (expected:on|off)")
 
@@ -130,7 +130,7 @@ cat <<EOF
 ## Waterfall config resolved
 
 - **source**: $CONFIG_SOURCE
-- **agent_mode**: $WF_AGENT_MODE  _(team = Agent Teams via TeamCreate/SendMessage; subagent = Agent tool without team, no inter-agent SendMessage)_
+- **agent_mode**: $WF_AGENT_MODE  _(team = Agent Teams via TeamCreate/SendMessage; subagent = Agent tool without team, no inter-agent SendMessage; subagent-light = Agent tool, 2 agents PM+TL, 3 artefacts, 3 interactions HO)_
 - **dark_factory**: $WF_DARK_FACTORY  _(on = max autonomy, validate checkpoints alone; off = escalate decisions to HO)_
 - **watchdog**: $WF_WATCHDOG_INTERVAL
 - **language**: $WF_LANGUAGE  _(auto-detected from \$LANG; override via env WF_LANGUAGE)_

@@ -89,6 +89,16 @@ declare -gA STEP_AGENT_DARK_OVERRIDE=(
   ["VALIDATION:CHECKPOINT_VALID"]=1
 )
 
+# STEP_AGENT_SKIP_LIGHT: agents whose steps are auto-skipped in subagent-light mode.
+# EX-012, EX-013, INV-005
+declare -gA STEP_AGENT_SKIP_LIGHT=(
+  ["po"]=1
+  ["rv"]=1
+  ["qa"]=1
+  ["ds"]=1
+  ["or"]=1
+)
+
 # resolve_step_agent <PHASE:STEP> <dark_factory:on|off>
 # Returns the effective agent for the step, applying override rules above.
 # Post-refonte (EX-004, ADR-001): ALWAYS_OR bloc removed — STEP_AGENT_ALWAYS_OR

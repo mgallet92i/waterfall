@@ -69,8 +69,17 @@ TEMPLATES_SRC="${CLAUDE_PLUGIN_ROOT}/wf/templates/${WF_LANGUAGE}"
 cp "$TEMPLATES_SRC"/*.md "wf/needs/<name>/"
 ```
 
-### Step 3 — Load wf-pm
-Load the `wf-pm` skill via `Skill({name: "wf-pm"})`. The main conversation thus adopts PM responsibilities before executing `TeamCreate`.
+### Step 3 — Load wf-pm (conditional on agent_mode)
+
+```
+IF WF_AGENT_MODE == "subagent-light":
+  → Load wf-pm-light via Skill({name: "waterfall:wf-pm-light"})
+  → The main conversation adopts PM-light responsibilities
+  → Skip directly to Step 4.ter (no TeamCreate, no pré-spawn)
+ELSE:
+  → Load wf-pm via Skill({name: "wf-pm"})
+  → Continue to Step 4
+```
 
 ### Step 4 — TeamCreate (conditional on agent_mode)
 
@@ -78,6 +87,10 @@ Load the `wf-pm` skill via `Skill({name: "wf-pm"})`. The main conversation thus 
 if [[ "$WF_AGENT_MODE" == "team" ]]; then
   # Default mode
   TeamCreate wf-<name>
+elif [[ "$WF_AGENT_MODE" == "subagent-light" ]]; then
+  # subagent-light: no TeamCreate, no team, no inter-agent watchdog
+  # Inform HO: "Subagent-light mode active — 2 agents (PM+TL), 3 artefacts, 3 interactions HO"
+  : # no-op — proceed to Step 4.ter
 else
   # Subagent mode (ADR-006): no TeamCreate, agents are spawned via Agent tool
   # Inform HO: "Subagent mode active — SendMessage and inter-agent watchdog disabled"
@@ -96,14 +109,19 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-registry.sh init <name>
 
 ### Step 4.ter — `wf-orchestrate.sh --init` (PM, AVANT tout spawn) — EX-005 / B3
 
-> **PM exécute `--init` AVANT le spawn d'OR**. Au moment où OR reçoit son
-> `bootstrap_need`, `.wf-state.json` existe déjà (INV-003). OR ne porte plus
-> la responsabilité d'init.
+> **PM exécute `--init` AVANT le spawn d'OR** (ou TL en mode subagent-light).
+> Au moment où l'agent reçoit son brief, `.wf-state.json` existe déjà.
 
 ```bash
+# Mode team / subagent
 bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> \
   --init --team wf-<name> --session "${CLAUDE_SESSION_ID}" \
   --agent-mode "${WF_AGENT_MODE}" --dark-factory "${WF_DARK_FACTORY}"
+
+# Mode subagent-light — pas de team, R-002 résolu : handle_init accepte toute valeur --team
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> \
+  --init --team "none" --session "${CLAUDE_SESSION_ID}" \
+  --agent-mode "subagent-light" --dark-factory "${WF_DARK_FACTORY}"
 ```
 
 > **Propagation config (fix bug-3eec8bce)** : les flags `--agent-mode` et
@@ -119,41 +137,47 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> \
 **Critère opposable** (TF-010) : après cette étape, `wf/needs/<name>/.wf-state.json`
 existe et contient `phase`, `step`, `session_id` non nul.
 
-### Step 4.quater — Pré-complete des steps BOOTSTRAP pm-owned (subagent only — fix bug-3eec8bce)
+### Step 4.quater — Pré-complete des steps BOOTSTRAP pm-owned (subagent + subagent-light)
 
-> **Subagent only**. En mode team, ces 2 steps sont complétés par le PM
-> teammate après que OR ait émis `PLEASE_COMPLETE_STEP`. En mode subagent,
+> **Subagent et subagent-light**. En mode team, ces 2 steps sont complétés par le PM
+> teammate après que OR ait émis `PLEASE_COMPLETE_STEP`. En mode subagent/subagent-light,
 > PM = main agent (hors team), donc OR ne peut pas le contacter via
-> `SendMessage` (no addressable agent) → deadlock au BOOTSTRAP. PM doit
-> donc pré-compléter ces steps **avant** le spawn d'OR.
+> `SendMessage` → deadlock au BOOTSTRAP. PM doit donc pré-compléter ces steps
+> **avant** le spawn de l'agent suivant (OR en subagent, TL en subagent-light).
 
 ```bash
-if [[ "$WF_AGENT_MODE" == "subagent" ]]; then
+if [[ "$WF_AGENT_MODE" == "subagent" || "$WF_AGENT_MODE" == "subagent-light" ]]; then
   bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete BOOTSTRAP:DETERMINE_NAME
   bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete BOOTSTRAP:RUN_BOOTSTRAP
 fi
 ```
 
-Après ces 2 `--complete`, le state machine arrive à `BOOTSTRAP:COLLECT_CARD_NUM`
-(agent=or — cf. `wf-step-agents.sh`). OR peut piloter à partir de là sans
-toucher à un step pm-owned. Note : `RUN_BOOTSTRAP` chain-noop automatique
-jusqu'à `COLLECT_CARD_NUM` via `_wf_chain_noop` (wf-orchestrate.sh L1140).
+En mode **subagent** : après ces 2 `--complete`, le state machine arrive à
+`BOOTSTRAP:COLLECT_CARD_NUM` (agent=or). OR pilote à partir de là.
 
-**Critère opposable** : après ce step en mode subagent, `--query` retourne
-`agent=or step=COLLECT_CARD_NUM` (et non `agent=pm step=DETERMINE_NAME`).
+En mode **subagent-light** : après ces 2 `--complete`, `_wf_auto_skip_light`
+skip automatiquement tous les steps `agent=or` (COLLECT_CARD_NUM, COLLECT_BRANCH_TYPE,
+CREATE_BRANCH_Q, SPAWN_TEAM) jusqu'au premier step `agent=pm` ou `agent=tl`.
+PM-light pilote directement sans OR intermédiaire.
 
-### Step 5 — Pré-spawn batch de la team fixe (EX-002 / F3)
+### Step 5 — Pré-spawn batch de la team fixe (EX-002 / F3) — non applicable en subagent-light
+
+> **subagent-light** : pas de pré-spawn. PM-light spawne TL directement lors de la Phase D
+> (après validation specs HO). Aucun OR, PO, RV, QA, DS spawné (EX-018, TF-017).
+> **Sauter ce step en mode subagent-light** et laisser PM-light piloter.
 
 > **PM pré-spawne en UN SEUL BATCH** la team fixe avant de transférer le
-> pilotage à OR. OR ne pilote plus le spawn (cf. EX-004 — tool `Agent` retiré
-> du frontmatter d'OR). Aucun `spawn_request` n'est émis par OR pour ces rôles
-> fixes durant la totalité du workflow (TF-005).
+> pilotage à OR (modes team et subagent uniquement). OR ne pilote plus le spawn
+> (cf. EX-004 — tool `Agent` retiré du frontmatter d'OR). Aucun `spawn_request`
+> n'est émis par OR pour ces rôles fixes durant la totalité du workflow (TF-005).
 
-**Team fixe (toujours)** : `or, po, tl, rv, qa`.
+**Team fixe (toujours, team/subagent)** : `or, po, tl, rv, qa`.
 **DS conditionnel** : ajouté au batch **ssi** `PRD.md` frontmatter porte `has_ui: true` (TF-004).
 **DV** : **non** spawné ici. Émission lazy après `PLANNING:CHECKPOINT_TASKS` (cf. Step 9).
 
 ```
+# Mode subagent-light — SKIP this step entirely. PM-light handles TL spawn in Phase D.
+
 # Mode team
 TeamCreate already done at Step 4 → spawn each role as teammate
   in a single PM turn (5 ou 6 spawns), with model=$WF_MODEL_<role>.
