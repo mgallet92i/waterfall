@@ -5,6 +5,15 @@ All notable changes to the `waterfall` plugin are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-05-12
+
+### Fixed — Subagent mode BOOTSTRAP deadlock
+
+- **Bug** : en mode `agent_mode=subagent`, OR était bloqué au step `BOOTSTRAP:DETERMINE_NAME` par le hook `wf-auth.sh` (`agent_type=or expected=pm reason=role_mismatch`). Cause : (a) `handle_init` ignorait la config du brief PM et écrivait toujours les defaults `team`/`off` quand `.wf-config.json` était absent ; (b) en mode subagent PM = main agent (hors team) donc OR ne pouvait pas relayer `PLEASE_COMPLETE_STEP` via `SendMessage` → deadlock.
+- **Fix (a) — propagation config** : `scripts/wf-orchestrate.sh handle_init` accepte désormais `--agent-mode <team|subagent>` et `--dark-factory <on|off>`, qui overrident `.wf-config.json` à l'init.
+- **Fix (b) — pré-complete BOOTSTRAP** : `skills/wf-new/SKILL.md` Step 4.quater (subagent only) : PM exécute `--complete BOOTSTRAP:DETERMINE_NAME` puis `--complete BOOTSTRAP:RUN_BOOTSTRAP` avant le spawn d'OR. Après ces 2 complete, le state arrive à `BOOTSTRAP:COLLECT_CARD_NUM` (`agent=or` — OR peut piloter sans toucher à un step pm-owned).
+- Reproduit puis validé sur un need fictif `script-js-hello-world` (artefacts conservés). Smoke test : init avec `--agent-mode subagent --dark-factory on` → `.wf-state.json` correct ; pré-complete BOOTSTRAP → `--query` retourne `agent=or step=COLLECT_CARD_NUM`.
+
 ## [1.1.0] - 2026-05-08
 
 ### Added — Context overflow handling (need `context-overflow-handling`)
