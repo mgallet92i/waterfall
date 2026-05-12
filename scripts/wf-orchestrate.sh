@@ -880,7 +880,7 @@ switch(phase) {
       const sid = state.session_id || 'default';
       const sidShort = sid.length > 16 ? sid.slice(0, 8) : sid;
       params.session_id = sid;
-      params.hint = `Use Agent tool to spawn DV agents (max 3: dv1, dv2, dv3) with isolation=worktree and mode=auto. Each DV work_dir: <project_root>/worktrees/${sidShort}/dvN. SendMessage each DV their assigned tasks from tasks.md, including their work_dir. Each DV follows the per-task pipeline: implement → write/run tests (PASS required) → update tasks.md (Tests + Status columns) → notify PM. After DV notifies TASK_DONE, request TL per-task review via SendMessage. Reuse idle DVs for subsequent tasks. Complete when all tasks report done.`;
+      params.hint = `OR → PM : spawn DV agents (max 3: dv1, dv2, dv3) with isolation=worktree and mode=auto.\nMode team: OR sends a spawn_request to PM via SendMessage — PM calls Agent tool to spawn DVs.\nMode subagent: OR asks PM (main agent) to spawn DVs directly — PM calls Agent tool.\nIn both modes OR never calls Agent tool directly.\nEach DV work_dir: <project_root>/worktrees/${sidShort}/dvN. SendMessage each DV their assigned tasks from tasks.md, including their work_dir.\nEach DV follows the per-task pipeline: implement → write/run tests (PASS required) → update tasks.md (Tests + Status columns) → notify PM.\nAfter DV notifies TASK_DONE, request TL per-task review via SendMessage. Reuse idle DVs for subsequent tasks. Complete when all tasks report done.`;
     }
     if (step === 'TL_SUPERVISE') params.hint = 'TL : performs per-task reviews (not global CODE_REVIEW). For each task completed by a DV, TL reviews only the modified files and sends APPROVED/REJECTED verdict. PM coordinates: SendMessage TL with task ID + file list, wait for verdict. If REJECTED, SendMessage DV with fix instructions. Complete when all tasks have TL APPROVED verdict in tasks.md (Review TL column).';
     if (step === 'CHECKPOINT_IMPL') params.hint = darkFactory && agent === 'or'
@@ -905,7 +905,7 @@ switch(phase) {
     if (step === 'UPDATE_TRACKING_CR') params.hint = 'OR: update wf/needs/<name>/tracking.md with code review cycle results: run number, number of findings, fixes applied. Complete to loop back to TL_REVIEW.';
     break;
   case 'VALIDATION':
-    if (step === 'PO_VALIDATE') params.hint = 'QA: validate the implementation against the EX-xxx criteria from specs.md. Check each acceptance criterion. Input artifact: specs.md. Notify OR via SendMessage (step_complete) with the validation result.';
+    if (step === 'PO_VALIDATE') params.hint = 'PO: validate the implementation against the EX-xxx criteria from specs.md. Check each acceptance criterion. Input artifact: specs.md. Notify OR via SendMessage (step_complete) with the validation result.';
     if (step === 'QA_ACCEPTANCE_TEST') {
       params.hint = 'QA : Read acceptance.md test plan. Execute tests (npm test for automated, MCP chrome-devtools for UI). Report which TF pass/fail. Complete with validation_ok=true/false.';
       params.test_plan = 'acceptance.md';
