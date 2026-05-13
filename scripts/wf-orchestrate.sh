@@ -1408,17 +1408,21 @@ _wf_auto_skip_light() {
   local state_file="$2"
   local or_log="$PROJECT_ROOT/wf/needs/$name/or.log"
 
-  # Read agent_mode from state file config (INV-006)
-  local current_json agent_mode
+  # Read agent_mode + dark_factory from state file config (INV-006)
+  local current_json agent_mode dark_factory
   current_json=$(read_state "$state_file")
   agent_mode=$(jq -r '.config.agent_mode // ""' "$state_file" 2>/dev/null || echo "")
+  dark_factory=$(jq -r '.config.dark_factory // "off"' "$state_file" 2>/dev/null || echo "off")
 
   # No-op if not subagent-light
   [[ "$agent_mode" == "subagent-light" ]] || return 0
 
+  # R-003 guard: max 50 iterations. Use $((...)) form (always exit 0) instead
+  # of (( iter++ )) which returns pre-increment value — under `set -e`, that
+  # kills the loop on the first iteration when iter=0 (root cause of OBS-001).
   local iter=0
   while (( iter < 50 )); do
-    (( iter++ ))
+    iter=$((iter + 1))
 
     current_json=$(read_state "$state_file")
     local cur_phase cur_step
@@ -1426,7 +1430,10 @@ _wf_auto_skip_light() {
     cur_step=$(normalize_step "$(get_field "$current_json" "step")")
 
     local step_key="${cur_phase}:${cur_step}"
-    local step_agent="${STEP_AGENT[$step_key]:-}"
+    # Honor dark_factory override: CHECKPOINT_* reassign to "or" when dark=on
+    # (fixes OBS-002 — direct STEP_AGENT lookup missed the override).
+    local step_agent
+    step_agent=$(resolve_step_agent "$step_key" "$dark_factory")
 
     # Stop if step agent is not in STEP_AGENT_SKIP_LIGHT
     [[ -n "${STEP_AGENT_SKIP_LIGHT[$step_agent]+x}" ]] || break
