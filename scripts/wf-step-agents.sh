@@ -99,6 +99,14 @@ declare -gA STEP_AGENT_SKIP_LIGHT=(
   ["or"]=1
 )
 
+# STEP_SKIP_LIGHT: specific steps to auto-skip in subagent-light mode, regardless
+# of their agent. Used for steps that are NOOP in light (no DV spawn → no
+# worktrees to merge/cleanup). ANO-004.
+declare -gA STEP_SKIP_LIGHT=(
+  ["IMPLEMENTATION:MERGE_WORKTREES"]=1
+  ["CLOSURE:CLEANUP_WORKTREES"]=1
+)
+
 # resolve_step_agent <PHASE:STEP> <dark_factory:on|off>
 # Returns the effective agent for the step, applying override rules above.
 # Post-refonte (EX-004, ADR-001): ALWAYS_OR bloc removed — STEP_AGENT_ALWAYS_OR

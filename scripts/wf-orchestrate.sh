@@ -1435,8 +1435,12 @@ _wf_auto_skip_light() {
     local step_agent
     step_agent=$(resolve_step_agent "$step_key" "$dark_factory")
 
-    # Stop if step agent is not in STEP_AGENT_SKIP_LIGHT
-    [[ -n "${STEP_AGENT_SKIP_LIGHT[$step_agent]+x}" ]] || break
+    # Skip if step matches STEP_SKIP_LIGHT (ANO-004: MERGE/CLEANUP worktrees are
+    # NOOP in light — no DV spawned, no worktrees). Or if its agent is in
+    # STEP_AGENT_SKIP_LIGHT. Otherwise break.
+    if [[ -z "${STEP_SKIP_LIGHT[$step_key]+x}" ]] && [[ -z "${STEP_AGENT_SKIP_LIGHT[$step_agent]+x}" ]]; then
+      break
+    fi
 
     # Compute next step via the canonical function (nominal path, no decision flags)
     local next
