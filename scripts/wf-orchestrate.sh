@@ -930,7 +930,9 @@ switch(phase) {
     if (step === 'COMMIT') params.hint = 'PM: stage the relevant files (git add — avoid node_modules, dist, .venv). Draft the commit message. Validate via AskUserQuestion. Then git commit. No Co-Authored-By.';
     if (step === 'PUSH') params.hint = 'PM: push the branch to the remote: git push -u origin <branch>.';
     if (step === 'PR_CREATE') params.hint = 'PM: detect the base branch (git rev-parse --verify refs/remotes/origin/main, else master). Create the PR: gh pr create --base <base> --title "<title>" --body "<summary+test results>". Complete with --params pr_url=<url>.';
-    if (step === 'HO_MERGE') params.hint = 'PM: ask HO to validate the PR. If approved: gh pr merge <url> --merge --delete-branch, complete with no parameter. If rejected: complete with --params decision=rejected.';
+    if (step === 'HO_MERGE') params.hint = darkFactory
+      ? 'OR (dark_factory) : self-merge the PR without HO approval (no HO in the loop). gh pr merge <url> --merge --delete-branch. If merge fails (conflict, CI fail, branch protection), complete with --params decision=rejected (loops to PR_TRIAGE). Otherwise complete with no parameter (advances to BILAN).'
+      : 'OR : verify the PR has been approved (gh pr view <url> --json reviewDecision). If APPROVED: gh pr merge <url> --merge --delete-branch, complete with no parameter. If still pending: SendMessage to PM to escalate HO confirmation. If rejected: complete with --params decision=rejected.';
     if (step === 'CLEANUP') {
       const sid = state.session_id || 'default';
       params.session_id = sid;
