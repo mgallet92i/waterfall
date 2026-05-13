@@ -107,6 +107,15 @@ declare -gA STEP_SKIP_LIGHT=(
   ["CLOSURE:CLEANUP_WORKTREES"]=1
 )
 
+# STEP_NEVER_SKIP_LIGHT: steps that must NOT be auto-skipped in subagent-light mode,
+# even if their agent is in STEP_AGENT_SKIP_LIGHT. These are decision/convergence
+# steps that TL must complete explicitly (converged=true) to exit loops.
+# ANO-005: without this, CHECK_CR_EXIT (agent=or) is auto-skipped → infinite loop.
+declare -gA STEP_NEVER_SKIP_LIGHT=(
+  ["REVIEW:CHECK_EXIT"]=1
+  ["CODE_REVIEW:CHECK_CR_EXIT"]=1
+)
+
 # resolve_step_agent <PHASE:STEP> <dark_factory:on|off>
 # Returns the effective agent for the step, applying override rules above.
 # Post-refonte (EX-004, ADR-001): ALWAYS_OR bloc removed — STEP_AGENT_ALWAYS_OR

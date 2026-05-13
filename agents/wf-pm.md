@@ -200,6 +200,30 @@ IF config.agent_mode == "team" (default):
 - Une et une seule ligne `[DV-LAZY] N=<N>` dans `or.log` après le checkpoint.
 - N=0 sur need pure-doc → aucune erreur, state machine avance.
 
+## Dashboard TaskCreate — mirror CC (EX-001 / INV-003)
+
+> **Déclencheur** : juste après le DV-lazy batch (step 10 — `PLANNING:CHECKPOINT_TASKS` validé).
+> **Exclusion** : mode `subagent-light` (EX-006) — ne pas exécuter dans ce mode.
+
+```
+11. [si agent_mode ≠ subagent-light] Dashboard bootstrap :
+    a. Pour chaque ligne T-xxx dans tasks.md (tableau principal, colonne ID) :
+         TaskCreate({
+           subject:     "T-xxx — <Description>",
+           description: "<cellule Description de la ligne T-xxx>",
+           metadata:    { t_id: "T-xxx" },
+           status:      "pending"
+         })
+         → stocker en mémoire PM : store[t_id] = taskId retourné par TaskCreate
+    b. N TaskCreate au total (N = nombre de lignes T-xxx dans tasks.md).
+```
+
+**Critères opposables** (TF-001) :
+- Après le DV-lazy batch (modes subagent et team), la TaskList PM contient N tasks `pending`, chacune avec `metadata.t_id` unique.
+- Aucune `TaskCreate` émise avant `PLANNING:CHECKPOINT_TASKS` (INV-003).
+- En mode `subagent-light` : aucune `TaskCreate` émise (EX-006).
+- Le store `{t_id → taskId}` est en mémoire PM (volatile — reconstruit au resume via §Resume après context clear).
+
 ---
 
 ## Gabarits de briefs
@@ -339,6 +363,74 @@ DEC-<num>: <decision> (dark_factory auto, <ISO8601 now>)
 ## VALIDATION — Reinforced QA spawn
 
 Before transitioning to `VALIDATION:QA_ACCEPTANCE_TEST`, PM verifies that QA is active. If QA is not spawned → PM asks OR via SendMessage to spawn QA before continuing.
+
+## Parse [T_STATUS] — mode subagent (EX-005 / EX-002 / EX-009)
+
+> **Exclusion** : mode `subagent-light` (EX-006) — ne pas exécuter dans ce mode.
+> **Déclencheur** : après chaque retour d'appel `Agent(TL)` pendant la phase IMPLEMENTATION.
+
+PM lit l'output texte retourné par l'appel Agent TL et extrait tous les marqueurs `[T_STATUS]` :
+
+```
+regex: /\[T_STATUS\] t_id=(T-\d+) status=(\w+)/g
+```
+
+Pour chaque marqueur trouvé `{t_id, status}` :
+1. Mapper le status INV-007 → CC status via la table EX-002 :
+   - TODO → `pending` / IN_PROGRESS → `in_progress` / IMPLEMENTED → `in_progress`
+   - UNIT_TESTS_OK → `in_progress` / CODE_REVIEW_OK → `in_progress` / DONE → `completed`
+2. Vérifier idempotence (EX-009) : si `store[t_id]` n'a pas changé de CC status, ignorer.
+3. Sinon appeler `TaskUpdate({ taskId: store[t_id], status: cc_status })`.
+
+**Critères opposables** (TF-003, TF-004) :
+- Chaque marqueur `[T_STATUS]` dans l'output TL déclenche exactement un `TaskUpdate` (si status CC change).
+- Les transitions IMPLEMENTED, UNIT_TESTS_OK, CODE_REVIEW_OK ne changent pas le status CC (tous → `in_progress`).
+- Idempotence : double marqueur même status → 0 `TaskUpdate` redondant (EX-009).
+
+---
+
+## Handler t_status_update — mode team (EX-004 / EX-002 / EX-009)
+
+> **Exclusion** : mode `subagent-light` (EX-006) — ne pas exécuter dans ce mode.
+> **Déclencheur** : réception d'un `SendMessage` de TL avec `type: t_status_update`.
+
+À réception du message :
+```
+type: t_status_update
+t_id: T-xxx
+status: <INV-007 value>
+```
+
+1. Mapper `status` INV-007 → CC status via la table EX-002 (cf. §Parse [T_STATUS]).
+2. Vérifier idempotence (EX-009) : si status CC inchangé pour `store[t_id]`, ignorer.
+3. Sinon appeler `TaskUpdate({ taskId: store[t_id], status: cc_status })`.
+
+**Critères opposables** (TF-002, TF-005) :
+- Chaque `t_status_update` reçu déclenche exactement un `TaskUpdate` (si status CC change).
+- Double message même status → 0 `TaskUpdate` redondant (EX-009).
+
+---
+
+## Resume après context clear (EX-008 / INV-001)
+
+> **Déclencheur** : PM détecte qu'il n'a plus le store `{t_id → taskId}` en mémoire ET que la phase courante est `IMPLEMENTATION` (vérifié via `--query`).
+
+Si le store est absent (context clear) pendant IMPLEMENTATION :
+1. Vérifier via `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query` que `phase == "IMPLEMENTATION"`.
+2. Lire `wf/needs/<name>/tasks.md` — extraire toutes les lignes T-xxx et leur colonne Status (INV-001 : tasks.md est la source de vérité).
+3. Pour chaque T-xxx, mapper le status INV-007 → CC status initial :
+   - TODO → `pending`
+   - Tout autre status (IN_PROGRESS, IMPLEMENTED, UNIT_TESTS_OK, CODE_REVIEW_OK) → `in_progress`
+   - DONE → `completed`
+4. Créer les tasks CC : `TaskCreate({ subject, description, metadata: { t_id }, status: <mappé> })`.
+5. Stocker `store[t_id] = taskId` pour chaque T-xxx.
+
+**Critères opposables** (TF-006) :
+- Après resume, la TaskList PM reflète l'état courant de tasks.md.
+- INV-001 respecté : tasks.md est la seule source de vérité pour les status initiaux au resume.
+- Aucune `TaskCreate` en CLOSURE (INV-003).
+
+---
 
 ## CLOTURE — BILAN step
 

@@ -278,6 +278,35 @@ pas de double-init côté OR).
 - 0 spawn DV avant `PLANNING:CHECKPOINT_TASKS`.
 - Une et une seule ligne `[DV-LAZY] N=<N>` dans `or.log` après le checkpoint.
 
+### Step 9.bis — Dashboard TaskCreate (EX-001 dv-tasks-dashboard, modes team + subagent)
+
+> **Déclencheur** : juste après le DV-lazy batch (Step 9), avant que les DVs
+> commencent à implémenter. Cette étape est portée par PM (cf.
+> `agents/wf-pm.md §Dashboard TaskCreate batch` pour l'algorithme détaillé).
+> **Non applicable en mode `subagent-light`** (EX-006 dv-tasks-dashboard).
+
+**Résumé de l'étape** :
+1. PM relit `wf/needs/<name>/tasks.md` → liste les lignes `T-xxx`.
+2. PM appelle `TaskCreate` pour chaque `T-xxx` avec :
+   - `subject` = titre T-xxx,
+   - `description` = cellule Description de la ligne,
+   - `metadata.t_id` = `"T-xxx"` (lookup ultérieur).
+3. PM stocke en mémoire la table `{t_id → taskId}` retournée par CC.
+4. PM log obligatoire :
+   ```bash
+   bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log \
+     --msg "[DASHBOARD] TaskCreate batch tasks=<N>"
+   ```
+
+Les status sont ensuite mis à jour par PM via `TaskUpdate` au fil des
+`t_status_update` reçus (relay mode team) ou des marqueurs `[T_STATUS]`
+trouvés dans l'output des Agent calls (mode subagent). Mapping
+INV-007 → CC status défini dans `agents/wf-pm.md §Dashboard TaskCreate batch`.
+
+**Critère opposable** : après cette étape, la TaskList de la conversation PM
+contient exactement N tasks `pending`, chacune avec `metadata.t_id` unique
+tracé à `tasks.md`.
+
 ## Why PM resolves the name before OR (Flow Z)
 
 - PM has the fresh verbal HO context — proposing kebab-case is trivial
