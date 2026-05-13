@@ -114,6 +114,10 @@ declare -gA STEP_SKIP_LIGHT=(
 declare -gA STEP_NEVER_SKIP_LIGHT=(
   ["REVIEW:CHECK_EXIT"]=1
   ["CODE_REVIEW:CHECK_CR_EXIT"]=1
+  # ARCHIVE: executes the atomic mv to wf/archives — terminal step that must
+  # be explicitly invoked. Auto-skip-light hits TERMINAL guard before reaching
+  # it, leaving state stuck. TL completes it via hook exception (Step 9.ter).
+  ["CLOSURE:ARCHIVE"]=1
 )
 
 # resolve_step_agent <PHASE:STEP> <dark_factory:on|off>
