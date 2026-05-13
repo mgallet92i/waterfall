@@ -933,15 +933,16 @@ OR cannot call `wf-orchestrate.sh --fast-path-skip` itself: this flag is reserve
 
 ## Review counters
 
-OR maintains two monotonic counters : `review_count_artifacts` (REVIEW rejections on artifact phases) and `review_count_code` (REVIEW rejections on IMPLEMENTATION). Persisted in `tracking.md §Review counters` (initialized to 0 at bootstrap, restored at resume).
+OR observes two monotonic counters : `current_run_review` (REVIEW rejections on artifact phases) and `current_run_cr` (CODE_REVIEW rejections on IMPLEMENTATION). **Persistence is automatic** — `wf-orchestrate.sh _wf_advance_state` increments them in `.wf-state.json` at `REVIEW:UPDATE_TRACKING` and `CODE_REVIEW:UPDATE_TRACKING_CR`. OR never writes them itself.
 
-### Increment rules
+### Increment rules (state-machine driven)
 
-- **Artifact**: OR receives `brief_complete` from RV with `verdict: REJECTED` in `{REQUIREMENTS, FUNCTIONAL_SPECS, TECHNICAL_DESIGN, PLANNING}` → increment `review_count_artifacts`, persist to `tracking.md`, evaluate cap.
-- **Code**: OR receives `code_review: REJECTED` from TL → increment `review_count_code`, persist, evaluate cap.
+- **Artifact**: when REVIEW loop continues (verdict REJECTED + cap not reached), `REVIEW:UPDATE_TRACKING --complete` advances state → state machine increments `current_run_review`.
+- **Code**: when CODE_REVIEW loop continues, `CODE_REVIEW:UPDATE_TRACKING_CR --complete` → state machine increments `current_run_cr`.
 - **Never decremented** — counters are monotonic totals.
 - **Defaults**: `max_artifacts = config.review_loops.artifacts ?? 2`, `max_code = config.review_loops.code ?? 3`.
-- **Resume**: re-read `tracking.md §Review counters` at the start of a resume to restore counters. Initialize to 0 if section absent.
+- **Read counters** : `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query` returns them in the response payload — OR consults `--query` before every RV `spawn_request` decision.
+- **Resume**: counters survive context clear naturally — `.wf-state.json` is the source of truth. No special re-read needed beyond the standard `--query`.
 
 ---
 
@@ -950,18 +951,18 @@ OR maintains two monotonic counters : `review_count_artifacts` (REVIEW rejection
 Before any RV `spawn_request`, OR evaluates the caps:
 
 ```
-IF current_phase ∈ artifacts AND review_count_artifacts >= max_artifacts:
+IF current_phase ∈ artifacts AND current_run_review >= max_artifacts:
   DO NOT emit spawn_request RV
   SendMessage to PM:
     type: NEED_PM_DECISION
     reason: review_artifacts_max_reached
-    current_count: <review_count_artifacts>
+    current_count: <current_run_review>
     max: <max_artifacts>
     phase: <REQUIREMENTS|FUNCTIONAL_SPECS|TECHNICAL_DESIGN|PLANNING>
     options: force_merge|rerun_review|abort
   Wait for PM response
 
-IF current_phase == IMPLEMENTATION AND review_count_code >= max_code:
+IF current_phase == IMPLEMENTATION AND current_run_cr >= max_code:
   [same with reason: "review_code_max_reached", phase: "IMPLEMENTATION"]
 ```
 
@@ -984,7 +985,7 @@ Triggered if OR receives a resume brief or detects a pre-existing `.sdd-state.js
 1. Read state: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query`.
 2. Read `wf/needs/<name>/or.log` to recover context.
 3. Re-read `config.agent_mode` and `config.dark_factory` from `.wf-state.json` (post-context-clear fallback — see §Reading `config.agent_mode` and §Dark factory).
-4. Re-read `tracking.md` section `## Review counters` and restore `review_count_artifacts` / `review_count_code` to context (see §Review counters §Post-context-clear resume).
+4. `current_run_review` / `current_run_cr` survivent au context clear via `.wf-state.json` — pas de re-read tracking.md nécessaire. `--query` (étape 1) les expose dans son payload.
 5. Emit `spawn_request` for the agents required by the current phase (Matrix lookup).
 6. Send resume briefs to each agent:
 
