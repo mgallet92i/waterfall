@@ -5,6 +5,16 @@ All notable changes to the `waterfall` plugin are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-05-13
+
+### Fixed — Subagent-light auto-skip + dark/light conceptual fix
+
+- **OBS-001 (root cause `set -e`)** : `_wf_auto_skip_light` ne tournait jamais — `(( iter++ ))` retourne la valeur pre-increment (0) et `set -e` tuait la fonction à la première itération. Corrigé en `iter=$((iter + 1))`. Résultat : en mode `agent_mode=subagent-light`, les steps `agent ∈ {po, rv, qa, ds, or}` sont désormais réellement auto-skippés après chaque `--complete`.
+- **OBS-002 technique** : `_wf_auto_skip_light` lisait `STEP_AGENT[$step_key]` directement et ratait l'override `STEP_AGENT_DARK_OVERRIDE`. Bascule sur `resolve_step_agent "$step_key" "$dark_factory"` (avec `dark_factory` lu depuis `.config` du state file). Les `CHECKPOINT_*` réassignés à `or` par dark sont maintenant skippés en mode light.
+- **OBS-002 conceptuel — dark gagne sur light** : quand `.config.dark_factory == "on"`, les 3 `AskUserQuestion` de `skills/wf-pm-light/SKILL.md` (Phases C/E/G — checkpoint-specs, checkpoint-tasks, validation-finale) sont skippées. PM-light auto-approuve les checkpoints en tant que décideur de dernière instance, logue la décision dans `or.log`. Workflow et artefacts inchangés. Élicitation (Phase A) conservée.
+- **OBS-003** : `skills/wf-pm-light/SKILL.md` corrige l'exemple de spawn TL — utiliser `Agent(subagent_type="waterfall:wf-tl", prompt="charge skill waterfall:wf-tl-light puis …")` au lieu d'un subagent générique. Le harness tagge `agent_type=tl` correctement et `wf-auth.sh` n'a plus à bloquer les `--complete` du TL.
+- Reproduit et validé en isolation : init en `--agent-mode subagent-light` puis `--complete RUN_BOOTSTRAP` avance jusqu'à `REQUIREMENTS:COLLECT_PRD` automatiquement (4 SKIP_LIGHT loggés). Idem en combo `--dark-factory on`.
+
 ## [1.2.0] - 2026-05-12
 
 ### Fixed — Subagent mode BOOTSTRAP deadlock
