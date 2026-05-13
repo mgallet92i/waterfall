@@ -351,6 +351,27 @@ Send a heartbeat:
 
 If TL stops sending heartbeats > 10 minutes → OR suspects a stall and escalates.
 
+### Relay t_status_update (EX-004 / EX-005)
+
+> **Exclusion** : mode `subagent-light` (EX-006) — cette section ne s'applique qu'aux modes `subagent` et `team`.
+
+**Mode team** : à réception d'un `SendMessage` de type `t_status_update` depuis un DV :
+1. Relayer immédiatement à PM via `SendMessage` avec le même payload :
+   ```
+   type: t_status_update
+   t_id: <t_id reçu du DV>
+   status: <status reçu du DV>
+   ```
+2. Ne pas modifier ni transformer le champ `status` — relay sans transformation.
+
+**Mode subagent** : à la fin de chaque appel Agent DV (lecture du résultat) :
+1. Parser les lignes `[T_STATUS] t_id=T-xxx status=<val>` dans l'output texte DV.
+2. Réémettre chaque marqueur dans l'output text TL avant de rendre la main à PM :
+   `[T_STATUS] t_id=T-xxx status=<val>`
+3. Réémettre TOUS les marqueurs trouvés — un par ligne, en fin de réponse TL.
+
+**Règle EX-007** : TL ne crée pas de tasks CC avec `metadata.t_id`. Les `TaskCreate` et `TaskUpdate` sont réservés à PM (INV-002). Les marqueurs `[T_STATUS]` et les `SendMessage t_status_update` sont des signaux de transport — TL ne les interprète pas, il les relaie uniquement.
+
 ### Worktree merge (ADR-002)
 
 DVs work in isolated worktrees (INV-009). After APPROVED, TL copies the modified files to the main wd and stages them (`git add`). No `git merge` between branches — the worktrees are on detached HEAD. The final commit is done by PM in CLOSURE.

@@ -1440,6 +1440,10 @@ _wf_auto_skip_light() {
     # Skip if step matches STEP_SKIP_LIGHT (ANO-004: MERGE/CLEANUP worktrees are
     # NOOP in light — no DV spawned, no worktrees). Or if its agent is in
     # STEP_AGENT_SKIP_LIGHT. Otherwise break.
+    # ANO-005: never skip decision/convergence steps even if agent is in STEP_AGENT_SKIP_LIGHT
+    if [[ -n "${STEP_NEVER_SKIP_LIGHT[$step_key]+x}" ]]; then
+      break
+    fi
     if [[ -z "${STEP_SKIP_LIGHT[$step_key]+x}" ]] && [[ -z "${STEP_AGENT_SKIP_LIGHT[$step_agent]+x}" ]]; then
       break
     fi

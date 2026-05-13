@@ -482,9 +482,11 @@ fi
 # when dark_factory=on). Read dark_factory from .wf-state.json:config.
 dark_factory="off"
 state_file="$PROJECT_ROOT/wf/needs/$name/.wf-state.json"
+agent_mode=""
 if [[ -f "$state_file" ]] && command -v jq >/dev/null 2>&1; then
   df_raw=$(jq -r '.config.dark_factory // "off"' "$state_file" 2>/dev/null || echo "off")
   [[ "$df_raw" == "on" ]] && dark_factory="on"
+  agent_mode=$(jq -r '.config.agent_mode // ""' "$state_file" 2>/dev/null || echo "")
 fi
 expected=$(resolve_step_agent "$step_canonical" "$dark_factory")
 if [[ -z "$expected" ]]; then
@@ -500,6 +502,13 @@ fi
 # Observed in obs #77 investigation: TL respawned as tl-2 was blocked even though the instance plays the same role.
 if [[ "$agent_type" =~ ^${expected}(-[0-9]+|[0-9]+)$ ]]; then
   _wf_auth_allow "$name" "$step_canonical" "$agent_type" "$expected" "respawn_alias"
+fi
+
+# 9.ter subagent-light alias (ANO-005): in subagent-light mode, TL may complete
+# STEP_NEVER_SKIP_LIGHT steps even if their nominal agent is "or" (no OR in light).
+if [[ "$agent_mode" == "subagent-light" && "$agent_type" == "tl" && "$expected" == "or" ]] \
+  && [[ -n "${STEP_NEVER_SKIP_LIGHT[$step_canonical]+x}" ]]; then
+  _wf_auth_allow "$name" "$step_canonical" "$agent_type" "$expected" "subagent_light_alias"
 fi
 
 # 10. Exact match.

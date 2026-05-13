@@ -247,7 +247,7 @@ TODO → IN_PROGRESS → IMPLEMENTED → UNIT_TESTS_OK → CODE_REVIEW_OK → DO
 
 ## ⚠️ First turn after spawn — IMMEDIATE ACTION REQUIRED
 
-The initial prompt received during `Agent()` (message `<brief>...</brief>` or `<task_assignment>...` or equivalent) is your **first brief**. It is strictly equivalent to a brief received via SendMessage. You MUST execute the per-task workflow immediately, **without waiting for a SendMessage**. Going idle after reading the initial prompt without acting = **critical bug** (obs #91: "all agents idle").
+The initial prompt received during `Agent()` (message `<brief>...<\brief>` or `<task_assignment>...` or equivalent) is your **first brief**. It is strictly equivalent to a brief received via SendMessage. You MUST execute the per-task workflow immediately, **without waiting for a SendMessage**. Going idle after reading the initial prompt without acting = **critical bug** (obs #91: "all agents idle").
 
 ## Per-task workflow
 
@@ -278,6 +278,40 @@ WHY: worktrees are destroyed at CLOSURE:CLEANUP_WORKTREES. Any uncommitted chang
 9. Send brief_complete to TL via SendMessage
 10. Wait for TL verdict (APPROVED or REJECTED)
 ```
+
+---
+
+## Dashboard status relay (EX-004 / EX-005 / EX-007)
+
+> **Exclusion** : mode `subagent-light` (EX-006) — cette section ne s'applique qu'aux modes `subagent` et `team`.
+
+À chaque transition de status INV-007 sur la tâche en cours, émettre un signal de relay vers PM :
+
+**Mode subagent** : émettre dans l'output texte de la réponse DV finale :
+
+```
+[T_STATUS] t_id=T-xxx status=<INV-007-value>
+```
+
+Exemple : `[T_STATUS] t_id=T-003 status=IN_PROGRESS`
+TL agrège ces marqueurs et les réémet dans son propre output (cf. `agents/wf-tl.md §Relay t_status_update`).
+
+**Mode team** : envoyer un `SendMessage` à TL :
+
+```
+type: t_status_update
+t_id: T-xxx
+status: <INV-007-value>
+```
+
+TL relaie à PM (cf. `agents/wf-tl.md §Relay t_status_update`).
+
+**Transitions à signaler** (INV-007) :
+- TODO → IN_PROGRESS (début de tâche)
+- IN_PROGRESS → IMPLEMENTED (code écrit)
+- IMPLEMENTED → UNIT_TESTS_OK (tests PASS)
+
+**Règle EX-007** : DV ne crée pas de tasks CC avec `metadata.t_id`. Les `TaskCreate` et `TaskUpdate` sont réservés à PM (INV-002). DV signale uniquement les transitions de status.
 
 ---
 
