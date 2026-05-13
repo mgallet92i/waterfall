@@ -320,6 +320,21 @@ _wf_bash_guard() {
       exit 2
       ;;
     or|or-[0-9]*|or[0-9]*)
+      # Exception 3 (agents/wf-or.md §Bash write prohibition) : OR may append the
+      # `## Anomalies détectées` / `## Anomalies detected` section to retro.md
+      # via Bash exclusively at CLOSURE:LOG_AUDIT (fact-8988fa8e).
+      if echo "$cmd" | grep -qE "wf/needs/[^[:space:]]+/retro\.md"; then
+        local _lar_need _lar_state _lar_step
+        _lar_need=$(echo "$cmd" | grep -oE "wf/needs/([^/[:space:]]+)/" | head -1 | cut -d'/' -f3)
+        _lar_state="$PROJECT_ROOT/wf/needs/$_lar_need/.wf-state.json"
+        if [[ -f "$_lar_state" ]]; then
+          _lar_step=$(jq -r '.step // ""' "$_lar_state" 2>/dev/null)
+          if [[ "$_lar_step" == "LOG_AUDIT" ]]; then
+            _wf_cw_log "$_lar_need" "allow" "Bash" "$matched_artifact" "$agent_type" "or_retro_log_audit_exception"
+            exit 0
+          fi
+        fi
+      fi
       # OR never writes business artifacts (B2 / EX-006 core invariant).
       echo "wf-auth: OR cannot write artifact $matched_artifact via Bash (B2 / EX-006). $(_wf_redirect_hint "$(basename "$matched_artifact")")" >&2
       _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "or_bash_bypass"

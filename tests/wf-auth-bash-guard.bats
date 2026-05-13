@@ -224,3 +224,23 @@ teardown() {
     bash "$HOOK" <<< "$payload"
   [ "$status" -eq 0 ]
 }
+
+# ─── Exception 3 (fact-8988fa8e) — OR writes retro.md at CLOSURE:LOG_AUDIT ──
+
+@test "EX3-a: OR write retro.md when state.step=LOG_AUDIT → exit 0" {
+  tmp="$BATS_TEST_TMPDIR/proj"
+  mkdir -p "$tmp/wf/needs/foo"
+  echo '{"step":"LOG_AUDIT"}' > "$tmp/wf/needs/foo/.wf-state.json"
+  payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo anomalies >> wf/needs/foo/retro.md"},agent_type:"or"}')
+  run env PROJECT_ROOT="$tmp" CLAUDE_PROJECT_DIR="$tmp" bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 0 ]
+}
+
+@test "EX3-b: OR write retro.md when state.step=BILAN → exit 2 (exception narrow)" {
+  tmp="$BATS_TEST_TMPDIR/proj2"
+  mkdir -p "$tmp/wf/needs/foo"
+  echo '{"step":"BILAN"}' > "$tmp/wf/needs/foo/.wf-state.json"
+  payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo anomalies >> wf/needs/foo/retro.md"},agent_type:"or"}')
+  run env PROJECT_ROOT="$tmp" CLAUDE_PROJECT_DIR="$tmp" bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 2 ]
+}
