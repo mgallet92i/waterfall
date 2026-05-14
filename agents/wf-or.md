@@ -1084,6 +1084,67 @@ Append via `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log --
 
 ---
 
+## Subordinate output watchdog — INV-OR-POLL
+
+> **Pourquoi** : l'ACK protocol couvre les messages **émis** par OR (retry/escalate sur non-ACK). Il ne couvre **pas** la situation où OR attend passivement un output d'un teammate (ex : verdict de review de TL, `brief_complete` post-spawn). Sans poll actif, un subordonné silencieux ne déclenche aucune escalade formelle — OR se contente d'émettre des status informatifs, PM n'est jamais alerté, et la chain stagne (obs in vivo : TL muet 10 min sur verdicts review, T-107/T-108 bloqués).
+
+### Registre `expected_outputs` (en contexte OR)
+
+Pour chaque teammate dont OR attend un output, OR maintient :
+
+```
+expected_outputs[role] = {
+  expected_type: <spawn_complete|brief_complete|review_verdict|t_status_update|specs_updated|...>,
+  since: <iso8601>,                  # timestamp d'entrée en attente
+  pokes_sent: <int>                  # 0, 1, 2, ou -1 (escaladé, ne plus traiter)
+}
+```
+
+**Peuplé** quand OR :
+- Émet un `spawn_request` à PM pour le rôle → `expected_outputs[role] = {brief_complete, now, 0}` (dès réception du `spawn_confirmed` de PM)
+- Émet un brief actionnable à un teammate déjà spawné (ex : `relire_artefact` à TL, `dispatch_task` à DV) → `expected_outputs[role] = {<output attendu>, now, 0}`
+- Attend un verdict de review post-RV → `expected_outputs[rv] = {review_verdict, now, 0}`
+
+**Purgé** dès que l'output attendu est reçu (RECV_MSG matchant `expected_type`).
+
+### Routine de poll — à chaque tour de main loop
+
+Après `--query` et avant toute action, OR exécute :
+
+```
+now = $(date +%s)
+for role, entry in expected_outputs:
+  last_recv_age = now - <timestamp du dernier RECV_MSG from=<role> dans or.log>
+  silence = max(now - entry.since, last_recv_age)
+
+  if silence > 180 AND entry.pokes_sent < 2:
+    → SendMessage to=<role> {type: poke_status, expected: <entry.expected_type>, since: <entry.since>}
+    → entry.pokes_sent += 1
+    → bash wf-orchestrate.sh <name> --log --msg "[PEER-WATCHDOG] poke role=<role> silence=<silence>s pokes=<pokes_sent> expected=<expected_type>"
+
+  elif silence > 360 AND entry.pokes_sent >= 2:
+    → SendMessage to=pm {type: stuck_peer, target: <role>, reason: silent_subordinate, silence_seconds: <silence>, expected: <expected_type>, since: <entry.since>}
+    → bash wf-orchestrate.sh <name> --log --msg "[PEER-WATCHDOG] escalate role=<role> reason=silent_subordinate silence=<silence>s → stuck_peer to PM"
+    → entry.pokes_sent = -1   # sentinelle : ne plus escalader, PM owns
+```
+
+**Seuils** : 180s (poke) / 360s (escalade). Cohérent avec ACK protocol (`>=60s` retry, `5×retry` escalate sur msgs émis).
+
+### Reconstruction au resume (post-context-clear)
+
+OR reconstruit `expected_outputs` en grepant `or.log` :
+1. Lister les `SPAWN_REQ role=<role>` sans `RECV_MSG from=<role> type=brief_complete` postérieur → entrée `{brief_complete, ts du SPAWN_REQ, 0}`.
+2. Lister les `SEND_MSG to=<role> subject="..."` actionnables sans `RECV_MSG from=<role>` postérieur dans une fenêtre raisonnable → entrée selon le type attendu.
+3. Lister les `[PEER-WATCHDOG] escalate role=<role>` → marquer `pokes_sent = -1` (PM owns).
+
+### Critères opposables
+
+- Aucun teammate silencieux > 360s sans `[PEER-WATCHDOG] escalate` correspondant dans `or.log`.
+- Aucun status informatif type "TL relancé x2" sans poke formel (`[PEER-WATCHDOG] poke`) tracé.
+- Une seule escalade `stuck_peer` par incident (sentinelle `pokes_sent = -1` empêche le doublon).
+
+---
+
 ## Communication channel — allowed SendMessages
 
 **No spontaneous peer_dm.** The only `SendMessage`s OR emits are:
@@ -1093,10 +1154,11 @@ Append via `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log --
 | `team-lead` (PM) | `spawn_request` | Request to spawn a teammate |
 | `pm` | `PLEASE_COMPLETE_STEP` | agent=pm steps |
 | `pm` | `⏸️ Waiting for HO: <question>` | Factual HO question |
-| `pm` | `stuck_peer` | Escalation after 3 retries without ACK |
+| `pm` | `stuck_peer` | Escalation after 3 retries without ACK **ou** subordonné silencieux > 360s (INV-OR-POLL) |
 | `pm` (HO) | Reply to `status?` ping | Watchdog only (≤ 50 words) |
 | `pm` | `fast_path_proposal` | Trivial fast-path proposal |
 | `pm` | `request_codewrite_bypass` | Request to write applicative file outside `wf/needs/<name>/` |
+| `<role>` (subordonné) | `poke_status` | Poll actif INV-OR-POLL (silence > 180s, ≤ 2 pokes/incident) |
 | Sender of a received message | `ack:<msg_id>` | Mandatory ACK (ACK protocol) |
 
 Any other `SendMessage` (spontaneous DM to a peer, comment, broadcast, unsolicited notification, unrequested status update) is **forbidden**. When in doubt: do not emit, escalate to PM via `stuck_peer`.

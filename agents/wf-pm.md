@@ -88,6 +88,8 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-confirm --msg-
 - **H2** (respawn_count >= 2) : `shutdown_request` → respawn → re-brief
 - **ask_ho** (H2 a déjà échoué) : escalade HO via `AskUserQuestion`
 
+`reason=silent_subordinate` (INV-OR-POLL côté OR) : même flow H1/H2/ask_ho. Le champ `expected` du payload OR est repris verbatim dans le `repoke` H1 ("Can you address <expected>? silent for <silence_seconds>s") puis dans le `<recovery_context>` du re-spawn H2.
+
 ---
 
 ## Responsabilité — pré-spawn batch au bootstrap
