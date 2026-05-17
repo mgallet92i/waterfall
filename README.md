@@ -1,6 +1,6 @@
 # Waterfall — Claude Code plugin
 
-Multi-agent **Specification-Driven Development (SDD)** framework for Claude Code. Waterfall orchestrates a team of specialized agents (PM, OR, PO, TL, DV, RV, QA, DS) through a strict waterfall workflow — from product brief to validated implementation — with explicit handoffs, persistent state, and identity enforcement.
+Multi-agent **Spec-Driven Development (SDD)** framework for Claude Code. Waterfall orchestrates a team of specialized agents (OR, PM, PO, TL, RV, DV, QA, DS) through a strict waterfall workflow — from product brief to validated implementation — with explicit handoffs, persistent state, and identity enforcement.
 
 🌐 **Homepage:** <https://mgallet92i.github.io/waterfall/>
 
@@ -13,10 +13,10 @@ Multi-agent **Specification-Driven Development (SDD)** framework for Claude Code
 Waterfall turns a single Claude Code session into a coordinated team of agents, each with a narrow role:
 
 - **HO** — human operator, the user driving the workflow. Interacts exclusively through PM (questions, checkpoints, validation, commit approval).
-- **PM** — project manager, owns the team registry and handoffs
+- **PM** — project manager, owns the PRD, team registry, and handoffs
 - **OR** — orchestrator, drives the state machine
-- **PO** — product owner, owns the PRD and acceptance criteria
-- **TL** — tech lead, owns design and specs
+- **PO** — product owner, reads the PRD, owns the functional specs and acceptance criteria
+- **TL** — tech lead, owns the technical design and task planning
 - **DV** — developer, implements tasks
 - **RV** — reviewer, checks code and design conformance
 - **QA** — quality, validates against acceptance
@@ -30,7 +30,7 @@ Built on Claude Code's experimental **[Agent Teams](https://code.claude.com/docs
 
 ## Installation
 
-Marketplace listing coming soon. In the meantime, install from a local clone in three slash commands.
+Marketplace listing coming soon. In the meantime, clone the repo and install it as a local marketplace.
 
 1. Clone the repository locally to `<path-to-repo>` (e.g. `C:\repo\waterfall` on Windows, `~/repo/waterfall` on macOS/Linux).
 2. Register the clone as a local marketplace, then install the plugin:

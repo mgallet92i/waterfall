@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Waterfall — Software-Driven Development for Claude Code</title>
-<meta name="description" content="Waterfall is a multi-agent SDD framework for Claude Code. A team of specialized agents (OR · PM · PO · TL · RV · DV · QA · DS) drives every change through a deterministic V-cycle — from requirements to closure." />
+<title>Waterfall — Spec-Driven Development for Claude Code</title>
+<meta name="description" content="Waterfall is a multi-agent Spec-Driven Development framework for Claude Code. A team of specialized agents (OR · PM · PO · TL · RV · DV · QA · DS) drives every change through a fixed V-cycle — from requirements to closure." />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -70,15 +70,15 @@
     </div>
 
     <h1 class="hero__title">
-      <span class="hero__title-l1" style="font-size: 112px">Multi-agent </span><span class="hero__title-l2" style="font-size: 114px">SDD</span><span class="hero__title-l1" style="font-size: 114px"> framework.</span>
+      <span class="hero__title-l1" style="font-size: 112px">Multi-agent </span><span class="hero__title-l2" style="font-size: 114px">Spec-Driven</span><span class="hero__title-l1" style="font-size: 114px"> framework.</span>
       <span class="hero__title-tag" style="font-size: 63px"></span>
-      <span class="hero__title-sub">No more slop. Specs, then code.<br/>Reviewed by humans, drafted by a team of agents.</span>
+      <span class="hero__title-sub">Drafted by a team of agents, reviewed by you.</span>
     </h1>
 
     <p class="hero__lede">
-      Waterfall orchestrates eight specialized agents through a deterministic V-cycle —
-      requirements, specs, design, implementation, review, validation, closure —
-      so Claude Code stops freelancing and starts shipping artefacts you can actually audit.
+      Waterfall runs eight specialized agents through a fixed V-cycle: requirements, specs, design,
+      implementation, review, validation, closure. Each phase produces a written file you review
+      before the next one starts.
     </p>
 
     <div class="hero__actions">
@@ -93,8 +93,8 @@
 
     <div class="hero__cmd" role="region" aria-label="Quick install command">
       <span class="hero__cmd-label">quick install</span>
-      <code class="hero__cmd-line"><span class="prompt">›</span> /plugin install https://github.com/mgallet92i/waterfall</code>
-      <button class="hero__cmd-copy" data-copy="/plugin install https://github.com/mgallet92i/waterfall" aria-label="Copy install command">
+      <code class="hero__cmd-line"><span class="prompt">›</span> /plugin install waterfall@waterfall-local</code>
+      <button class="hero__cmd-copy" data-copy="/plugin install waterfall@waterfall-local" aria-label="Copy install command">
         <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
           <rect x="4" y="4" width="9" height="9" rx="1.5"/>
           <path d="M3 11V3.5A1.5 1.5 0 0 1 4.5 2H11"/>
@@ -110,11 +110,11 @@
       </div>
       <div class="hero__meta-item">
         <strong>10</strong>
-        <span>deterministic phases</span>
+        <span>fixed phases</span>
       </div>
       <div class="hero__meta-item">
-        <strong>0</strong>
-        <span>vibe coding allowed</span>
+        <strong>n</strong>
+        <span>documents produced</span>
       </div>
     </div>
   </div>
@@ -132,12 +132,12 @@
   <div class="section__head">
     <span class="section__num">01 / Problem</span>
     <h2 class="section__title">
-      LLMs are confident.<br/>
-      Confidence cascades into <em>slop</em>.
+      LLMs are confident even when wrong.<br/>
+      Errors compound at every step.
     </h2>
     <p class="section__lede">
-      One vague prompt, one missed assumption, one improvised refactor — and the agent ships a tower of code
-      that compiles, looks plausible, and is wrong end-to-end. Reviewing it after the fact is harder than writing it from scratch.
+      One vague prompt, one missed assumption, one improvised refactor — and the agent ships code
+      that compiles, looks plausible, and is wrong from end to end. Reviewing it afterward is harder than writing it yourself.
     </p>
   </div>
 
@@ -145,8 +145,8 @@
 
     <article class="problem__card problem__card--cascade">
       <header>
-        <span class="tag tag--warn">cascade failure</span>
-        <h3>The bad cascade</h3>
+        <span class="tag tag--warn">error cascade</span>
+        <h3>How errors cascade</h3>
       </header>
       <div class="cascade">
         <div class="cascade__row is-active"><span class="cascade__step">prompt</span><span class="cascade__bar" style="--w:96%"><i></i></span><span class="cascade__ok">✓ understood</span></div>
@@ -157,14 +157,14 @@
         <div class="cascade__row is-active"><span class="cascade__step">PR</span><span class="cascade__bar cascade__bar--bad" style="--w:8%"><i></i></span><span class="cascade__bad">✗ merged anyway</span></div>
       </div>
       <p class="problem__caption">
-        Each phase compounds the previous one's drift. By the time a human reviews the PR, the original intent is unrecoverable.
+        Each phase builds on the previous one's mistakes. By the time you review the PR, the original intent is lost.
       </p>
     </article>
 
     <article class="problem__card problem__card--zone">
       <header>
         <span class="tag tag--mute">context window</span>
-        <h3>The dumb zone</h3>
+        <h3>Long context degrades output</h3>
       </header>
       <div class="zone">
         <div class="zone__axis">
@@ -174,16 +174,16 @@
         <div class="zone__track">
           <div class="zone__band zone__band--good"></div>
           <div class="zone__band zone__band--mid"></div>
-          <div class="zone__band zone__band--bad" data-label="dumb zone"></div>
+          <div class="zone__band zone__band--bad" data-label="unreliable"></div>
         </div>
         <div class="zone__legend">
           <span><i style="background:#7cc0b3"></i> sharp</span>
           <span><i style="background:#cfe6df"></i> degraded</span>
-          <span><i style="background:#e8b4a8"></i> dumb zone</span>
+          <span><i style="background:#e8b4a8"></i> unreliable</span>
         </div>
       </div>
       <p class="problem__caption">
-        Past a threshold, the agent loses the thread but keeps writing. Waterfall enforces small, scoped phases so every artefact is produced in fresh context.
+        Past a threshold, the model loses track but keeps writing. Waterfall keeps phases small and scoped, so every file is produced in fresh context.
       </p>
     </article>
   </div>
@@ -191,8 +191,7 @@
   <div class="problem__pull">
     <span class="quote-mark" aria-hidden="true">“</span>
     <p>
-      The fix isn't a smarter model. It's a process that <em>refuses to let one model do everything</em>,
-      and that produces written artefacts a human can sign off on at every gate.
+      The process produces <em>files you sign off on</em> at every checkpoint.
     </p>
   </div>
 </section>
@@ -202,12 +201,12 @@
   <div class="section__head">
     <span class="section__num">02 / Agents</span>
     <h2 class="section__title">
-      Eight agents, one human, one ledger.<br/>
+      Eight agents, one human, one trail.<br/>
       Each role owns one job and hands off in writing.
     </h2>
     <p class="section__lede">
-      Specialization is the point. A single super-prompt is a single point of failure;
-      a team produces traceable artefacts with named owners.
+      One giant prompt is a single point of failure. A team of specialized agents produces
+      traceable files, each with a named owner.
     </p>
   </div>
 
@@ -215,16 +214,16 @@
     <article class="agent" data-role="OR">
       <span class="agent__code">OR</span>
       <h3>Orchestrator</h3>
-      <p>Drives the state machine. Locks scope, sequences phases, calls the next agent. Never writes product content.</p>
+      <p>Drives the state machine: locks scope, sequences phases, and calls the next agent. Never writes product content.</p>
       <ul class="agent__io">
-        <li><span>in</span> ticket, ledger</li>
+        <li><span>in</span> ticket, tracking</li>
         <li><span>out</span> phase transitions</li>
       </ul>
     </article>
     <article class="agent" data-role="PM">
       <span class="agent__code">PM</span>
       <h3>Product Manager</h3>
-      <p>Interviews HO, writes PRD.md. Owns the REQUIREMENTS phase end-to-end. Also drives CLOSURE (retro, PR).</p>
+      <p>Interviews HO and writes PRD.md. Owns the Requirements phase, and also drives Closure (retro, PR).</p>
       <ul class="agent__io">
         <li><span>in</span> HO interview, trigger</li>
         <li><span>out</span> PRD.md, retro.md</li>
@@ -233,7 +232,7 @@
     <article class="agent" data-role="PO">
       <span class="agent__code">PO</span>
       <h3>Product Owner</h3>
-      <p>Reads PRD.md authored by PM. Writes functional specs and acceptance criteria. Starts at FUNCTIONAL_SPECS.</p>
+      <p>Reads the PRD.md written by PM, then writes the functional specs and acceptance criteria. Starts at the Functional specs phase.</p>
       <ul class="agent__io">
         <li><span>in</span> PRD.md</li>
         <li><span>out</span> functional specs, AC</li>
@@ -242,7 +241,7 @@
     <article class="agent" data-role="TL">
       <span class="agent__code">TL</span>
       <h3>Tech Lead</h3>
-      <p>Owns the technical design. Picks the architecture, documents trade-offs, calls hosting and stack.</p>
+      <p>Owns the technical design: picks the architecture, documents trade-offs, and decides hosting and stack.</p>
       <ul class="agent__io">
         <li><span>in</span> functional specs</li>
         <li><span>out</span> technical design</li>
@@ -251,7 +250,7 @@
     <article class="agent" data-role="RV">
       <span class="agent__code">RV</span>
       <h3>Reviewer</h3>
-      <p>Independent gate at every phase boundary. Reads, challenges, blocks. Never writes the artefact under review.</p>
+      <p>An independent gate at every phase boundary. Reads, challenges, and blocks — but never writes the file it reviews.</p>
       <ul class="agent__io">
         <li><span>in</span> any artefact</li>
         <li><span>out</span> review verdict</li>
@@ -260,7 +259,7 @@
     <article class="agent" data-role="DV">
       <span class="agent__code">DV</span>
       <h3>Developer</h3>
-      <p>Writes the code. Only the code. Against frozen specs. Never re-opens a closed phase.</p>
+      <p>Writes the code, and only the code, against frozen specs. Never reopens a closed phase.</p>
       <ul class="agent__io">
         <li><span>in</span> tech design</li>
         <li><span>out</span> code, diffs</li>
@@ -269,7 +268,7 @@
     <article class="agent" data-role="QA">
       <span class="agent__code">QA</span>
       <h3>Quality Assurance</h3>
-      <p>Replays acceptance criteria against the build. Cross-browser, cross-flow. Reports verifiable failures.</p>
+      <p>Replays the acceptance criteria against the build, across browsers and flows. Reports failures with evidence.</p>
       <ul class="agent__io">
         <li><span>in</span> AC, build</li>
         <li><span>out</span> validation report</li>
@@ -278,7 +277,7 @@
     <article class="agent" data-role="DS">
       <span class="agent__code">DS</span>
       <h3>Designer</h3>
-      <p>Visual + interaction design when the deliverable has a UI. Pairs with PO on flows, TL on feasibility.</p>
+      <p>Visual and interaction design, when the deliverable has a UI. Works with PO on flows and TL on feasibility.</p>
       <ul class="agent__io">
         <li><span>in</span> functional specs</li>
         <li><span>out</span> mocks, design tokens</li>
@@ -287,7 +286,7 @@
     <article class="agent agent--ho" data-role="HO">
       <span class="agent__code">HO</span>
       <h3>Human Operator</h3>
-      <p>You. The only non-agent role. Sets scope, signs every gate, and is accountable for what ships. Waterfall is built around your sign-off — not around removing it.</p>
+      <p>You — the only non-agent role. You set the scope, sign every gate, and are accountable for what ships. Waterfall is built around your sign-off, not around removing it.</p>
       <ul class="agent__io">
         <li><span>in</span> any artefact, any diff</li>
         <li><span>out</span> approval, change request, block</li>
@@ -298,7 +297,7 @@
   <div class="agents__lane">
     <div class="lane__header">
       <span class="section__num">Hand-off lane</span>
-      <p>Read left to right. Every arrow is a written artefact. HO checkpoints sit below — each one gates the transition above it.</p>
+      <p>Read left to right. Every arrow is a written file. HO checkpoints sit below — each one gates the transition above it.</p>
     </div>
 
     <div class="lane2">
@@ -377,49 +376,49 @@
 
     <ol class="vcycle__list">
       <!-- Bootstrap -->
-      <li class="vphase vphase--preamble" style="left:-50px; top:0px; width:150px;" data-tip="OR scaffolds the cycle, locks scope, initialises the ledger.">
+      <li class="vphase vphase--preamble" style="left:-50px; top:0px; width:150px;" data-tip="OR sets up the cycle, locks scope, and creates the tracking file.">
         <span class="vphase__id">01 · Bootstrap</span>
         <span class="vphase__owner">OR</span>
       </li>
 
       <!-- Left arm -->
-      <li class="vphase vphase--left" style="left:0px; top:100px; width:150px;" data-tip="PM interviews HO and writes PRD.md. EX stories and structured requirements are written.">
+      <li class="vphase vphase--left" style="left:0px; top:100px; width:150px;" data-tip="PM interviews HO and writes PRD.md: experience expectations and structured requirements.">
         <span class="vphase__id">02 · Requirements</span>
         <span class="vphase__owner">PM</span>
       </li>
-      <li class="vphase vphase--left" style="left:90px; top:200px; width:170px;" data-tip="Functional behaviour, flows, edge cases, acceptance criteria. No code yet.">
+      <li class="vphase vphase--left" style="left:90px; top:200px; width:170px;" data-tip="PO writes the functional behaviour, flows, edge cases, and acceptance criteria. No code yet.">
         <span class="vphase__id">03 · Functional specs</span>
         <span class="vphase__owner">PO</span>
       </li>
-      <li class="vphase vphase--left" style="left:170px; top:300px; width:170px;" data-tip="TL writes the architecture and stack. Trade-offs documented.">
+      <li class="vphase vphase--left" style="left:170px; top:300px; width:170px;" data-tip="TL writes the architecture and stack, and documents the trade-offs.">
         <span class="vphase__id">04 · Technical design</span>
         <span class="vphase__owner">TL</span>
       </li>
-      <li class="vphase vphase--left" style="left:340px; top:300px; width:110px;" data-tip="RV reviews every artefact above. HO must approve before any line of code is written.">
+      <li class="vphase vphase--left" style="left:340px; top:300px; width:110px;" data-tip="RV reviews every file above. HO must approve before any code is written.">
         <span class="vphase__id">05 · Review</span>
         <span class="vphase__owner">RV · HO</span>
       </li>
 
       <!-- Apex -->
-      <li class="vphase vphase--apex" style="left:265px; top:400px; width:110px;" data-tip="TL breaks the design into Tasks — named, sized, sequenced units of work.">
+      <li class="vphase vphase--apex" style="left:265px; top:400px; width:110px;" data-tip="TL breaks the design into tasks — named, sized, and sequenced units of work.">
         <span class="vphase__id">06 · Planning</span>
         <span class="vphase__owner">TL</span>
       </li>
-      <li class="vphase vphase--apex" style="left:400px; top:400px; width:150px;" data-tip="DV codes against frozen specs and tasks. One task at a time, never reopens a closed phase.">
+      <li class="vphase vphase--apex" style="left:400px; top:400px; width:150px;" data-tip="DV writes code against frozen specs and tasks, one task at a time, and never reopens a closed phase.">
         <span class="vphase__id">07 · Implementation</span>
         <span class="vphase__owner">DV</span>
       </li>
 
       <!-- Right arm -->
-      <li class="vphase vphase--right" style="left:470px; top:300px; width:150px;" data-tip="RV reads diffs against the technical design. HO signs before validation begins.">
+      <li class="vphase vphase--right" style="left:470px; top:300px; width:150px;" data-tip="RV reviews the diffs against the technical design. HO signs off before validation begins.">
         <span class="vphase__id">08 · Code review</span>
         <span class="vphase__owner">RV · HO</span>
       </li>
-      <li class="vphase vphase--right" style="left:560px; top:200px; width:150px;" data-tip="QA replays every AC against the build. Pass / fail with evidence.">
+      <li class="vphase vphase--right" style="left:560px; top:200px; width:150px;" data-tip="QA replays every acceptance criterion against the build. Pass or fail, with evidence.">
         <span class="vphase__id">09 · Validation</span>
         <span class="vphase__owner">QA</span>
       </li>
-      <li class="vphase vphase--right" style="left:640px; top:100px; width:150px;" data-tip="OR archives artefacts, writes the ledger entry. HO final sign-off.">
+      <li class="vphase vphase--right" style="left:640px; top:100px; width:150px;" data-tip="OR archives the files and writes the tracking entry. Final HO sign-off.">
         <span class="vphase__id">10 · Closure</span>
         <span class="vphase__owner">OR · HO</span>
       </li>
@@ -429,7 +428,7 @@
 
   <div class="cycle__legend">
     <div><span class="leg-dot" style="background:#2f8c7e"></span><strong>HO</strong> Human owner — signs every gate.</div>
-    <div><span class="leg-dot" style="background:#7cc0b3"></span><strong>Artefact</strong> Every phase emits a written, reviewable file.</div>
+    <div><span class="leg-dot" style="background:#7cc0b3"></span><strong>Artefact</strong> Every phase produces a written, reviewable file.</div>
     <div><span class="leg-dot" style="background:#cfe6df"></span><strong>Gate</strong> No phase advances without explicit approval.</div>
   </div>
 
@@ -453,37 +452,37 @@
           <tr>
             <td><span class="glossary__abbr">EX</span></td>
             <td>Experience expectation</td>
-            <td>A user-facing expectation in <code>specs.md</code>, prioritized MUST / SHOULD / MAY. The unit of intent every downstream artefact traces back to.</td>
+            <td>A user-facing expectation in <code>specs.md</code>, prioritized MUST / SHOULD / MAY. Every downstream file traces back to one.</td>
             <td><span class="glossary__owner-pill">PO</span></td>
           </tr>
           <tr>
             <td><span class="glossary__abbr">INV</span></td>
             <td>Invariant</td>
-            <td>A non-negotiable property the system must always preserve, in <code>specs.md</code>. Cross-cutting; doesn't belong to any single EX.</td>
+            <td>A rule the system must always preserve, in <code>specs.md</code>. Cross-cutting — it doesn't belong to any single EX.</td>
             <td><span class="glossary__owner-pill">PO</span></td>
           </tr>
           <tr>
             <td><span class="glossary__abbr">TF</span></td>
             <td>Functional test</td>
-            <td>Testable GIVEN / WHEN / THEN scenario in <code>acceptance.md</code>. The contract QA replays at validation.</td>
+            <td>A testable GIVEN / WHEN / THEN scenario in <code>acceptance.md</code>. QA replays it at validation.</td>
             <td><span class="glossary__owner-pill">PO</span></td>
           </tr>
           <tr>
             <td><span class="glossary__abbr">T</span></td>
             <td>Task</td>
-            <td>Sized unit of work in <code>tasks.md</code>, traced to one or more EX. The DV's worklist.</td>
+            <td>A sized unit of work in <code>tasks.md</code>, traced to one or more EX. The DV works through these.</td>
             <td><span class="glossary__owner-pill">TL</span></td>
           </tr>
           <tr>
             <td><span class="glossary__abbr">B</span></td>
             <td>Blocker</td>
-            <td>Review finding in <code>review.md</code> that prevents convergence. Must be resolved before the artefact is signed off.</td>
+            <td>A review finding in <code>review.md</code> serious enough to block sign-off. Must be resolved before the artefact is approved.</td>
             <td><span class="glossary__owner-pill">RV</span></td>
           </tr>
           <tr>
             <td><span class="glossary__abbr">Q</span></td>
             <td>Question</td>
-            <td>Review-time clarification in <code>review.md</code>, routed to PM, PO, or TL. Non-blocking but must be answered.</td>
+            <td>A clarification raised during review in <code>review.md</code>, routed to PM, PO, or TL. It doesn't block, but it must be answered.</td>
             <td><span class="glossary__owner-pill">RV</span></td>
           </tr>
           <tr>
@@ -501,7 +500,7 @@
           <tr>
             <td><span class="glossary__abbr">OBS</span></td>
             <td>Observation</td>
-            <td>An in-vivo observation about the workflow itself, logged in <code>tracking.md</code> or <code>or.log</code>. Aggregated into <code>retro.md</code> at closure.</td>
+            <td>An observation about the workflow itself, logged in <code>tracking.md</code> or <code>or.log</code> while it runs. Collected into <code>retro.md</code> at closure.</td>
             <td><span class="glossary__owner-pill">any</span></td>
           </tr>
         </tbody>
@@ -519,7 +518,7 @@
       Then drive Claude Code with <code>/waterfall</code>.
     </h2>
     <p class="section__lede">
-      Waterfall ships as a Claude Code plugin. Marketplace-ready, no build step on your side.
+      Waterfall ships as a Claude Code plugin. No build step on your side.
     </p>
   </div>
 
@@ -527,12 +526,13 @@
     <li class="install__step">
       <span class="install__num">01</span>
       <div class="install__body">
-        <h3>Install from GitHub</h3>
-        <p>One slash command — Waterfall installs directly from this repository. Marketplace listing coming soon.</p>
+        <h3>Install from a local clone</h3>
+        <p>Clone the repo, register it as a local marketplace, then install. Marketplace listing coming soon.</p>
         <div class="code">
           <span class="code__lang">claude</span>
-          <pre><code><span class="prompt">›</span> /plugin install https://github.com/mgallet92i/waterfall</code></pre>
-          <button class="code__copy" data-copy="/plugin install https://github.com/mgallet92i/waterfall">Copy</button>
+          <pre><code><span class="prompt">›</span> /plugin marketplace add &lt;path-to-clone&gt;
+<span class="prompt">›</span> /plugin install waterfall@waterfall-local</code></pre>
+          <button class="code__copy" data-copy="/plugin install waterfall@waterfall-local">Copy</button>
         </div>
       </div>
     </li>
@@ -540,8 +540,8 @@
     <li class="install__step">
       <span class="install__num">02</span>
       <div class="install__body">
-        <h3>Configure HO at the repo root</h3>
-        <p>Copy <code>.wf-config.example.json</code> to <code>.wf-config.json</code> and tune models per role, review-loop budgets, watchdog interval, and <em>Dark Factory</em>. Defaults apply if the file is absent. Schema lives in <code>.wf-config.example.md</code>.</p>
+        <h3>Configure Waterfall at the repo root</h3>
+        <p>Copy <code>.wf-config.example.json</code> to <code>.wf-config.json</code> and set models per role, review-loop budgets, the watchdog interval, and <em>Dark Factory</em>. Defaults apply if the file is missing. The schema is documented in <code>.wf-config.example.md</code>.</p>
         <div class="code">
           <span class="code__lang">shell</span>
           <pre><code><span class="prompt">$</span> cp .wf-config.example.json .wf-config.json
@@ -555,7 +555,7 @@
       <span class="install__num">03</span>
       <div class="install__body">
         <h3>Open a ticket and let the orchestrator run</h3>
-        <p>OR walks you through Bootstrap → Requirements. Each gate pings you for approval.</p>
+        <p>OR walks you through Bootstrap → Requirements. Each gate asks you for approval.</p>
         <div class="code">
           <span class="code__lang">claude</span>
           <pre><code><span class="prompt">›</span> /waterfall:new add-google-workspace-sso
@@ -571,18 +571,18 @@
       <h4>Requirements</h4>
       <ul>
         <li>Claude Code <code>≥ 2.1</code></li>
-        <li><code>jq</code> (required — config &amp; ledger parsing)</li>
+        <li><code>jq</code> — required, parses config and tracking files</li>
         <li>POSIX shell: macOS, Linux, WSL — or <strong>Git Bash</strong> on Windows</li>
-        <li>A repo and a willingness to write specs</li>
+        <li>A git repository, and the willingness to write specs</li>
       </ul>
     </div>
     <div>
-      <h4>Configure HO</h4>
+      <h4>Configure Waterfall</h4>
       <ul>
         <li><code>.wf-config.json</code> — models per role, review-loop budgets, watchdog, agent mode</li>
         <li>Schema &amp; defaults: <code>.wf-config.example.md</code></li>
         <li>Default policy: <strong>HO reviews artefacts and code at every gate</strong> (<code>dark_factory: "off"</code>)</li>
-        <li>Flip <code>dark_factory</code> to <code>"on"</code> for auto-advance with logged checkpoint decisions</li>
+        <li>Set <code>dark_factory</code> to <code>"on"</code> for auto-advance, with checkpoint decisions logged</li>
       </ul>
     </div>
     <div>
@@ -605,7 +605,7 @@
       Here's exactly what it costs.
     </h2>
     <p class="section__lede">
-      We're transparent about fit. Some changes are too small to deserve a V-cycle. Some are too big to ship without one.
+      Some changes are too small to deserve a V-cycle. Some are too big to ship without one.
     </p>
   </div>
 
@@ -616,25 +616,17 @@
         <span class="tradeoff__x">change scope →</span>
       </div>
       <div class="tradeoff__plot">
-        <div class="zone-pill zone-pill--free"   style="left:6%; top:62%">
-          <strong>typo · one-liner</strong>
-          <small>Just edit. Don't open Waterfall.</small>
+        <div class="zone-pill zone-pill--free"  style="left:8%; top:60%">
+          <strong>Trivial fix</strong>
+          <small>Typo, one-liner, localized fix. Just edit — don't open Waterfall.</small>
         </div>
-        <div class="zone-pill zone-pill--light"  style="left:24%; top:48%">
-          <strong>small feature</strong>
-          <small>Light cycle, skip TL phase.</small>
+        <div class="zone-pill zone-pill--light" style="left:42%; top:36%">
+          <strong>Medium change</strong>
+          <small>Helper, hook, 2–3 files. Light mode: PM + TL solo, specs → design → code.</small>
         </div>
-        <div class="zone-pill zone-pill--full"   style="left:48%; top:30%">
-          <strong>full feature</strong>
-          <small>Full V-cycle. Sweet spot.</small>
-        </div>
-        <div class="zone-pill zone-pill--full"   style="left:68%; top:18%">
-          <strong>cross-cutting refactor</strong>
-          <small>Full V-cycle, multiple RV gates.</small>
-        </div>
-        <div class="zone-pill zone-pill--break"  style="left:84%; top:6%">
-          <strong>greenfield system</strong>
-          <small>Run cycles per epic.</small>
+        <div class="zone-pill zone-pill--full"  style="left:78%; top:10%">
+          <strong>Complex / E2E</strong>
+          <small>New module, UI, cross-cutting, critical path. Full team V-cycle, every gate.</small>
         </div>
         <svg class="tradeoff__curve" viewBox="0 0 100 100" preserveAspectRatio="none">
           <path d="M 0 95 Q 30 90 50 60 T 100 5" stroke="#7cc0b3" stroke-width="0.6" fill="none" stroke-dasharray="2 2"/>
@@ -646,12 +638,12 @@
       <li>
         <span class="tradeoff__cost-num">3–5×</span>
         <h4>process length</h4>
-        <p>vs. one-shot prompting. You write specs before code; that's the whole pitch.</p>
+        <p>vs. one-shot prompting. You write the specs before the code — that's the point.</p>
       </li>
       <li>
         <span class="tradeoff__cost-num">2–4×</span>
         <h4>token consumption</h4>
-        <p>Multiple agents read each artefact. Context is fresh per phase, not bloated per session.</p>
+        <p>Multiple agents read each file. Context is fresh each phase, not accumulated across one long session.</p>
       </li>
       <li>
         <span class="tradeoff__cost-num">N/A</span>
@@ -661,7 +653,7 @@
       <li>
         <span class="tradeoff__cost-num">−15%</span>
         <h4>tokens — subagent vs team</h4>
-        <p>Default <code>agent_mode: subagent</code> (Agent tool, no inter-agent SendMessage) runs slightly cheaper than <code>team</code> mode and is more deterministic — PM stays in charge of every spawn, no idle teammates to repoke. Switch to <code>team</code> only if agents need to chat directly.</p>
+        <p>The default <code>agent_mode: subagent</code> (Agent tool, no inter-agent messaging) runs slightly cheaper than <code>team</code> mode and is more predictable: PM stays in charge of every spawn, with no idle teammates to nudge. Use <code>team</code> only if agents need to talk to each other directly.</p>
       </li>
     </ul>
   </div>
@@ -672,10 +664,10 @@
   <div class="section__head">
     <span class="section__num">07 / Why Waterfall</span>
     <h2 class="section__title">
-      Anti-vibe-coding,<br/>by construction.
+      No vibe coding,<br/>by design.
     </h2>
     <p class="section__lede">
-      Five reasons teams adopt Waterfall — and why each one is a deliberate stance, not a feature list.
+      Five reasons teams adopt Waterfall — each a deliberate choice, not just a feature.
     </p>
   </div>
 
@@ -683,22 +675,22 @@
     <article class="why__card">
       <span class="why__num">01</span>
       <h3>Structured methodology</h3>
-      <p>A 10-phase state machine. Phases are named, ordered, and every transition emits a written artefact. No cycle is shorter or longer than the work demands.</p>
+      <p>A 10-phase state machine. Phases are named and ordered, and every transition produces a written file. Each cycle is exactly as long as the work needs.</p>
     </article>
     <article class="why__card">
       <span class="why__num">02</span>
       <h3>Multi-agent parallelism</h3>
-      <p>OR sequences. PM, PO, TL, DS work in parallel where they can. RV is independent. DV doesn't start until specs are frozen — so it never has to redo work.</p>
+      <p>OR sequences the work. PM, PO, TL, and DS work in parallel where they can. RV stays independent. DV doesn't start until specs are frozen, so it never has to redo work.</p>
     </article>
     <article class="why__card">
       <span class="why__num">03</span>
       <h3>EX → specs → code traceability</h3>
-      <p>Every line of code maps back through technical design, functional specs, and an EX story. Reviewing a diff means re-reading three files, not guessing intent.</p>
+      <p>Every line of code maps back through the technical design, the functional specs, and an EX. Reviewing a diff means re-reading three files, not guessing the intent.</p>
     </article>
     <article class="why__card why__card--feature">
       <span class="why__num">04</span>
       <h3>Dark Factory mode</h3>
-      <p>Maximum autonomy. Agents run end-to-end. HO only reviews at named checkpoints — typically <em>Review</em> (after design) and <em>Closure</em> (after validation). For teams that trust the artefacts and want speed.</p>
+      <p>Maximum autonomy: agents run end to end. HO only reviews at named checkpoints — typically <em>Review</em> (after design) and <em>Closure</em> (after validation). For teams that trust the output and want speed.</p>
       <div class="why__dark">
         <div class="why__dark-row">
           <span>Bootstrap</span><span class="dot-line"></span><span class="auto">auto</span>
@@ -734,8 +726,8 @@
       <h3>Human control, by design</h3>
       <p>
         <strong>HO must review artefacts and code.</strong>
-        That sentence is in the plugin's default config, on every gate, and on this homepage on purpose.
-        Waterfall is not built to take humans out of the loop. It's built so the humans in the loop are reading the right thing at the right time.
+        That sentence is in the plugin's default config, on every gate, and on this page on purpose.
+        Waterfall is not built to take humans out of the loop. It's built so the humans in the loop read the right thing at the right time.
       </p>
     </article>
   </div>
@@ -754,7 +746,7 @@
         </g>
       </svg>
       <span>waterfall</span>
-      <small>Software-Driven Development for Claude Code.</small>
+      <small>Spec-Driven Development for Claude Code.</small>
     </div>
 
     <div class="foot__col">
@@ -780,7 +772,7 @@
   </div>
   <div class="foot__base">
     <span>© 2026 Waterfall · MIT License</span>
-    <span>Built with the V-cycle. <a href="#">View build ledger</a>.</span>
+    <span>Built with the V-cycle.</span>
   </div>
 </footer>
 
