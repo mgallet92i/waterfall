@@ -488,7 +488,7 @@ if [[ -f "$state_file" ]] && command -v jq >/dev/null 2>&1; then
   [[ "$df_raw" == "on" ]] && dark_factory="on"
   agent_mode=$(jq -r '.config.agent_mode // ""' "$state_file" 2>/dev/null || echo "")
 fi
-expected=$(resolve_step_agent "$step_canonical" "$dark_factory")
+expected=$(resolve_step_agent "$step_canonical" "$dark_factory" "$agent_mode")
 if [[ -z "$expected" ]]; then
   _wf_auth_allow "$name" "$step_canonical" "$agent_type" "unknown" "unknown_step"
 fi

@@ -228,11 +228,11 @@ TODO → IN_PROGRESS → IMPLEMENTED → UNIT_TESTS_OK → CODE_REVIEW_OK → DO
 | `IN_PROGRESS → IMPLEMENTED` | DV | Code written, Read-before-Edit taches.md, set Status = IMPLEMENTED |
 | `IMPLEMENTED → UNIT_TESTS_OK` | DV | Tests written and run (PASS result), update taches.md Tests column = PASS (N/N), Status = UNIT_TESTS_OK |
 | `UNIT_TESTS_OK → (awaiting review)` | DV | Send brief_complete to TL via SendMessage |
-| `(TL review) → CODE_REVIEW_OK` | TL | TL sets TL Review = APPROVED in taches.md |
+| `(RV review via TL) → CODE_REVIEW_OK` | RV → TL | RV reviews via /code-review + /security-review + Semgrep (multi-run, max 5 findings/run). TL relays verdict and sets Review = APPROVED in taches.md |
 | `CODE_REVIEW_OK → DONE` | TL | TL finalizes Status = DONE in taches.md |
 
 **INV-001**: no DONE without Tests = PASS.
-**INV-002**: no DONE without TL Review = APPROVED.
+**INV-002**: no DONE without RV Review = APPROVED.
 
 ---
 
@@ -342,14 +342,14 @@ brief_complete T-xxx
 
 ---
 
-## On TL rejection
+## On review rejection
 
-TL sends a `<review_feedback>` with P0/P1 blockers (mandatory) and P2 nits (optional).
+RV produces the `<review_feedback>` (P0/P1 blockers mandatory, P2 nits optional); TL relays it to DV — DV only ever talks to TL.
 
 **Absolute priority (EX-046)**: DV immediately suspends any ongoing activity and processes the fix. DV does not request a brief for the next task before receiving APPROVED on the fix.
 
 ```
-1. Read TL feedback
+1. Read RV feedback (relayed by TL)
 2. Fix all P0/P1 blockers
 3. Fix P2 nits if time allows
 4. Read-before-Edit taches.md → Status = IN_PROGRESS
@@ -357,7 +357,7 @@ TL sends a `<review_feedback>` with P0/P1 blockers (mandatory) and P2 nits (opti
 5.5. **Commit all changes** (mandatory — INV-012):
 ```bash
 git -C <work_dir> add -A
-git -C <work_dir> commit -m "fix(T-xxx): address TL review iteration N"
+git -C <work_dir> commit -m "fix(T-xxx): address RV review iteration N"
 ```
 6. Read-before-Edit taches.md → Tests = PASS (N/N), Status = UNIT_TESTS_OK
 7. Send brief_complete to TL: "TASK_READY_FOR_REVIEW: T-xxx (iteration N)"
@@ -371,7 +371,7 @@ git -C <work_dir> commit -m "fix(T-xxx): address TL review iteration N"
 
 DV is supervised by TL:
 - TL assigns tasks via SendMessage
-- TL reviews the code and renders an APPROVED/REJECTED verdict
+- TL forwards the code to RV for review; RV renders APPROVED/REJECTED, TL relays the verdict back to DV
 - TL manages the DV pool (1 to 3 instances: dv1, dv2, dv3)
 - DV never self-assigns a task not assigned by TL
 - DV stands by between tasks and waits for the next SendMessage from TL

@@ -85,11 +85,12 @@ if [[ -f "$state_file" ]]; then
   # applies the ping-pong overrides consistently with wf-orchestrate.sh and wf-auth.sh.
   dark_factory="$(jq -r '.config.dark_factory // "off"' "$state_file" 2>/dev/null || echo "off")"
   [[ "$dark_factory" != "on" ]] && dark_factory="off"
+  agent_mode="$(jq -r '.config.agent_mode // ""' "$state_file" 2>/dev/null || echo "")"
 
   # Agent resolution via canonical mapping + ping-pong overrides (EX-075-1, EX-075-2, EX-075-4)
   if [[ "$step_name" != "null" && "$step_phase" != "null" ]]; then
     key="$step_phase:$step_name"
-    resolved="$(resolve_step_agent "$key" "$dark_factory")"
+    resolved="$(resolve_step_agent "$key" "$dark_factory" "$agent_mode")"
     if [[ -n "$resolved" ]]; then
       step_agent="$resolved"
     fi

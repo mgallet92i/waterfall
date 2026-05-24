@@ -48,7 +48,7 @@ declare -gA STEP_AGENT=(
   ["IMPLEMENTATION:CHECKPOINT_IMPL"]="pm" # DEC-001: reste pm (HO checkpoint)
   ["IMPLEMENTATION:MERGE_WORKTREES"]="or"  # was "pm" + ALWAYS_OR — EX-001, EX-002
   # CODE_REVIEW
-  ["CODE_REVIEW:TL_REVIEW"]="tl"
+  ["CODE_REVIEW:RV_CODE_REVIEW"]="rv"
   ["CODE_REVIEW:CHECK_CR_EXIT"]="or"
   ["CODE_REVIEW:DV_FIX"]="dv"
   ["CODE_REVIEW:UPDATE_TRACKING_CR"]="or"
@@ -120,13 +120,21 @@ declare -gA STEP_NEVER_SKIP_LIGHT=(
   ["CLOSURE:ARCHIVE"]=1
 )
 
-# resolve_step_agent <PHASE:STEP> <dark_factory:on|off>
+# STEP_AGENT_LIGHT_OVERRIDE: steps whose owner is reassigned when agent_mode=subagent-light.
+# Used when the team-mode owner doesn't exist in light (e.g. CODE_REVIEW:RV_CODE_REVIEW —
+# owned by RV in team, falls back to TL in light since wf-rv is not spawned).
+declare -gA STEP_AGENT_LIGHT_OVERRIDE=(
+  ["CODE_REVIEW:RV_CODE_REVIEW"]="tl"
+)
+
+# resolve_step_agent <PHASE:STEP> <dark_factory:on|off> [<agent_mode>]
 # Returns the effective agent for the step, applying override rules above.
 # Post-refonte (EX-004, ADR-001): ALWAYS_OR bloc removed — STEP_AGENT_ALWAYS_OR
 # is empty and the reventilated steps are directly "or" in STEP_AGENT[].
 resolve_step_agent() {
   local step_key="$1"
   local dark_factory="${2:-off}"
+  local agent_mode="${3:-}"
   local base="${STEP_AGENT[$step_key]:-}"
   if [[ -z "$base" ]]; then
     echo ""
@@ -134,6 +142,10 @@ resolve_step_agent() {
   fi
   if [[ "$dark_factory" == "on" && -n "${STEP_AGENT_DARK_OVERRIDE[$step_key]:-}" ]]; then
     echo "or"
+    return
+  fi
+  if [[ "$agent_mode" == "subagent-light" && -n "${STEP_AGENT_LIGHT_OVERRIDE[$step_key]:-}" ]]; then
+    echo "${STEP_AGENT_LIGHT_OVERRIDE[$step_key]}"
     return
   fi
   echo "$base"
@@ -172,7 +184,7 @@ declare -gA STEP_PHASE=(
   ["TL_SUPERVISE"]="IMPLEMENTATION"
   ["CHECKPOINT_IMPL"]="IMPLEMENTATION"
   ["MERGE_WORKTREES"]="IMPLEMENTATION"
-  ["TL_REVIEW"]="CODE_REVIEW"
+  ["RV_CODE_REVIEW"]="CODE_REVIEW"
   ["CHECK_CR_EXIT"]="CODE_REVIEW"
   ["DV_FIX"]="CODE_REVIEW"
   ["UPDATE_TRACKING_CR"]="CODE_REVIEW"

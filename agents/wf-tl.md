@@ -50,7 +50,7 @@ For steps where `--query` returns `agent=tl`, the order is **STRICT** and **NON-
 | TECHNICAL_DESIGN | GENERATE_DESIGN | specs.md, acceptance.md | design.md | `--complete TECHNICAL_DESIGN:GENERATE_DESIGN` |
 | REVIEW | ITERATE_DESIGN | rv.md, design.md | design.md *(corrections)* | `--complete REVIEW:ITERATE_DESIGN` |
 | PLANNING | GENERATE_TASKS | design.md, review.md, tracking.md | tasks.md | `--complete PLANNING:GENERATE_TASKS` |
-| CODE_REVIEW | REVIEW_CODE | tasks.md, design.md, *(source code)* | tasks.md *(verdict APPROVED/REJECTED)* | `--complete CODE_REVIEW:REVIEW_CODE` |
+| CODE_REVIEW | — | — | — | **Owned by RV** (step `CODE_REVIEW:RV_CODE_REVIEW`). TL only relays per-task review briefs to RV during IMPLEMENTATION. See [wf-rv.md](./wf-rv.md). |
 | CLOSURE | CLEANUP_WORKTREES | tasks.md *(liste des DVs)* | *(worktrees supprimés)* | `--complete CLOSURE:CLEANUP_WORKTREES` |
 
 ---
@@ -261,82 +261,26 @@ TODO → IN_PROGRESS → IMPLEMENTED → UNIT_TESTS_OK → CODE_REVIEW_OK → DO
 1. TL dispatches T-xxx to the DV via SendMessage (XML brief). TL creates the worktree if not already existing for this DV (`git worktree add worktrees/<need>/<dvN> HEAD`), provides `work_dir` in the `<task_assignment>` brief
 2. DV: TODO → IN_PROGRESS → IMPLEMENTED → UNIT_TESTS_OK
 3. DV notifies TL: `brief_complete` (task ID, modified files, test results)
-4. TL runs `git -C worktrees/<need>/<dvN> diff --name-only` in the worktree. If diff empty → REJECTED verdict 'no changes on disk' without qualitative review (EX-044). If non-empty → TL checks that the expected files are present, optionally runs Semgrep static analysis (see §Semgrep static analysis), then qualitative review (6 criteria).
-5a. If APPROVED:
-    - Update `taches.md` (TL Review = APPROVED, Status = CODE_REVIEW_OK → DONE)
+4. TL runs `git -C worktrees/<need>/<dvN> diff --name-only` in the worktree. If diff empty → REJECTED verdict 'no changes on disk' without forwarding to RV (EX-044). If non-empty → TL checks that the expected files are present.
+5. **TL sends review brief to RV** via SendMessage with task_id, worktree path, modified files. RV runs `/code-review` + `/security-review` + Semgrep (multi-run methodology, max 5 findings/run, P0 first — see [wf-rv.md §Code review](./wf-rv.md)). RV replies with `<review_feedback>` (APPROVED/REJECTED).
+6a. If RV verdict APPROVED:
+    - Update `taches.md` (Review = APPROVED, Status = CODE_REVIEW_OK → DONE)
     - Notify OR (`tl_heartbeat`)
     - Notify DV: start next T-yyy
-5b. If REJECTED:
-    - Send `<review_feedback>` XML to DV
+6b. If RV verdict REJECTED:
+    - Relay RV's `<review_feedback>` XML to DV
     - DV iterates (max 3 rejections → escalation via OR → PM → HO)
 
-### Code review criteria (6, prioritized)
-| # | Criterion | Priority | Blocking? |
-|---|---------|----------|------------|
-| 1 | Correctness (matches the ticket's EX-xxx, INV-xxx) | P0 | Yes |
-| 2 | Tests PASS (unit + E2E if applicable) | P0 | Yes |
-| 3 | Invariants preserved (no INV violation) | P0 | Yes |
-| 4 | No scope creep | P1 | Yes |
-| 5 | Style and security (no obvious bugs, injection, null refs) | P1 | Caution |
-| 6 | Readability / maintainability | P2 | No |
+### Code review — delegated to RV
 
-**Verdict rules**:
-- 0 P0/P1 blocker → **APPROVED** (P2 nits mentioned but optional)
-- ≥ 1 P0/P1 blocker → **REJECTED** with actionable feedback
-
-### Semgrep static analysis (optional, feeds criterion #5)
-
-Invoked between the diff check and the qualitative review when the helper detects an available runner (native CLI or Docker). Driven by `tools.semgrep` in `.wf-config.json` — the helper itself reads the config and skips silently if `off`, no need to gate the call. The ruleset defaults to the strict bundle (`p/owasp-top-ten` + `p/cwe-top-25` + `p/default`) and can be overridden via `tools.semgrep_rules` (array of registry packs or local YAML paths).
-
-```bash
-source ${CLAUDE_PLUGIN_ROOT}/scripts/lib/wf-semgrep.sh
-mapfile -t changed < <(git -C worktrees/<need>/<dvN> diff --name-only)
-wf_semgrep_scan "$(pwd)" "wf/needs/<need>/.semgrep-T-xxx.json" "${changed[@]}"
-```
-
-The output JSON follows Semgrep's schema. When skipped (config `off`, no tool available, etc.) the JSON has a `wf_skipped` field — TL mentions `semgrep: skipped (<reason>)` in `<overall_comment>` and proceeds with the qualitative review unchanged.
-
-When findings are present, TL maps Semgrep severity to the existing blocker/nit scale:
-
-| Semgrep severity | Maps to | Blocking |
-|---|---|---|
-| `ERROR` | P0 blocker | Yes (REJECTED) |
-| `WARNING` | P1 blocker | Yes (REJECTED) |
-| `INFO` | P2 nit | No |
-| `INVENTORY`, `EXPERIMENT` | ignored | — |
-
-Each Semgrep finding becomes a `<blocker>` or `<nit>` entry in `<review_feedback>` — `category` = `semgrep:<check_id>`, `file` / `line` from the finding, `issue` = the finding message, `suggested_fix` = the Semgrep fix suggestion when present (else "see Semgrep rule docs"). The standard verdict rules above still apply (≥ 1 P0/P1 → REJECTED).
-
-### Rejection feedback format
-```xml
-<review_feedback>
-  <task_id>T-xxx</task_id>
-  <verdict>REJECTED</verdict>
-  <iteration>N</iteration>
-  <blockers>
-    <blocker id="B1" priority="P0">
-      <category>correctness</category>
-      <file>path/file.ts</file>
-      <line>45</line>
-      <issue>Description of the issue</issue>
-      <suggested_fix>Suggested fix</suggested_fix>
-    </blocker>
-  </blockers>
-  <nits>
-    <nit id="N1" priority="P2">
-      <file>path/file.ts</file>
-      <line>12</line>
-      <issue>Variable name too short</issue>
-      <suggested_fix>Rename to 'user'</suggested_fix>
-    </nit>
-  </nits>
-  <overall_comment>Concise summary of the verdict.</overall_comment>
-</review_feedback>
-```
+Code review (criteria, verdict, Semgrep, findings format) is **owned by RV**. See [wf-rv.md §Code review](./wf-rv.md). TL only:
+1. Runs the diff check (EX-044 — reject 'no changes on disk' without forwarding).
+2. SendMessage RV with the review brief (task_id, worktree path, modified files).
+3. Receives RV's `<review_feedback>` (APPROVED/REJECTED) and relays REJECTED to DV.
 
 ### Blocking dispatch (EX-045 / EX-047)
 
-TL does not dispatch T-xxx+1 to a DV as long as the DV's previous task is not DONE (Tests PASS + Review APPROVED). If TL receives a brief_complete UNIT_TESTS_OK for T-xxx, TL reviews T-xxx first. Only after APPROVED → TL dispatches the next task. No anticipated pre-briefing.
+TL does not dispatch T-xxx+1 to a DV as long as the DV's previous task is not DONE (Tests PASS + RV verdict APPROVED). If TL receives a brief_complete UNIT_TESTS_OK for T-xxx, TL forwards to RV first. Only after RV APPROVED → TL dispatches the next task. No anticipated pre-briefing.
 
 ### Heartbeats to OR
 XML `<tl_heartbeat>` format containing:
@@ -466,7 +410,8 @@ The presence of `Bash` in the `tools:` palette serves this purpose + validation 
 
 - `<brief_complete>` XML to OR for phase transitions (TECHNICAL_DESIGN done, PLANNING done, IMPLEMENTATION done)
 - `<tl_heartbeat>` XML to OR during IMPLEMENTATION
-- `<review_feedback>` XML to DVs for code reviews
+- `<review_feedback>` XML relayed from RV to DVs (REJECTED verdicts) — TL does not author the review, only relays it
+- SendMessage to RV: per-task review brief (task_id, worktree path, modified files list)
 - `<task_assignment>` XML to DVs to dispatch a task
 - NEVER contact HO directly — all questions go through OR → PM
 

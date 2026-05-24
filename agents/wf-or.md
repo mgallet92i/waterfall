@@ -605,7 +605,7 @@ Après le `--complete`, OR re-query immédiatement — pas d'attente, pas de `Se
 
 > **INV-002 — Pas de relance de review si CONVERGE déjà atteint.**
 >
-> Si `verdict == CONVERGE` lu dans `review.md` (step `REVIEW:CHECK_EXIT`) ou si aucun finding BLOCKER n'est présent dans le rapport TL (step `CODE_REVIEW:CHECK_CR_EXIT`), OR **ne doit pas** :
+> Si `verdict == CONVERGE` lu dans `review.md` (step `REVIEW:CHECK_EXIT`) ou si aucun finding BLOCKER n'est présent dans le rapport RV (step `CODE_REVIEW:CHECK_CR_EXIT`), OR **ne doit pas** :
 > - Re-spawner RV via `spawn_request`
 > - Envoyer un `SendMessage` à RV pour une nouvelle itération
 > - Passer `exit_decision=continue` alors que CONVERGE est confirmé
@@ -616,11 +616,11 @@ Après le `--complete`, OR re-query immédiatement — pas d'attente, pas de `Se
 
 ### Worked example 2 — `CODE_REVIEW:CHECK_CR_EXIT`
 
-OR reçoit un `brief_complete` de TL (rapport code review). OR re-query → `step=CHECK_CR_EXIT, agent=or`. OR lit `hint` + `expected_params`, puis analyse le rapport TL pour détecter les findings BLOCKER.
+OR reçoit un `brief_complete` de RV (rapport code review). OR re-query → `step=CHECK_CR_EXIT, agent=or`. OR lit `hint` + `expected_params`, puis analyse le rapport RV pour détecter les findings BLOCKER.
 
 | Condition | Action OR |
 |-----------|-----------|
-| Aucun finding BLOCKER dans le rapport TL | `--complete CODE_REVIEW:CHECK_CR_EXIT --params exit_decision=converged` |
+| Aucun finding BLOCKER dans le rapport RV | `--complete CODE_REVIEW:CHECK_CR_EXIT --params exit_decision=converged` |
 | Findings BLOCKER/MAJOR à corriger | `--complete CODE_REVIEW:CHECK_CR_EXIT` (continue) |
 | Mêmes BLOCKERs répétés sans progrès (stall détecté) | `--complete CODE_REVIEW:CHECK_CR_EXIT --params exit_decision=stall` |
 

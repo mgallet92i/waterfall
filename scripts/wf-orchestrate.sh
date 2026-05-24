@@ -20,7 +20,7 @@
 #   REVIEW:            RV_REVIEW → CHECK_EXIT → ANTI_LOOP → DISPATCH → PO_UPDATE → TL_UPDATE → UPDATE_TRACKING
 #   PLANNING:          GENERATE_TASKS → ASSIGN_WORKTREES → CHECKPOINT_TASKS
 #   IMPLEMENTATION:    DV_IMPLEMENT → TL_SUPERVISE → CHECKPOINT_IMPL → MERGE_WORKTREES
-#   CODE_REVIEW:       TL_REVIEW → CHECK_CR_EXIT → DV_FIX → UPDATE_TRACKING_CR
+#   CODE_REVIEW:       RV_CODE_REVIEW → CHECK_CR_EXIT → DV_FIX → UPDATE_TRACKING_CR
 #   VALIDATION:        PO_VALIDATE → QA_ACCEPTANCE_TEST → HO_VALIDATE → CHECKPOINT_VALID
 #   CLOSURE:           CLEANUP_WORKTREES → COMMIT → PUSH → PR_CREATE → HO_MERGE → BILAN → LOG_AUDIT → CLEANUP → ARCHIVE → [PR_TRIAGE if rejected]
 
@@ -62,7 +62,7 @@ STEPS=(
   "IMPLEMENTATION:TL_SUPERVISE"
   "IMPLEMENTATION:CHECKPOINT_IMPL"
   "IMPLEMENTATION:MERGE_WORKTREES"
-  "CODE_REVIEW:TL_REVIEW"
+  "CODE_REVIEW:RV_CODE_REVIEW"
   "CODE_REVIEW:CHECK_CR_EXIT"
   "CODE_REVIEW:DV_FIX"
   "CODE_REVIEW:UPDATE_TRACKING_CR"
@@ -123,7 +123,7 @@ declare -A STEP_ACTION=(
   ["TL_SUPERVISE"]="supervise"
   ["CHECKPOINT_IMPL"]="checkpoint"
   ["MERGE_WORKTREES"]="merge_worktrees"
-  ["TL_REVIEW"]="review"
+  ["RV_CODE_REVIEW"]="review"
   ["CHECK_CR_EXIT"]="check_exit_criteria"
   ["DV_FIX"]="fix_code"
   ["UPDATE_TRACKING_CR"]="update_tracking"
@@ -185,7 +185,7 @@ declare -A STEP_PARAMS=(
   ["CHECKPOINT_IMPL"]="decision"
   ["MERGE_WORKTREES"]=""
   # CODE_REVIEW
-  ["TL_REVIEW"]=""
+  ["RV_CODE_REVIEW"]=""
   ["CHECK_CR_EXIT"]="converged stall"
   ["DV_FIX"]=""
   ["UPDATE_TRACKING_CR"]=""
@@ -282,6 +282,7 @@ normalize_step() {
     CHECKPOINT_TECH)     echo "CHECKPOINT_DESIGN" ;;   # legacy
     UPDATE_SUIVI)        echo "UPDATE_TRACKING" ;;     # legacy
     UPDATE_SUIVI_CR)     echo "UPDATE_TRACKING_CR" ;;  # legacy
+    TL_REVIEW)           echo "RV_CODE_REVIEW" ;;      # legacy (renamed: code review owner moved from TL to RV)
     PM_FUNCTIONAL_TEST)  echo "QA_ACCEPTANCE_TEST" ;;  # legacy
     *)                   echo "$step" ;;
   esac
@@ -373,6 +374,18 @@ try {
   const v = (o.config && o.config.dark_factory) || 'off';
   process.stdout.write(v === 'on' ? 'on' : 'off');
 } catch(e) { process.stdout.write('off'); }
+ENDJS
+}
+
+# Read config.agent_mode from state_json. Returns the mode string ("team", "subagent", "subagent-light") or empty.
+_get_agent_mode() {
+  local json="$1"
+  export _WF_AM_JSON="$json"
+  node --input-type=module <<'ENDJS' 2>/dev/null || echo ""
+try {
+  const o = JSON.parse(process.env._WF_AM_JSON || '{}');
+  process.stdout.write((o.config && o.config.agent_mode) || '');
+} catch(e) { process.stdout.write(''); }
 ENDJS
 }
 
@@ -536,10 +549,10 @@ compute_next_step() {
         *)      echo "IMPLEMENTATION:MERGE_WORKTREES" ;;
       esac
       ;;
-    IMPLEMENTATION:MERGE_WORKTREES) echo "CODE_REVIEW:TL_REVIEW" ;;
+    IMPLEMENTATION:MERGE_WORKTREES) echo "CODE_REVIEW:RV_CODE_REVIEW" ;;
 
     # CODE_REVIEW loop
-    CODE_REVIEW:TL_REVIEW)  echo "CODE_REVIEW:CHECK_CR_EXIT" ;;
+    CODE_REVIEW:RV_CODE_REVIEW)  echo "CODE_REVIEW:CHECK_CR_EXIT" ;;
     CODE_REVIEW:CHECK_CR_EXIT)
       case "$exit_decision" in
         converged)  echo "VALIDATION:PO_VALIDATE" ;;
@@ -550,7 +563,7 @@ compute_next_step() {
       esac
       ;;
     CODE_REVIEW:DV_FIX)           echo "CODE_REVIEW:UPDATE_TRACKING_CR" ;;
-    CODE_REVIEW:UPDATE_TRACKING_CR) echo "CODE_REVIEW:TL_REVIEW" ;;   # loop back
+    CODE_REVIEW:UPDATE_TRACKING_CR) echo "CODE_REVIEW:RV_CODE_REVIEW" ;;   # loop back
 
     # VALIDATION
     VALIDATION:PO_VALIDATE)        echo "VALIDATION:QA_ACCEPTANCE_TEST" ;;
@@ -729,10 +742,11 @@ handle_query() {
 
   # Resolve effective agent (fix ping-pong, fact-ff2d1fd7): some PM steps are
   # reattributed to OR (NOOPs always; HO checkpoints when dark_factory=on).
-  local dark_factory
+  local dark_factory agent_mode
   dark_factory=$(_get_dark_factory "$state_json")
+  agent_mode=$(_get_agent_mode "$state_json")
   local agent
-  agent=$(resolve_step_agent "${phase}:${step}" "$dark_factory")
+  agent=$(resolve_step_agent "${phase}:${step}" "$dark_factory" "$agent_mode")
   [[ -z "$agent" ]] && agent="pm"
   local action="${STEP_ACTION[$step]:-unknown}"
 
@@ -882,7 +896,7 @@ switch(phase) {
       params.session_id = sid;
       params.hint = `OR → PM : spawn DV agents (max 3: dv1, dv2, dv3) with isolation=worktree and mode=auto.\nMode team: OR sends a spawn_request to PM via SendMessage — PM calls Agent tool to spawn DVs.\nMode subagent: OR asks PM (main agent) to spawn DVs directly — PM calls Agent tool.\nIn both modes OR never calls Agent tool directly.\nEach DV work_dir: <project_root>/worktrees/${sidShort}/dvN. SendMessage each DV their assigned tasks from tasks.md, including their work_dir.\nEach DV follows the per-task pipeline: implement → write/run tests (PASS required) → update tasks.md (Tests + Status columns) → notify PM.\nAfter DV notifies TASK_DONE, request TL per-task review via SendMessage. Reuse idle DVs for subsequent tasks. Complete when all tasks report done.`;
     }
-    if (step === 'TL_SUPERVISE') params.hint = 'TL : performs per-task reviews (not global CODE_REVIEW). For each task completed by a DV, TL reviews only the modified files and sends APPROVED/REJECTED verdict. PM coordinates: SendMessage TL with task ID + file list, wait for verdict. If REJECTED, SendMessage DV with fix instructions. Complete when all tasks have TL APPROVED verdict in tasks.md (Review TL column).';
+    if (step === 'TL_SUPERVISE') params.hint = 'TL : coordinates per-task reviews. For each task completed by a DV: 1) run diff check (EX-044) + Semgrep if available, 2) SendMessage RV brief (task_id, worktree, modified files) — RV runs /code-review + /security-review with multi-run methodology (max 5 findings/run, P0 first), 3) RV returns verdict APPROVED/REJECTED to TL, 4) TL relays REJECTED feedback to DV or dispatches next task on APPROVED. Update tasks.md (Review column with RV verdict). Complete when all tasks have APPROVED verdict.';
     if (step === 'CHECKPOINT_IMPL') params.hint = darkFactory && agent === 'or'
       ? 'OR (dark_factory) : self-approve implementation without HO. Verify ALL tasks in tasks.md are DONE with Tests PASS and Review TL APPROVED. No PENDING review, no missing tests. Build must pass. Then complete with --params decision=approve. If issues, complete with decision=retry.'
       : 'PM : Verify ALL tasks in tasks.md are DONE with Tests PASS and Review TL APPROVED. Check that no task has PENDING review or missing tests. Build must pass (npm run build / tsc --noEmit). Present summary to HO via AskUserQuestion. If approved, complete (advances to MERGE_WORKTREES). If issues, complete with decision=retry (loops to DV_IMPLEMENT).';
@@ -892,17 +906,17 @@ switch(phase) {
     params.current_run = runCr;
     params.max_runs = maxCr;
     params.artifacts = ['tasks.md'];
-    if (step === 'TL_REVIEW') params.hint = 'TL: perform a global implementation review against specs.md and design.md. Produce a findings report (BLOCKER/MAJOR/MINOR). Input artifacts: specs.md, design.md, modified code. Notify OR via SendMessage (step_complete) with the findings report when done.';
+    if (step === 'RV_CODE_REVIEW') params.hint = 'RV: perform a global implementation review against specs.md and design.md using /code-review and /security-review skills. Apply the multi-run methodology: max 5 findings per run, prioritize P0 blockers first. Run Semgrep if available (helper: wf-semgrep.sh). Produce a findings report (BLOCKER/MAJOR/MINOR). Input artifacts: specs.md, design.md, modified code. Notify OR via SendMessage (brief_complete) with the findings report when done.';
     if (step === 'CHECK_CR_EXIT') {
-      params.hint = 'OR : Evaluate TL review: if no BLOQUANT findings → complete with converged=true. If fixes needed → complete (default continues loop). If stalled → stall=true.';
+      params.hint = 'OR : Evaluate RV code review: if no BLOQUANT findings → complete with converged=true. If fixes needed → complete (default continues loop). If stalled → stall=true.';
       params.check_convergence = true;
       params.check_max_runs = runCr >= maxCr;
     }
     if (step === 'DV_FIX') {
-      params.hint = 'DV: apply the fixes identified by TL in the findings report received from OR. Input artifact: TL report (via SendMessage). Notify OR via SendMessage (step_complete) when fixes are applied.';
+      params.hint = 'DV: apply the fixes identified by RV in the findings report received from OR. Input artifact: RV report (via SendMessage). Notify OR via SendMessage (step_complete) when fixes are applied.';
       params.current_run_cr = runCr;
     }
-    if (step === 'UPDATE_TRACKING_CR') params.hint = 'OR: update wf/needs/<name>/tracking.md with code review cycle results: run number, number of findings, fixes applied. Complete to loop back to TL_REVIEW.';
+    if (step === 'UPDATE_TRACKING_CR') params.hint = 'OR: update wf/needs/<name>/tracking.md with code review cycle results: run number, number of findings, fixes applied. Complete to loop back to RV_CODE_REVIEW.';
     break;
   case 'VALIDATION':
     if (step === 'PO_VALIDATE') params.hint = 'PO: validate the implementation against the EX-xxx criteria from specs.md. Check each acceptance criterion. Input artifact: specs.md. Notify OR via SendMessage (step_complete) with the validation result.';
@@ -1435,7 +1449,7 @@ _wf_auto_skip_light() {
     # Honor dark_factory override: CHECKPOINT_* reassign to "or" when dark=on
     # (fixes OBS-002 — direct STEP_AGENT lookup missed the override).
     local step_agent
-    step_agent=$(resolve_step_agent "$step_key" "$dark_factory")
+    step_agent=$(resolve_step_agent "$step_key" "$dark_factory" "$agent_mode")
 
     # Skip if step matches STEP_SKIP_LIGHT (ANO-004: MERGE/CLEANUP worktrees are
     # NOOP in light — no DV spawned, no worktrees). Or if its agent is in
@@ -3042,7 +3056,7 @@ const contract = {
     REVIEW:           ["RV_REVIEW","CHECK_EXIT","ANTI_LOOP","DISPATCH","PO_UPDATE","TL_UPDATE","UPDATE_TRACKING"],
     PLANNING:         ["GENERATE_TASKS","ASSIGN_WORKTREES","CHECKPOINT_TASKS"],
     IMPLEMENTATION:   ["DV_IMPLEMENT","TL_SUPERVISE","CHECKPOINT_IMPL","MERGE_WORKTREES"],
-    CODE_REVIEW:      ["TL_REVIEW","CHECK_CR_EXIT","DV_FIX","UPDATE_TRACKING_CR"],
+    CODE_REVIEW:      ["RV_CODE_REVIEW","CHECK_CR_EXIT","DV_FIX","UPDATE_TRACKING_CR"],
     VALIDATION:       ["PO_VALIDATE","QA_ACCEPTANCE_TEST","HO_VALIDATE","CHECKPOINT_VALID"],
     CLOSURE:          ["CLEANUP_WORKTREES","COMMIT","PUSH","PR_CREATE","HO_MERGE","BILAN","LOG_AUDIT","CLEANUP","ARCHIVE"]
   }
@@ -3161,7 +3175,7 @@ PHASES & STEPS (10 phases, 48 steps):
   REVIEW:            RV_REVIEW → CHECK_EXIT → ANTI_LOOP → DISPATCH → PO_UPDATE → TL_UPDATE → UPDATE_TRACKING → (loop)
   PLANNING:          GENERATE_TASKS → ASSIGN_WORKTREES → CHECKPOINT_TASKS
   IMPLEMENTATION:    DV_IMPLEMENT → TL_SUPERVISE → CHECKPOINT_IMPL → MERGE_WORKTREES
-  CODE_REVIEW:       TL_REVIEW → CHECK_CR_EXIT → DV_FIX → UPDATE_TRACKING_CR → (loop)
+  CODE_REVIEW:       RV_CODE_REVIEW → CHECK_CR_EXIT → DV_FIX → UPDATE_TRACKING_CR → (loop)
   VALIDATION:        PO_VALIDATE → QA_ACCEPTANCE_TEST → HO_VALIDATE → CHECKPOINT_VALID
   CLOSURE:           CLEANUP_WORKTREES → COMMIT → PUSH → PR_CREATE → HO_MERGE → BILAN → LOG_AUDIT → CLEANUP → ARCHIVE → [PR_TRIAGE if rejected]
 
