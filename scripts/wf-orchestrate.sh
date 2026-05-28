@@ -448,6 +448,7 @@ compute_next_step() {
   local has_functional="${4:-false}"
   local has_technical="${5:-false}"
   local exit_decision="${6:-continue}"  # converged|max_runs|stall|continue
+  local agent_mode="${7:-}"             # team|subagent|subagent-light — short-circuits REVIEW phase in light
 
   case "$current_phase:$current_step" in
     # BOOTSTRAP
@@ -492,7 +493,17 @@ compute_next_step() {
         retry)  echo "TECHNICAL_DESIGN:GENERATE_DESIGN" ;;
         pause)  echo "TERMINAL:PAUSED" ;;
         abort)  echo "TERMINAL:ABORTED" ;;
-        *)      echo "REVIEW:RV_REVIEW" ;;
+        *)
+          # ANO-005: in subagent-light, no RV agent exists → REVIEW phase produces
+          # no review.md, CHECK_EXIT has nothing to evaluate. Short-circuit straight
+          # to PLANNING. (Previously REVIEW was entered then partially auto-skipped,
+          # trapping PM-light on REVIEW:CHECK_EXIT.)
+          if [[ "$agent_mode" == "subagent-light" ]]; then
+            echo "PLANNING:GENERATE_TASKS"
+          else
+            echo "REVIEW:RV_REVIEW"
+          fi
+          ;;
       esac
       ;;
 
@@ -894,7 +905,7 @@ switch(phase) {
       const sid = state.session_id || 'default';
       const sidShort = sid.length > 16 ? sid.slice(0, 8) : sid;
       params.session_id = sid;
-      params.hint = `OR → PM : spawn DV agents (max 3: dv1, dv2, dv3) with isolation=worktree and mode=auto.\nMode team: OR sends a spawn_request to PM via SendMessage — PM calls Agent tool to spawn DVs.\nMode subagent: OR asks PM (main agent) to spawn DVs directly — PM calls Agent tool.\nIn both modes OR never calls Agent tool directly.\nEach DV work_dir: <project_root>/worktrees/${sidShort}/dvN. SendMessage each DV their assigned tasks from tasks.md, including their work_dir.\nEach DV follows the per-task pipeline: implement → write/run tests (PASS required) → update tasks.md (Tests + Status columns) → notify PM.\nAfter DV notifies TASK_DONE, request TL per-task review via SendMessage. Reuse idle DVs for subsequent tasks. Complete when all tasks report done.`;
+      params.hint = `OR → PM : spawn DV agents (max 3: dv1, dv2, dv3) with isolation=worktree and mode=auto.\nMode team: OR sends a spawn_request to PM via SendMessage — PM calls Agent tool to spawn DVs.\nMode subagent: OR asks PM (main agent) to spawn DVs directly — PM calls Agent tool.\nIn both modes OR never calls Agent tool directly.\nEach DV work_dir: <project_root>/worktrees/${sidShort}/dvN. SendMessage each DV their assigned tasks from tasks.md, including their work_dir.\nEach DV follows the per-task pipeline: implement → write/run tests (PASS required) → update tasks.md (Tests + Status columns) → notify PM.\nAfter DV notifies TASK_DONE, request TL per-task review via SendMessage. DV is ephemeral by design (INV-DV-EPHEMERAL): after each APPROVED task, TL triggers a dv_recycle_request to PM (shutdown + respawn fresh under same name) before dispatching the next task. Worktree is preserved across recycles (ADR-001). Complete when all tasks report done.`;
     }
     if (step === 'TL_SUPERVISE') params.hint = 'TL : coordinates per-task reviews. For each task completed by a DV: 1) run diff check (EX-044) + Semgrep if available, 2) SendMessage RV brief (task_id, worktree, modified files) — RV runs /code-review + /security-review with multi-run methodology (max 5 findings/run, P0 first), 3) RV returns verdict APPROVED/REJECTED to TL, 4) TL relays REJECTED feedback to DV or dispatches next task on APPROVED. Update tasks.md (Review column with RV verdict). Complete when all tasks have APPROVED verdict.';
     if (step === 'CHECKPOINT_IMPL') params.hint = darkFactory && agent === 'or'
@@ -1296,7 +1307,9 @@ handle_complete() {
 
   # Compute next step
   local next
-  next=$(compute_next_step "$current_phase" "$current_step" "$decision" "$has_functional" "$has_technical" "$exit_decision")
+  local _agent_mode_for_next
+  _agent_mode_for_next=$(_get_agent_mode "$state_json")
+  next=$(compute_next_step "$current_phase" "$current_step" "$decision" "$has_functional" "$has_technical" "$exit_decision" "$_agent_mode_for_next")
   local next_phase="${next%%:*}"
   local next_step="${next#*:}"
 
@@ -1464,7 +1477,7 @@ _wf_auto_skip_light() {
 
     # Compute next step via the canonical function (nominal path, no decision flags)
     local next
-    next=$(compute_next_step "$cur_phase" "$cur_step")
+    next=$(compute_next_step "$cur_phase" "$cur_step" "" "false" "false" "continue" "$agent_mode")
     local next_phase="${next%%:*}"
     local next_step="${next#*:}"
 

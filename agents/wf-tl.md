@@ -265,11 +265,14 @@ TODO → IN_PROGRESS → IMPLEMENTED → UNIT_TESTS_OK → CODE_REVIEW_OK → DO
 5. **TL sends review brief to RV** via SendMessage with task_id, worktree path, modified files. RV runs `/code-review` + `/security-review` + Semgrep (multi-run methodology, max 5 findings/run, P0 first — see [wf-rv.md §Code review](./wf-rv.md)). RV replies with `<review_feedback>` (APPROVED/REJECTED).
 6a. If RV verdict APPROVED:
     - Update `taches.md` (Review = APPROVED, Status = CODE_REVIEW_OK → DONE)
+    - Copy modified files from worktree to main wd + `git add` (ADR-002)
     - Notify OR (`tl_heartbeat`)
-    - Notify DV: start next T-yyy
+    - **Recycle DV** (INV-DV-EPHEMERAL — see §DV recycling below) — required before dispatching T-yyy
+    - After `spawn_confirmed` from PM: dispatch T-yyy to the fresh DV (worktree already seeded and reused — ADR-001)
 6b. If RV verdict REJECTED:
     - Relay RV's `<review_feedback>` XML to DV
     - DV iterates (max 3 rejections → escalation via OR → PM → HO)
+    - **No recycle on REJECTED** — DV keeps its in-task context to apply the fix
 
 ### Code review — delegated to RV
 
@@ -320,9 +323,29 @@ If TL stops sending heartbeats > 10 minutes → OR suspects a stall and escalate
 
 DVs work in isolated worktrees (INV-009). After APPROVED, TL copies the modified files to the main wd and stages them (`git add`). No `git merge` between branches — the worktrees are on detached HEAD. The final commit is done by PM in CLOSURE.
 
-### DV shutdown
-DVs are shut down in CLOSURE phase only (not after the last task).
-Reason: if HO rejects validation and the workflow returns to IMPLEMENTATION, the DVs are still warm with their context.
+### DV recycling (INV-DV-EPHEMERAL)
+
+**DV is ephemeral by design** — fresh process per task. Rationale: long-lived DVs accumulate context across tasks and eventually crash on "Context limit reached". Recycling between each `T-xxx` guarantees a clean slate for `T-xxx+1`.
+
+**Trigger** : every time a task transitions to `DONE` (RV verdict APPROVED + files merged to main wd). No recycling on REJECTED — DV needs its current iteration context to apply the fix.
+
+**Sequence post-APPROVED** (before dispatching T-yyy):
+```
+1. SendMessage shutdown_request → DV (the DV that just completed T-xxx)
+2. Wait for DV ACK (approve)
+3. SendMessage dv_recycle_request → PM, payload: { dv_name, last_task: T-xxx, next_task: T-yyy }
+4. Wait for PM `spawn_confirmed` (same dv_name, fresh process)
+5. Worktree is preserved (ADR-001) — no re-seed needed unless `git worktree list` shows it gone
+6. Dispatch T-yyy to the fresh DV via SendMessage (normal task_assignment brief)
+```
+
+**Worktree** : kept across recycles (ADR-001 unchanged). Only the DV process is jetable, not the FS state.
+
+**Initial brief for respawn** : PM reuses the original DV initial_brief (lazy spawn template). The DV re-reads `design.md`, `tasks.md`, `tech.md` from scratch — that's the point.
+
+**No recycle for the last task** : after the final `T-xxx` DONE, no `dv_recycle_request` — DV will be shut down by PM in CLOSURE along with the rest of the team.
+
+### DV shutdown (CLOSURE)
 
 TL removes the worktrees in CLOSURE at step `CLOSURE:CLEANUP_WORKTREES` (EX-010, post-refonte):
 

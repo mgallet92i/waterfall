@@ -90,6 +90,30 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-confirm --msg-
 
 `reason=silent_subordinate` (INV-OR-POLL côté OR) : même flow H1/H2/ask_ho. Le champ `expected` du payload OR est repris verbatim dans le `repoke` H1 ("Can you address <expected>? silent for <silence_seconds>s") puis dans le `<recovery_context>` du re-spawn H2.
 
+### PM handler `dv_recycle_request` (INV-DV-EPHEMERAL)
+
+À réception d'un `SendMessage type=dv_recycle_request` depuis TL (payload : `{ dv_name, last_task, next_task }`) :
+
+```
+1. ACK the request (--ack-confirm or SendMessage ack_received)
+2. Verify dv_name exists in .team-registry.json (else: reply error_unknown_dv to TL, no action)
+3. SendMessage shutdown_request → dv_name (if TL hasn't already — idempotent)
+4. Wait for DV shutdown ACK (or timeout 60s — proceed anyway, agent will be replaced)
+5. Respawn DV with SAME name via Agent(subagent_type: wf-dv, prompt: <initial_brief>)
+   → initial_brief = the original DV lazy-spawn brief (need name, inputs_to_read: design.md/tasks.md/tech.md, work_dir, config block)
+   → No <recovery_context> — DV starts fresh by design (this is NOT a degraded recovery, it's a nominal recycle)
+6. Update .team-registry.json (respawn_count++ for dv_name, last_recycle_at: <iso>)
+7. SendMessage spawn_confirmed → TL { dv_name, channel, ready: true }
+8. Log: --log --msg "dv_recycle:{dv:<dv_name>,after_task:<last_task>,next_task:<next_task>}"
+```
+
+**Differences vs `--ctx-overflow` reactive flow** :
+- Nominal (not triggered by crash) → no `consolidate_pending`, no degraded mode.
+- No brief consolidation — DV reads artifacts from disk on respawn.
+- `respawn_count` increment does NOT count toward the H2 watchdog cap (recycles are expected, not anomalies). Reset the watchdog `respawn_count` for the recycled dv_name to 0 after step 6.
+
+**Idempotence** : if TL re-sends `dv_recycle_request` for the same `last_task` (e.g. after a TL crash/restart) and the registry shows the DV was already respawned for that task, PM replies `spawn_confirmed` immediately without re-spawning.
+
 ---
 
 ## Responsabilité — pré-spawn batch au bootstrap
