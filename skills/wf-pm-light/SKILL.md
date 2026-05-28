@@ -116,6 +116,12 @@ Une fois validé : passer à la Phase D.
 bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete TECHNICAL_DESIGN:CHECKPOINT_DESIGN --params decision=approve
 ```
 
+> **REVIEW phase short-circuitée en light** (ANO-005). `CHECKPOINT_DESIGN` transitionne
+> directement vers `PLANNING:GENERATE_TASKS` — pas de RV, pas de `review.md`,
+> pas de `REVIEW:CHECK_EXIT` à compléter à la main. Si tu vois la state machine
+> bloquée sur un step `REVIEW:*` en light, c'est un bug : signale-le, ne spawn
+> pas de TL pour "débloquer".
+
 **Spawn TL uniquement après validation HO.** (EX-007, TF-009)
 
 ### Phase D — Spawn TL passe 1 (design + tasks)
