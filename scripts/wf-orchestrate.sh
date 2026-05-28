@@ -2973,6 +2973,88 @@ process.stdout.write(JSON.stringify({
 ENDJSON
 }
 
+handle_timeline() {
+  local name="$1"; shift
+  local since="" json_out=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --since) since="${2:-}"; shift 2 ;;
+      --json)  json_out=1; shift ;;
+      *)       shift ;;
+    esac
+  done
+
+  local need_dir="$PROJECT_ROOT/wf/needs/$name"
+  local state_file="$need_dir/.wf-state.json"
+  if [[ ! -f "$state_file" ]]; then
+    emit_error "State file not found at $state_file" "NO_STATE"
+  fi
+
+  local team_name
+  team_name=$(jq -r '.team_name // ("wf-" + .name // empty)' "$state_file")
+  if [[ -z "$team_name" || "$team_name" == "null" ]]; then
+    team_name="wf-$name"
+  fi
+  local inbox_dir="$HOME/.claude/teams/$team_name/inboxes"
+  if [[ ! -d "$inbox_dir" ]]; then
+    emit_error "Inbox dir not found: $inbox_dir" "NO_INBOX"
+  fi
+
+  # Resolve --since to an ISO cutoff (epoch seconds)
+  local cutoff_epoch=0
+  if [[ -n "$since" ]]; then
+    local n="${since%[a-zA-Z]*}" unit="${since##*[0-9]}"
+    case "$unit" in
+      s|sec)         cutoff_epoch=$(( $(date +%s) - n )) ;;
+      m|min)         cutoff_epoch=$(( $(date +%s) - n*60 )) ;;
+      h|hr)          cutoff_epoch=$(( $(date +%s) - n*3600 )) ;;
+      d|day)         cutoff_epoch=$(( $(date +%s) - n*86400 )) ;;
+      *) emit_error "--since: bad unit '$unit' (use s/m/h/d)" "BAD_SINCE" ;;
+    esac
+  fi
+
+  # Build merged event array: ts, from, to (recipient), type (semantic, parsed from text), summary
+  local events_json
+  events_json=$(
+    for f in "$inbox_dir"/*.json; do
+      [[ -f "$f" ]] || continue
+      local recipient
+      recipient=$(basename "$f" .json)
+      jq --arg to "$recipient" '
+        map(. as $e | {
+          ts: $e.timestamp,
+          from: ($e.from // "?"),
+          to: $to,
+          sem_type: (
+            (($e.text // "") | match("type:\\s*([a-zA-Z0-9_]+)"; "i")? | .captures[0].string)
+            // $e.type // "?"
+          ),
+          summary: ($e.summary // (($e.text // "")[0:80]))
+        })
+      ' "$f"
+    done | jq -sc 'add // []'
+  )
+
+  # Filter by cutoff + sort by ts
+  events_json=$(echo "$events_json" | jq --argjson cutoff "$cutoff_epoch" '
+    map(select(((.ts // "") | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601? // 0) >= $cutoff))
+    | sort_by(.ts)
+  ')
+
+  if [[ $json_out -eq 1 ]]; then
+    echo "$events_json"
+    return 0
+  fi
+
+  # Human-readable output
+  printf 'Timeline — team=%s, inboxes=%s%s\n' \
+    "$team_name" "$inbox_dir" \
+    "$([[ -n "$since" ]] && printf ' (since=%s)' "$since")" >&2
+  echo "$events_json" | jq -r '
+    .[] | "\(.ts)  \(.from) -> \(.to)  [\(.sem_type)]  \(.summary)"
+  '
+}
+
 handle_help() {
   local step_filter="${1:-}"
 
@@ -3032,6 +3114,7 @@ const contract = {
     { command: "<name> --ctx-count --teammate <role> --mode team|subagent", args: "[--kb <estimated_kb>]", description: "Increment context budget counter for a teammate. Returns JSON: { msgs, kb, threshold_msgs, threshold_kb, consolidate_pending, just_triggered }. Reads thresholds from .wf-config.json (default: msgs=40, kb=80). Idempotent: if consolidate_pending already true, just_triggered=false. Logs [CTX] entry to or.log. Updates tracking.md §context_budget.", example: "bash scripts/wf-orchestrate.sh my-need --ctx-count --teammate dv1 --mode team" },
     { command: "<name> --ctx-overflow --teammate <role>", args: "[--task <T-xxx>]", description: "Reactive overflow handler — triggered when 'Context limit reached' is detected for a teammate. Sets mode=degraded and consolidate_pending=true in tracking.md §context_budget. Logs [CTX] context_overflow detected to or.log. Returns JSON: { action: 'respawn_degraded', teammate, logged: true, task_interrupted }. OR/PM must then shutdown and respawn the teammate with a consolidated brief.", example: "bash scripts/wf-orchestrate.sh my-need --ctx-overflow --teammate dv1 --task T-006bis" },
     { command: "<name> --ctx-consolidate-respawn --teammate <role>", args: "[--mode nominal|degraded] [--trigger brief_complete|threshold|other]", description: "Reset context budget for a teammate after a successful consolidate-and-respawn cycle. Logs [CTX] consolidate_respawn to or.log. Resets tracking.md §context_budget row: msgs=0, kb=0, consolidate_pending=false, mode=nominal. Returns JSON: { action: 'consolidate_respawn', teammate, mode, trigger, logged: true }. Idempotent — safe to call twice. Call BEFORE spawning the fresh teammate instance.", example: "bash scripts/wf-orchestrate.sh my-need --ctx-consolidate-respawn --teammate dv1 --mode nominal --trigger brief_complete" },
+    { command: "<name> --timeline", args: "[--since 5m|1h|30s] [--json]",       description: "Cross-inbox audit timeline: merges all ~/.claude/teams/<team>/inboxes/*.json entries, attaches recipient, parses semantic type from text payload, sorts by ts. Use to spot routing anomalies (e.g. sender attributed to wrong agent) and cadence issues.", example: "bash scripts/wf-orchestrate.sh my-need --timeline --since 10m" },
     { command: "[<name>] --help",   args: "[PHASE:STEP]",                      description: "Show this contract, or expected_params for a specific step.", example: "bash scripts/wf-orchestrate.sh --help BOOTSTRAP:COLLECT_CARD_NUM" }
   ],
 
@@ -3323,6 +3406,10 @@ case "$MODE" in
     ;;
   --status)
     handle_status "$NAME"
+    ;;
+  --timeline)
+    shift
+    handle_timeline "$NAME" "$@"
     ;;
   --log)
     shift
