@@ -1,0 +1,213 @@
+# Backlog waterfall — rodage in vivo
+
+Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Chaque finding = anomalie ou friction observée, avec une recommandation pour durcir le framework (spec, agents, hooks).
+
+> Source initiale : retro.md du need `swipebi-sql-ingestor` (2026-05-28, repo `MCP_SWIPE_APEX`). 11 anomalies + 2 trouvailles ultérieures.
+
+## Index
+
+| ID | Phase | Sujet | Priorité |
+|----|-------|-------|----------|
+| F-001 | BOOTSTRAP | OR briefe out-of-order (avant complétion BOOTSTRAP steps) | P1 |
+| F-002 | BOOTSTRAP | OR claim `--complete` sans exécution réelle | P1 |
+| F-003 | FUNCTIONAL_SPECS | Agents livrent artefacts sans `--complete` state machine | P1 |
+| F-004 | * | Escalades sans `--query` préalable | P1 |
+| F-005 | IMPLEMENTATION | `VALID_NODE_LABELS`/`EDGE_TYPES` régressions silencieuses | P2 (spécifique repo applicatif) |
+| F-006 | CODE_REVIEW | Types incomplets non détectés par per-task review | P2 |
+| F-007 | VALIDATION | Naming mismatch specs ↔ impl (kind values) | P2 |
+| F-008 | VALIDATION | QA omet de créer `acceptance-report.md` | P1 |
+| F-009 | CLOSURE | wf-auth bloque OR sur `src/**` — délégation TL/DV nécessaire | P3 (documenté) |
+| F-010 | * | Params `--complete` incorrects dans briefs OR | P1 |
+| F-011 | CLOSURE | wf-auth bloque OR sur `retro.md` § Anomalies | P2 |
+| F-012 | REVIEW | RV vivant idle après job, oublie `--complete` final | P1 |
+| F-013 | TECHNICAL_DESIGN | TL n'introspecte pas le schéma cible avant de poser un data model SQL/SOQL | P0 |
+| F-014 | * (team) | OR ne s'auto-pilote pas : idle après chaque action au lieu d'enchaîner le step suivant | P0 — 🟢 partiellement adressé (auto-advance script) |
+| F-015 | * | OR se fige sur un step mécanique sans artefact attendu (ex. VALIDATE_SPECS) | P1 — ✅ résolu (auto-advance VALIDATE_SPECS) |
+| F-016 | * | `dispatch_step` envoyé en SendMessage mais non `--ack-register` → invisible du watchdog | P1 |
+| F-017 | * | Watchdog PM lit un état périmé (race lecture disque vs écritures OR) | P2 |
+| F-018 | * (hook) | `wf-auth.sh` rejette les `--log` dont le message contient le mot « COMPLETE » | P1 |
+| F-019 | BOOTSTRAP | `wf-registry.sh init` est un no-op alors que RULE 4 le présente comme prérequis d'auth | P2 |
+| F-020 | * | Respawn STUCK_PEER : collision de nom (`or`→`or-2`) + ancien OR zombie rejoue un backlog périmé | P1 |
+| F-021 | BOOTSTRAP | `wf-orchestrate --init` cherche les templates dans le projet, pas dans le plugin → fichiers vides | P3 |
+
+---
+
+## F-001 — OR brief out-of-order (avant complétion BOOTSTRAP steps)
+
+**Phase** : BOOTSTRAP
+**Constat** : OR a briefé PO alors que la state machine était encore à `BOOTSTRAP:DETERMINE_NAME`. PM a dû rattraper les `--complete` PM-owned bootstrap.
+**Impact** : ~10min de désync, confusion d'état, OBS-003/005 dans le need.
+**Recommandation** : Dans le brief OR (`agents/wf-or.md`) inculquer le réflexe **`--query` AVANT toute action**. Ajouter règle stricte : "Aucun spawn / brief avant que `--query` ne confirme la phase attendue."
+
+## F-002 — OR claim `--complete` sans exécution réelle
+
+**Phase** : BOOTSTRAP
+**Constat** : OR a rapporté à PM "COLLECT_CARD_NUM / COLLECT_BRANCH_TYPE / CREATE_BRANCH_Q / SPAWN_TEAM complétés" mais le state file restait à `COLLECT_CARD_NUM`. Les bash `--complete` n'avaient pas été appelés.
+**Impact** : State file désynchronisé, re-clarification PM nécessaire.
+**Recommandation** : Brief OR (et tous agents) : "Exécute AVANT d'annoncer. Ne JAMAIS rapporter un step comme complété sans avoir vu le retour `status: advanced` du script."
+
+## F-003 — Agents livrent artefacts sans `--complete` state machine
+
+**Phase** : FUNCTIONAL_SPECS / TECHNICAL_DESIGN / PLANNING (pattern récurrent)
+**Constat** : PO/TL/DV livrent les fichiers (`specs.md`, `design.md`, `tasks.md`) mais omettent d'appeler `wf-orchestrate.sh --complete`. OR doit poker plusieurs fois.
+**Impact** : Multiples pokes nécessaires, retard, hook wf-auth bloque OR pour le faire à leur place.
+**Recommandation** : Dans chaque fiche agent (PO, TL, DV) règle persona persistante : "Livrer un artefact = écriture du fichier + appel `--complete` immédiat. Sans le `--complete`, le travail est invisible à OR."
+
+## F-004 — Escalades sans `--query` préalable
+
+**Phase** : transverse
+**Constat** : OR a escaladé un blocage PO comme `stuck_peer` alors que PO avait déjà avancé en parallèle. State machine était passée 2 steps plus loin au moment de l'escalade.
+**Impact** : Escalade obsolète, charge cognitive PM, OBS-011.
+**Recommandation** : Règle dure dans `wf-or.md §STUCK_PEER` : "Refaire `--query` IMMÉDIATEMENT avant toute escalade. Si la phase a changé, l'escalade est obsolète."
+
+## F-005 — `VALID_NODE_LABELS`/`EDGE_TYPES` régressions silencieuses
+
+**Phase** : IMPLEMENTATION
+**Constat** : DV1 a rebâti `VALID_NODE_LABELS` sans inclure les labels existants (`Concept`, `IMPLEMENTED_BY`, `RELATES_TO`). Pipeline `exit(1)` au moment de l'ingest business wiki.
+**Impact** : Régression silencieuse sur l'existant. Détectée par RV en run 2/3.
+**Recommandation** (spécifique repo applicatif, hors waterfall) : convention "liste complète maintenue à chaque ajout" + assertion CI.
+
+## F-006 — Types incomplets non détectés par per-task review
+
+**Phase** : CODE_REVIEW
+**Constat** : `SfToBiPath` sans champ `dimTables`, DimTable poussée dans `factTables`. Bug retrouvé en CODE_REVIEW **global** alors que les per-task reviews avaient APPROVED.
+**Impact** : Démontre la valeur du double-passage RV (per-task + global). Si on enlevait le global, le bug partait en prod.
+**Recommandation** : Documenter dans `wf-rv.md` la **double passe obligatoire** : per-task = pertinence locale + types ; global = cohérence cross-fichiers + interfaces.
+
+## F-007 — Naming mismatch specs ↔ impl (kind values)
+
+**Phase** : VALIDATION (QA)
+**Constat** : `SqlNodeKind` implémenté en `'proc_refresh'`/`'proc_retrieve'`/`'proc_perimeter'` au lieu de specs `'refresh'`/`'retrieve'`/`'perimeter'`. 3 fichiers impactés. QA run 2 nécessaire.
+**Impact** : Boucle DV→TL→RV→QA pour fix mineur.
+**Recommandation** : RV grille review : "Si specs.md fixe un set de string littéraux (kind, type, label), vérifier qu'ils apparaissent **textuellement** dans l'impl. Trouvaille type B-xxx sinon."
+
+## F-008 — QA omet de créer `acceptance-report.md`
+
+**Phase** : VALIDATION
+**Constat** : QA a livré son verdict dans `or.log` uniquement (`[OBS-025] QA: 8 PASS, 3 FAIL, 1 PARTIAL`). Pas d'`acceptance-report.md` produit alors que l'artefact est attendu.
+**Impact** : Traçabilité incomplète. PM perd la visibilité.
+**Recommandation** : Brief QA persona : "Artefact obligatoire `acceptance-report.md` AVANT de signaler `validation_ok`. Le log ne remplace pas l'artefact."
+
+## F-009 — wf-auth bloque OR sur `src/**`
+
+**Phase** : CLOSURE (et IMPLEMENTATION via tentatives directes)
+**Constat** : OR ne peut écrire dans `src/**`. Délégation forcée à TL/DV.
+**Impact** : Friction acceptable, c'est même la conception voulue (séparation rôles). Mais à documenter pour éviter les tentatives.
+**Recommandation** : Documenter dans `AGENTS.md` du framework + dans brief OR : "Écriture code = TL/DV uniquement. OR coordonne via SendMessage, ne touche jamais `src/**`."
+
+## F-010 — Params `--complete` incorrects dans briefs OR
+
+**Phase** : transverse (apparu BOOTSTRAP, récurrent)
+**Constat** : OR a essayé `--params branch_created=true`, `team_spawned_externally=true`. Les noms attendus sont `branch`, `team_name`. Plusieurs blocages.
+**Impact** : Hook bloque, état figé.
+**Recommandation** : Compléter `agents/wf-or.md` avec une **table de référence params `--complete`** par step (extraite de `wf-orchestrate.sh`). Source de vérité unique.
+
+## F-011 — wf-auth bloque OR sur `retro.md` § Anomalies
+
+**Phase** : CLOSURE (LOG_AUDIT)
+**Constat** : Le step `CLOSURE:LOG_AUDIT` est `agent=or` et exige qu'OR remplisse `## Anomalies détectées` dans `retro.md`. Mais wf-auth bloque OR sur `retro.md` (PM-owned). Contournement : OR envoie le tableau à PM qui colle.
+**Impact** : Contrat LOG_AUDIT non tenable littéralement, contournement systématique.
+**Recommandation** : 2 options dans le plugin :
+  - (a) Autoriser OR à écrire la seule section `## Anomalies détectées` de `retro.md` (whitelist sectionnelle dans wf-auth)
+  - (b) Reassigner `CLOSURE:LOG_AUDIT` à `agent=pm` et PM relaye OR via mailbox
+
+## F-012 — RV vivant idle après job, oublie `--complete` final
+
+**Phase** : REVIEW (et CODE_REVIEW)
+**Constat** : RV rédige `review.md` verdict CONVERGE → idle, **mais oublie d'émettre `--complete REVIEW:RV_REVIEW`**. PM/OR sont bloqués (hook wf-auth interdit à OR/PM de faire le `--complete` à la place d'un agent `=rv`). Pour débloquer : spawn d'un `rv2` "bouchon" qui exécute uniquement le `--complete` manquant.
+**Impact** : 2 RV actifs simultanément, surconsommation, complexification cleanup. Pattern reproductible.
+**Recommandation** : Brief RV règle persona DURE : "Émettre `--complete REVIEW:RV_REVIEW` (ou `CODE_REVIEW:RV_CODE_REVIEW`) **OBLIGATOIREMENT** avant tout `brief_complete`. Le verdict CONVERGE/ITERATE n'est valide qu'après le `--complete`." Possiblement aussi : alerte automatique côté OR si artefact RV présent et state machine pas avancée depuis N minutes.
+
+## F-013 — TL n'introspecte pas le schéma cible avant de poser un data model SQL/SOQL
+
+**Phase** : TECHNICAL_DESIGN
+**Constat** : TL rédige `design.md` avec data model SQL (tables, colonnes, joins) ou SOQL (sobjects, fields) **sans vérifier l'existence réelle** des objets cités. Risque de poser des colonnes/champs hallucinés.
+**Impact** : Bugs livrés en implem (colonnes inexistantes → SQL errors), perte de temps en review, retour TL.
+**Recommandation** — 2 niveaux complémentaires :
+
+1. **`agents/wf-tl.md` règle persona permanente** :
+   > "Avant d'écrire le data model ou une requête SQL dans `design.md` : pour chaque table/colonne mentionnée, vérifier l'existence réelle via `INFORMATION_SCHEMA.COLUMNS` (SQL Server), `\d` (Postgres), `sf sobject describe` (Salesforce), ou équivalent. Aucune table/colonne ne doit apparaître dans `design.md` sans avoir été observée. Le data model est une affirmation testable — pas une supposition."
+
+2. **`agents/wf-rv.md` grille review enrichie** :
+   > "Si `design.md` contient un data model SQL/SOQL : RV doit échantillonner 2-3 colonnes et vérifier leur existence dans le schéma cible. Trouvaille type B-xxx si une colonne mentionnée n'existe pas."
+
+   Rationale : RV est un **cross-check**, pas un dupliqué de TL — il valide que TL a fait son job, sans le refaire.
+
+**Priorité P0** : c'est la trouvaille la plus structurante du rodage. Sans cette double-couche, tout besoin touchant un schéma de données est exposé au même risque.
+
+---
+
+# Source 2 — need `cablage-fac-v2` (2026-05-29, repo `SWIPE_APEX`)
+
+> Câblage du controller v2 `FACController` (génération de facture Salesforce) en mode **`team`**.
+> **Config wf** (`.wf-config.json`) : `agent_mode=team`, `dark_factory=off`, `models=opus` (tous rôles), `review_loops={artifacts:2, code:3}`, `watchdog.interval=3min`.
+> **Déroulé** : BOOTSTRAP + REQUIREMENTS (PRD validé HO) + FUNCTIONAL_SPECS (specs.md + acceptance.md produits, 11 EX / 5 INV / 12 TF) OK. **Mis en PAUSE par HO à `TECHNICAL_DESIGN:GENERATE_DESIGN`** : ~2,5 h de wall-clock surtout consommées en tuyauterie d'orchestration, l'OR étant le goulot. Le **fond produit était bon** ; c'est la **mécanique de pilotage OR** qui a échoué de façon répétée.
+> Note transverse : plusieurs findings ci-dessous recoupent F-001/F-002/F-004 (déjà identifiés sur `swipebi-sql-ingestor`) → **récurrence confirmée sur un 2e need**, ce qui en relève la priorité.
+
+## F-014 — OR ne s'auto-pilote pas (idle au lieu d'enchaîner) **[le plus impactant]**
+
+**Phase** : transverse (mode `team`)
+**Constat** : Après avoir exécuté UNE action (ex. compléter un step, envoyer un checkpoint à PM), l'OR se met en idle et **n'enchaîne pas** sur le dispatch de l'agent du step suivant. Il faut que le PM le poke à quasiment chaque transition. Observé sur **2 instances successives** (`or` puis le respawn `or-2`) → systémique au rôle `wf-or` dans ce harness, pas à l'instance.
+**Impact** : Le PM doit hand-driver l'OR step par step via le watchdog. Workflow extrêmement lent et fragile. Cause racine de la mise en pause.
+**Analyse** : le `wf-or` n'a pas de boucle persistante — il agit sur réception d'un message puis idle. Le watchdog réveille le **PM**, pas l'OR. Il n'existe aucun mécanisme qui repousse l'OR à `--query` + dispatch tant que la state machine n'est pas en attente d'un autre agent.
+**Recommandation** :
+  - `agents/wf-or.md` règle persona DURE : « Après toute action, refaire `--query` immédiatement ; tant que le step courant a `agent=or` ou attend un dispatch, **ne pas idle** — exécuter/dispatcher en boucle jusqu'à ce que le step courant appartienne à un autre agent déjà briefé. »
+  - Envisager un **watchdog qui réveille l'OR** (et pas seulement le PM) : cron → poke OR `--query` si state machine inchangée depuis N min et step `agent=or`.
+  - Alternative structurelle : faire piloter la boucle `--query`/dispatch par un mécanisme déterministe (script) plutôt que par le jugement de l'agent OR.
+
+**🟢 Résolution partielle (2026-05-29) — Layer 1 : auto-advance script.** Choix de l'alternative structurelle (déterministe), version chirurgicale. `wf-orchestrate.sh` collapse désormais les steps `agent=or` purement mécaniques dans le `--complete` qui les précède, via une allowlist explicite `STEP_OR_AUTO_ADVANCE` (`scripts/wf-step-agents.sh`) + nouvelle fonction `_wf_chain_or_noop` (mode team/subagent ; light déjà couvert par `_wf_auto_skip_light`). OR ne se réveille plus pour ces steps → trous d'idle correspondants supprimés, JSON unique en sortie (convention BOOTSTRAP). Garde de sécurité : `resolve_step_agent==or` exigé, donc les `CHECKPOINT_*` réattribués à OR en `dark_factory=on` ne sont jamais avalés. Testé : team / dark=on / subagent-light. **Reste non couvert** : le trou « OR idle alors que le prochain step actionnable exige un dispatch teammate » (SendMessage — seul l'agent peut l'émettre). Couvert aujourd'hui par le watchdog PM (lent) → candidat Layer 2 (durcissement watchdog OR) si la friction persiste in vivo.
+
+## F-015 — OR se fige sur un step mécanique sans artefact attendu
+
+**Phase** : FUNCTIONAL_SPECS (`VALIDATE_SPECS`), mais générique
+**Constat** : L'OR est resté figé ~14 min sur `VALIDATE_SPECS` (step `agent=or`, action = `--validate` puis `--complete`). `--validate` renvoyait `{"valid":true,"note":"no artifacts expected for this step"}` — il n'y avait donc qu'à compléter et avancer. L'OR n'a pas reconnu ce step trivial et a fallu un respawn (STUCK_PEER) pour le débloquer.
+**Impact** : Respawn coûteux pour un step qui ne demandait qu'un `--complete`.
+**Recommandation** : `agents/wf-or.md` : « Un step `agent=or` dont `--validate` retourne `valid:true` / `no artifacts expected` doit être complété immédiatement (`--complete <phase>:<step>`). Ne jamais rester en attente sur un step mécanique sans dépendance externe. » Idéalement, `wf-orchestrate` pourrait **auto-skip** ces steps no-op (comme le `NOOP_AUTO_ADVANCE` déjà observé sur `STORE_PATH`).
+
+**✅ Résolu (2026-05-29).** Option « auto-skip script » retenue. `FUNCTIONAL_SPECS:VALIDATE_SPECS` est dans l'allowlist `STEP_OR_AUTO_ADVANCE` → auto-avancé par `wf-orchestrate.sh` (cf. F-014 §Résolution). OR ne se fige plus dessus car il ne le voit plus du tout. La couverture EX/INV/TF que le *hint* attendait d'OR n'était de toute façon pas enforced (`--validate` = « no artifacts expected ») et reste assurée par `CHECKPOINT_FUNC` (HO, ou OR-dark) juste après — aucune garde réelle perdue. `agents/wf-or.md` annoté en conséquence.
+
+## F-016 — `dispatch_step` envoyé mais non `--ack-register` → invisible du watchdog
+
+**Phase** : TECHNICAL_DESIGN (dispatch TL), générique
+**Constat** : L'OR a envoyé le dispatch TL via `SendMessage` **sans** appeler `wf-orchestrate.sh --ack-register from=or to=tl type=dispatch_step`. Résultat : le dispatch était absent de `ack-registry.json`. Le watchdog PM, qui lit l'ack-registry pour vérifier l'avancement, a conclu (à tort) « aucun dispatch vers tl » et a déclenché une alarme/poke. (OBS-011 du need.)
+**Impact** : Faux positif de blocage, poke inutile, diagnostic PM faussé.
+**Recommandation** : `agents/wf-or.md` règle DURE : « Tout `dispatch_step` actionnable DOIT être suivi immédiatement d'un `--ack-register` correspondant. Un dispatch non enregistré est invisible du suivi et sera traité comme non-fait. » Couplé à F-014.
+
+## F-017 — Watchdog PM lit un état périmé (race lecture/écriture)
+
+**Phase** : BOOTSTRAP (mais transverse au watchdog)
+**Constat** : Le PM (watchdog) lit `.wf-state.json` par accès direct fichier. À plusieurs reprises sa lecture **a accusé un retard** sur les écritures de l'OR : 3 messages PM (step_advanced, state_clarification, poke) ont référencé `BOOTSTRAP:COLLECT_CARD_NUM` alors que l'OR avait déjà avancé à `REQUIREMENTS:COLLECT_PRD` (history complète sur disque). Un poke « self-complete COLLECT_CARD_NUM » aurait été une régression — l'OR l'a refusé à raison. (OBS-006 du need.)
+**Impact** : Pokes obsolètes, bruit, risque de demander une régression à l'agent, charge cognitive.
+**Recommandation** :
+  - Côté PM/watchdog : **toujours `--query` (sortie du script) plutôt qu'un `jq` direct sur le fichier** comme source de vérité de l'état, et relire juste avant d'agir.
+  - Avant tout poke « complète le step X », revérifier que X est bien le step courant ET qu'il n'est pas déjà dans `history`.
+
+## F-018 — `wf-auth.sh` rejette les `--log` contenant le mot « COMPLETE »
+
+**Phase** : transverse (hook)
+**Constat** : Un `wf-orchestrate.sh <need> --log --msg "...COMPLETE..."` est rejeté par le hook `wf-auth.sh` avec `cannot extract step from ...`. Le hook fait un match trop greedy : il cherche le motif d'un `--complete <phase>:<step>` **sur toute la ligne** au lieu de ne matcher que le flag réel. Contournement adopté : éviter le mot « COMPLETE » dans les messages de log. (OBS-003 du need.)
+**Impact** : Messages de log/rodage mutilés, contournement permanent nécessaire.
+**Recommandation** : Corriger `wf-auth.sh` pour ne parser le couple `phase:step` **que** lorsque le flag `--complete` est réellement présent en position d'argument (parsing par token d'argument, pas regex sur la ligne entière / le contenu de `--msg`). Fix trivial, gain de confort élevé.
+
+## F-019 — `wf-registry.sh init` no-op alors que RULE 4 le présente comme prérequis
+
+**Phase** : BOOTSTRAP
+**Constat** : `wf-registry.sh init <need>` retourne `rc=0` mais **ne crée aucun** `.team-registry.json` (`add` idem, silencieux). Or le brief OR et « RULE 4 » présentent ce registry comme prérequis à l'auth des steps (`agent_id → registry → STEP_AGENT match`). L'OR s'en est inquiété (OBS-002) et a bloqué dessus. En réalité (DEC-001) le registry n'est que de la traçabilité — l'auth utilise l'`agent_type` du payload — et les `--complete` PM ont réussi sans registry. (OBS-004 du need.)
+**Impact** : Fausse alerte bloquante côté OR, temps perdu, incohérence doc.
+**Recommandation** : (a) aligner la doc (`RULE 4`, brief OR, `wf-or.md`) sur DEC-001 : registry = traçabilité **optionnelle**, jamais bloquant ; OU (b) faire réellement créer le fichier par `wf-registry.sh init` si on veut le conserver comme artefact. Choisir l'un des deux ; aujourd'hui le script et la doc se contredisent.
+
+## F-020 — Respawn STUCK_PEER : collision de nom + ancien OR zombie rejoue un backlog périmé
+
+**Phase** : transverse (recovery)
+**Constat** : Au respawn d'un OR figé, le nom `or` n'étant pas encore libéré, le nouvel agent a été créé sous `or-2`. Plus tard, l'ancien `or` (qui était en réalité hung, pas mort) **s'est réveillé** et a rejoué son backlog périmé (re-dispatch PO sur une phase déjà dépassée) → **2 OR sur la même state machine**, risque de double-pilotage/corruption. L'ancien `or` a heureusement vérifié l'état, reconnu le remplaçant et approuvé son propre shutdown (avec un handoff de contexte propre), mais le risque était réel.
+**Impact** : Risque de corruption d'état, confusion de noms (`or` vs `or-2`), shutdown à re-tenter.
+**Recommandation** :
+  - Procédure STUCK_PEER : **confirmer la terminaison effective** (`teammate_terminated`) de l'instance figée **avant** de respawn, et n'utiliser le même nom qu'après libération. Si le nom n'est pas libéré (instance hung), le documenter et adresser le nouveau via son nom suffixé.
+  - Garde anti-double-OR : au réveil, un OR doit `--query` et **vérifier qu'il est l'instance active** (registry/marqueur d'instance) avant toute action ; sinon s'auto-shutdown. (Comportement observé spontanément ici — à rendre normatif dans `wf-or.md`.)
+
+## F-021 — `wf-orchestrate --init` cherche les templates dans le projet, pas dans le plugin
+
+**Phase** : BOOTSTRAP
+**Constat** : `wf-orchestrate.sh <need> --init` émet `WARN: template PRD.md not found in <projet>/wf/templates — creating empty file` pour chaque artefact, car les templates vivent dans `${CLAUDE_PLUGIN_ROOT}/wf/templates/<lang>`, pas dans le repo projet. Dans ce run les copies faites au Step 2.bis (skill `wf-new`) ont survécu (les fichiers existaient déjà, non écrasés), mais la logique est fragile : sur un autre ordre d'exécution, `--init` pourrait écrire des templates vides par-dessus.
+**Impact** : Warnings systématiques, risque d'écrasement par fichiers vides selon l'ordre.
+**Recommandation** : `wf-orchestrate --init` doit résoudre les templates depuis `${CLAUDE_PLUGIN_ROOT}/wf/templates/<lang>` (fallback `en`), comme le fait le skill `wf-new`, et **ne jamais écraser** un artefact non vide existant. Source de vérité unique pour le chemin des templates.

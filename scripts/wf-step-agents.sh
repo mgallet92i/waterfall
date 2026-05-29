@@ -120,6 +120,19 @@ declare -gA STEP_NEVER_SKIP_LIGHT=(
   ["CLOSURE:ARCHIVE"]=1
 )
 
+# STEP_OR_AUTO_ADVANCE: mechanical agent=or steps the script auto-advances so OR
+# never has to wake for them (F-014/F-015). These are pure state gates — NO decision,
+# NO param, NO external action, NO artifact authorship. The script collapses them into
+# the triggering --complete (single final JSON, like the BOOTSTRAP NOOP chain).
+# Decision/checkpoint/action OR steps (CHECK_EXIT, CHECK_CR_EXIT, DISPATCH, LOG_AUDIT,
+# PUSH, CLEANUP, ARCHIVE, dark_factory CHECKPOINT_*, ...) are deliberately ABSENT.
+# VALIDATE_SPECS: --validate returns "no artifacts expected"; the real EX/INV/TF
+# coverage gate is CHECKPOINT_FUNC (HO, or OR in dark_factory) right after — so
+# auto-advancing here loses no enforced guard (cf. backlog F-015).
+declare -gA STEP_OR_AUTO_ADVANCE=(
+  ["FUNCTIONAL_SPECS:VALIDATE_SPECS"]=1
+)
+
 # STEP_AGENT_LIGHT_OVERRIDE: steps whose owner is reassigned when agent_mode=subagent-light.
 # Used when the team-mode owner doesn't exist in light (e.g. CODE_REVIEW:RV_CODE_REVIEW —
 # owned by RV in team, falls back to TL in light since wf-rv is not spawned).

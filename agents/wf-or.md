@@ -580,7 +580,7 @@ Tout step où `--query` retourne `agent=or` se traite **dans le même tour OR**,
 
 Liste exhaustive issue de `scripts/wf-step-agents.sh` au moment de ce fix. La règle s'applique à tout step futur `agent=or` — cette liste est une référence opérationnelle, pas une restriction.
 
-1. `FUNCTIONAL_SPECS:VALIDATE_SPECS`
+1. `FUNCTIONAL_SPECS:VALIDATE_SPECS` — ⚠ **auto-avancé par le script** (F-014/F-015). Step mécanique purement état : `wf-orchestrate.sh` le collapse dans le `--complete` du step précédent (cf. `STEP_OR_AUTO_ADVANCE` dans `wf-step-agents.sh`). OR ne le voit jamais via `--query` et n'a rien à compléter — la garde de couverture EX/INV/TF est assurée par `CHECKPOINT_FUNC` juste après. Ne pas attendre/poker ce step.
 2. `REVIEW:CHECK_EXIT`
 3. `REVIEW:ANTI_LOOP`
 4. `REVIEW:DISPATCH`

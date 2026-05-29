@@ -1393,16 +1393,35 @@ ENDJS
     _wf_cleanup_markers "$name"
   fi
 
-  _wf_advance_state \
-    "$state_file" "$state_json" \
-    "$current_phase" "$current_step" \
-    "$next_phase" "$next_step" \
-    "$new_status" "$should_stop" \
-    "$incr_review" "$incr_cr" \
-    "$escalate_action" "$extra_card_num" "$extra_branch_type" "$extra_branch" "$extra_team"
-
-  # EX-012, EX-013: auto-skip steps whose agent is in STEP_AGENT_SKIP_LIGHT (subagent-light mode)
-  _wf_auto_skip_light "$name" "$state_file"
+  if [[ "$_agent_mode_for_next" == "subagent-light" ]]; then
+    # Light mode: existing behavior (main advance prints, then _wf_auto_skip_light
+    # auto-skips agent=or/po/rv/qa/ds steps and prints its own compact transitions).
+    _wf_advance_state \
+      "$state_file" "$state_json" \
+      "$current_phase" "$current_step" \
+      "$next_phase" "$next_step" \
+      "$new_status" "$should_stop" \
+      "$incr_review" "$incr_cr" \
+      "$escalate_action" "$extra_card_num" "$extra_branch_type" "$extra_branch" "$extra_team"
+    # EX-012, EX-013: auto-skip steps whose agent is in STEP_AGENT_SKIP_LIGHT
+    _wf_auto_skip_light "$name" "$state_file"
+  else
+    # team / subagent: capture the advance so a mechanical agent=or NOOP step
+    # (F-014/F-015) can be auto-advanced into the same --complete, keeping a single
+    # final JSON on stdout (like the BOOTSTRAP NOOP chain). If nothing auto-advances,
+    # print the captured advance result unchanged.
+    local _adv_out
+    _adv_out=$(_wf_advance_state \
+      "$state_file" "$state_json" \
+      "$current_phase" "$current_step" \
+      "$next_phase" "$next_step" \
+      "$new_status" "$should_stop" \
+      "$incr_review" "$incr_cr" \
+      "$escalate_action" "$extra_card_num" "$extra_branch_type" "$extra_branch" "$extra_team")
+    if ! _wf_chain_or_noop "$name" "$state_file"; then
+      printf '%s\n' "$_adv_out"
+    fi
+  fi
 }
 
 # EX-006 (ANO-005) — Auto-advance NOOP steps after RUN_BOOTSTRAP, bounded to BOOTSTRAP.
@@ -1425,6 +1444,67 @@ _wf_chain_noop() {
     printf '%s INFO NOOP_AUTO_ADVANCE BOOTSTRAP:STORE_PATH -> BOOTSTRAP:COLLECT_CARD_NUM (no PLEASE_COMPLETE_STEP emitted)\n' "$ts" >> "$or_log"
     _wf_advance_state "$state_file" "$sp_state_json" "BOOTSTRAP" "STORE_PATH" "BOOTSTRAP" "COLLECT_CARD_NUM" "in_progress" "false" "" ""
   fi
+}
+
+# F-014/F-015 — Auto-advance mechanical agent=or NOOP steps so OR never idles waiting
+# for a poke on a step it can't meaningfully act on. Called by handle_complete after the
+# state advance (team / subagent modes; subagent-light already auto-skips agent=or via
+# _wf_auto_skip_light). Bounded by the explicit STEP_OR_AUTO_ADVANCE allowlist + a
+# resolve_step_agent==or guard (so dark_factory CHECKPOINT_* reassigned to OR are never
+# auto-advanced). Returns 0 (and prints the final landed-step JSON) if it advanced ≥1
+# step; returns 1 (prints nothing) if it did nothing — the caller then prints the
+# original advance result, keeping a single JSON on stdout like the BOOTSTRAP chain.
+_wf_chain_or_noop() {
+  local name="$1"
+  local state_file="$2"
+  local or_log="$PROJECT_ROOT/wf/needs/$name/or.log"
+
+  local agent_mode dark_factory
+  agent_mode=$(jq -r '.config.agent_mode // ""' "$state_file" 2>/dev/null || echo "")
+  dark_factory=$(jq -r '.config.dark_factory // "off"' "$state_file" 2>/dev/null || echo "off")
+
+  local advanced=1   # non-zero = nothing advanced yet
+  local last_out=""
+
+  # R-003-style guard: bounded iterations to prevent any infinite loop.
+  local iter=0
+  while (( iter < 50 )); do
+    iter=$((iter + 1))
+
+    local cur_json cur_phase cur_step step_key step_agent
+    cur_json=$(read_state "$state_file")
+    cur_phase=$(normalize_phase "$(get_field "$cur_json" "phase")")
+    cur_step=$(normalize_step "$(get_field "$cur_json" "step")")
+    step_key="${cur_phase}:${cur_step}"
+
+    # Only steps explicitly allowlisted as mechanical OR NOOPs.
+    [[ -n "${STEP_OR_AUTO_ADVANCE[$step_key]+x}" ]] || break
+
+    # Safety: never auto-advance a step whose effective owner isn't OR (e.g. a
+    # dark_factory CHECKPOINT_* reassigned to OR is a real decision, not a NOOP).
+    step_agent=$(resolve_step_agent "$step_key" "$dark_factory" "$agent_mode")
+    [[ "$step_agent" == "or" ]] || break
+
+    # Nominal next (no decision flags) via the canonical transition function.
+    local next next_phase next_step
+    next=$(compute_next_step "$cur_phase" "$cur_step" "" "false" "false" "continue" "$agent_mode")
+    next_phase="${next%%:*}"
+    next_step="${next#*:}"
+    [[ -n "$next_phase" && "$next_phase" != "TERMINAL" && "$next_phase" != "ERROR" ]] || break
+
+    local ts
+    ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    printf '%s INFO NOOP_AUTO_ADVANCE %s -> %s:%s (mechanical agent=or, no poke emitted)\n' \
+      "$ts" "$step_key" "$next_phase" "$next_step" >> "$or_log" 2>/dev/null || true
+    last_out=$(_wf_advance_state "$state_file" "$cur_json" "$cur_phase" "$cur_step" "$next_phase" "$next_step" "in_progress" "false" "" "")
+    advanced=0
+  done
+
+  if [[ "$advanced" -eq 0 ]]; then
+    printf '%s\n' "$last_out"
+    return 0
+  fi
+  return 1
 }
 
 # EX-012, EX-013, INV-005 — Auto-skip steps in subagent-light mode.

@@ -5,6 +5,15 @@ All notable changes to the `waterfall` plugin are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] - 2026-05-29
+
+### Fixed — Auto-advance des steps `agent=or` mécaniques (backlog F-014/F-015)
+
+- **F-015 (résolu)** : OR se figeait sur `FUNCTIONAL_SPECS:VALIDATE_SPECS` (step `agent=or` dont `--validate` retourne « no artifacts expected »). `wf-orchestrate.sh` collapse désormais ce step dans le `--complete` qui le précède — OR ne le voit plus via `--query` et n'a rien à compléter. La garde de couverture EX/INV/TF reste assurée par `CHECKPOINT_FUNC` juste après (HO, ou OR en `dark_factory=on`) : aucune garde réelle perdue.
+- **F-014 (partiellement adressé — Layer 1)** : la cause racine « OR n'enchaîne pas, idle après chaque action » est structurelle (un agent spawné ne tient pas de boucle persistante). Plutôt que d'empiler des règles persona, on sort les transitions mécaniques de la boucle LLM. Nouvelle table source-of-truth `STEP_OR_AUTO_ADVANCE` (`scripts/wf-step-agents.sh`) + fonction `_wf_chain_or_noop` (`scripts/wf-orchestrate.sh`), appelée par `handle_complete` en modes team/subagent (subagent-light déjà couvert par `_wf_auto_skip_light`). Sortie : un seul JSON final sur stdout (convention de la chaîne NOOP BOOTSTRAP). **Garde de sécurité** : `resolve_step_agent == or` exigé → les `CHECKPOINT_*` réattribués à OR en `dark_factory=on` ne sont jamais auto-avancés. **Reste non couvert** : le trou « OR idle alors que le prochain step exige un dispatch teammate » (couvert par le watchdog PM ; candidat Layer 2).
+- **`agents/wf-or.md`** : `FUNCTIONAL_SPECS:VALIDATE_SPECS` annoté « auto-avancé par le script » dans la liste des steps `agent=or` connus.
+- Validé en isolation sur les 3 modes : `team` (VALIDATE_SPECS collapsé → CHECKPOINT_FUNC, 1 seul JSON), `team + dark_factory=on` (CHECKPOINT_FUNC `agent=or` **non** avalé), `subagent-light` (comportement `_wf_auto_skip_light` inchangé).
+
 ## [1.2.2] - 2026-05-17
 
 ### Changed — Réécriture plain-language homepage + README
