@@ -280,7 +280,7 @@ Examples of PM-only steps (non-exhaustive list, the `agent` field of `--query` i
 
 **Note**: BOOTSTRAP:COLLECT_CARD_NUM, COLLECT_BRANCH_TYPE, CREATE_BRANCH_Q, SPAWN_TEAM, IMPLEMENTATION:MERGE_WORKTREES, and all CLOSURE:PUSH/CLEANUP/ARCHIVE/PR_TRIAGE/HO_MERGE are **OR native** (not PM). CLOSURE:CLEANUP_WORKTREES is **TL native**. Do not relay these to PM.
 
-**Anti-pattern**: OR receives `agent=pm`, tells itself "it's logical, I can chain", and runs `--complete` on an agent=pm step. This is blocked by the PreToolUse hook `hooks/wf-auth.sh` (OR's agent_id does not match role=pm in the registry).
+**Anti-pattern**: OR receives `agent=pm`, tells itself "it's logical, I can chain", and runs `--complete` on an agent=pm step. This is blocked by the PreToolUse hook `hooks/wf-auth.sh`, which reads `agent_type` **directly from the harness payload** and rejects it against the step's resolved owner (`STEP_AGENT[]` + `resolve_step_agent`). DEC-001: the `.team-registry.json` is traceability only — it is **never** consulted for `--complete` enforcement (do not treat registry init/lookup as an auth prerequisite — cf. F-019).
 
 ---
 

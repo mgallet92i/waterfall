@@ -26,7 +26,7 @@ Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Ch
 | F-016 | * | `dispatch_step` envoyé en SendMessage mais non `--ack-register` → invisible du watchdog | P1 — ✅ résolu (INV-DISPATCH-ACK : tout dispatch actionnable suivi d'un --ack-register) |
 | F-017 | * | Watchdog PM lit un état périmé (race lecture disque vs écritures OR) | P2 |
 | F-018 | * (hook) | `wf-auth.sh` rejette les `--log` dont le message contient le mot « COMPLETE » | P1 — ✅ résolu (neutralisation de la valeur `--msg` avant détection des flags) |
-| F-019 | BOOTSTRAP | `wf-registry.sh init` est un no-op alors que RULE 4 le présente comme prérequis d'auth | P2 |
+| F-019 | BOOTSTRAP | `wf-registry.sh init` est un no-op alors que RULE 4 le présente comme prérequis d'auth | P2 — ✅ résolu (script crée bien le fichier ; ligne doc trompeuse wf-or.md corrigée → DEC-001) |
 | F-020 | * | Respawn STUCK_PEER : collision de nom (`or`→`or-2`) + ancien OR zombie rejoue un backlog périmé | P1 |
 | F-021 | BOOTSTRAP | `wf-orchestrate --init` cherche les templates dans le projet, pas dans le plugin → fichiers vides | P3 |
 | F-022 | FUNCTIONAL_SPECS | Question PO (`NEED_HO_INPUT`) non auto-relayée au HO — PO idle avec question coincée, PM doit détecter le stall et réclamer le relai | P1 |
@@ -203,6 +203,10 @@ Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Ch
 **Constat** : `wf-registry.sh init <need>` retourne `rc=0` mais **ne crée aucun** `.team-registry.json` (`add` idem, silencieux). Or le brief OR et « RULE 4 » présentent ce registry comme prérequis à l'auth des steps (`agent_id → registry → STEP_AGENT match`). L'OR s'en est inquiété (OBS-002) et a bloqué dessus. En réalité (DEC-001) le registry n'est que de la traçabilité — l'auth utilise l'`agent_type` du payload — et les `--complete` PM ont réussi sans registry. (OBS-004 du need.)
 **Impact** : Fausse alerte bloquante côté OR, temps perdu, incohérence doc.
 **Recommandation** : (a) aligner la doc (`RULE 4`, brief OR, `wf-or.md`) sur DEC-001 : registry = traçabilité **optionnelle**, jamais bloquant ; OU (b) faire réellement créer le fichier par `wf-registry.sh init` si on veut le conserver comme artefact. Choisir l'un des deux ; aujourd'hui le script et la doc se contredisent.
+
+**Résolution (2026-06-02)** : les deux volets sont en fait satisfaits.
+  - (b) `wf-registry.sh init <need>` **crée bien** `.team-registry.json` (PROJECT_ROOT résolu depuis l'emplacement du script — le constat « no-op » était périmé, dû à un cwd différent à l'origine). Vérifié empiriquement : fichier `{need, updated_at, members:[{agent_id:null, role:pm}]}` créé, rc=0.
+  - (a) `skills/wf-new/SKILL.md` énonçait déjà DEC-001 (traçabilité, init non prérequis). **Corrigé** : la ligne trompeuse de `agents/wf-or.md` (« agent_id does not match role=pm in the registry ») reformulée → le hook lit `agent_type` du payload, le registry n'est jamais consulté pour l'auth.
 
 ## F-020 — Respawn STUCK_PEER : collision de nom + ancien OR zombie rejoue un backlog périmé
 
