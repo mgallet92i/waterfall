@@ -15,15 +15,15 @@ Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Ch
 | F-005 | IMPLEMENTATION | `VALID_NODE_LABELS`/`EDGE_TYPES` régressions silencieuses | P2 (spécifique repo applicatif) |
 | F-006 | CODE_REVIEW | Types incomplets non détectés par per-task review | P2 |
 | F-007 | VALIDATION | Naming mismatch specs ↔ impl (kind values) | P2 |
-| F-008 | VALIDATION | QA omet de créer `acceptance-report.md` | P1 |
+| F-008 | VALIDATION | QA omet de créer `acceptance-report.md` | P1 — ✅ résolu (INV-QA-ARTEFACT : artefact obligatoire avant `--complete`) |
 | F-009 | CLOSURE | wf-auth bloque OR sur `src/**` — délégation TL/DV nécessaire | P3 (documenté) |
-| F-010 | * | Params `--complete` incorrects dans briefs OR | P1 |
+| F-010 | * | Params `--complete` incorrects dans briefs OR | P1 — ✅ résolu (table de réf params par step dans wf-or.md, miroir de STEP_PARAMS) |
 | F-011 | CLOSURE | wf-auth bloque OR sur `retro.md` § Anomalies | P2 |
 | F-012 | REVIEW | RV vivant idle après job, oublie `--complete` final | P1 |
 | F-013 | TECHNICAL_DESIGN | TL n'introspecte pas le schéma cible avant de poser un data model SQL/SOQL | P0 |
 | F-014 | * (team) | OR ne s'auto-pilote pas : idle après chaque action au lieu d'enchaîner le step suivant | P0 — 🟢 partiellement adressé (auto-advance script) |
 | F-015 | * | OR se fige sur un step mécanique sans artefact attendu (ex. VALIDATE_SPECS) | P1 — ✅ résolu (auto-advance VALIDATE_SPECS) |
-| F-016 | * | `dispatch_step` envoyé en SendMessage mais non `--ack-register` → invisible du watchdog | P1 |
+| F-016 | * | `dispatch_step` envoyé en SendMessage mais non `--ack-register` → invisible du watchdog | P1 — ✅ résolu (INV-DISPATCH-ACK : tout dispatch actionnable suivi d'un --ack-register) |
 | F-017 | * | Watchdog PM lit un état périmé (race lecture disque vs écritures OR) | P2 |
 | F-018 | * (hook) | `wf-auth.sh` rejette les `--log` dont le message contient le mot « COMPLETE » | P1 |
 | F-019 | BOOTSTRAP | `wf-registry.sh init` est un no-op alors que RULE 4 le présente comme prérequis d'auth | P2 |

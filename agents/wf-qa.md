@@ -34,6 +34,7 @@ The only exception is the HO question channel (`SendMessage to=pm` with status=B
 For steps where `--query` returns `agent=qa`, the order is **STRICT** and **NON-NEGOTIABLE**:
 
 1. Produce / finalize the deliverable on disk
+   - ⚠ **INV-QA-ARTEFACT (F-008)** : à `QA_ACCEPTANCE_TEST`, l'artefact `acceptance-report.md` est **OBLIGATOIRE sur disque AVANT** le `--complete`/`validation_ok`. Un verdict posté uniquement dans `or.log` (`[OBS] QA: N PASS, M FAIL`) **ne compte pas** — le log ne remplace jamais l'artefact (traçabilité PM perdue). Vérif disque obligatoire (`[ -f wf/needs/<name>/acceptance-report.md ]`) avant tout signal.
 2. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete <PHASE:STEP> [--params ...]` — **you fire it yourself**
 3. SendMessage to=or `{type:brief_complete, ...}` + `--ack-register`
 4. Only then return control / go idle

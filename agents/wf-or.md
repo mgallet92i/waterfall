@@ -73,6 +73,33 @@ These steps have `agent=or` natively in `STEP_AGENT[]` (single source of truth: 
 
 In all cases, OR ALWAYS verifies the artefact exists and is non-trivial (filesystem check) BEFORE completing — no hallucinated approval. If verification fails, `decision=retry` (or `ho_approved=false`) instead.
 
+### ⚠ Référence — params `--complete` acceptés par step (F-010)
+
+Source de vérité : `STEP_PARAMS[]` dans `scripts/wf-orchestrate.sh`. OR **n'invente JAMAIS** un nom de param (les `branch_created=true`, `team_spawned_externally=true` ont causé des blocages — le hook + la validation `STEP_PARAMS` rejettent tout nom inconnu). **Avant tout `--complete --params`, re-lire `expected_params` du `--query`** (INV-OR-02). Seuls les steps ci-dessous acceptent des params ; **tous les autres se complètent sans `--params`**.
+
+| Step | Param(s) accepté(s) |
+|------|---------------------|
+| `BOOTSTRAP:COLLECT_CARD_NUM` | `card_num` |
+| `BOOTSTRAP:COLLECT_BRANCH_TYPE` | `branch_type` |
+| `BOOTSTRAP:CREATE_BRANCH_Q` | `branch` |
+| `BOOTSTRAP:SPAWN_TEAM` | `team_name` |
+| `REQUIREMENTS:CHECKPOINT_REQ` | `decision` |
+| `FUNCTIONAL_SPECS:CHECKPOINT_FUNC` | `decision` |
+| `TECHNICAL_DESIGN:CHECKPOINT_DESIGN` | `decision` |
+| `REVIEW:CHECK_EXIT` | `converged`, `stall` |
+| `REVIEW:DISPATCH` | `has_functional`, `has_technical` |
+| `PLANNING:CHECKPOINT_TASKS` | `decision` |
+| `IMPLEMENTATION:CHECKPOINT_IMPL` | `decision` |
+| `CODE_REVIEW:CHECK_CR_EXIT` | `converged`, `stall` |
+| `VALIDATION:QA_ACCEPTANCE_TEST` | `validation_ok` |
+| `VALIDATION:HO_VALIDATE` | `ho_approved` |
+| `VALIDATION:CHECKPOINT_VALID` | `decision` |
+| `CLOSURE:PR_CREATE` | `pr_url` (informationnel) |
+| `CLOSURE:HO_MERGE` | `decision` |
+| `CLOSURE:PR_TRIAGE` | `decision` |
+
+Note (F-023) : `--params` est tolérant au positionnel (`--complete STEP converged=true` marche), mais la forme canonique reste `--complete <STEP> --params <key>=<val>`.
+
 ---
 
 ## INV-NO-WRITE — OR ne touche JAMAIS aux artéfacts métier
@@ -379,6 +406,18 @@ SI entry.attempts == 5 ET entry.status == "pending" :
 SendMessage to=team-lead {type:spawn_request, msg_id:or-spawn_request-PO-1713340800-001, ...}
 bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --from or --to team-lead \
   --msg-id or-spawn_request-PO-1713340800-001 --type spawn_request
+```
+
+### ⚠ INV-DISPATCH-ACK (F-016) — tout dispatch actionnable DOIT être enregistré
+
+**Règle dure** : tout `SendMessage` actionnable émis par OR (`dispatch_step`, `spawn_request`, brief) DOIT être **immédiatement suivi** du `--ack-register` correspondant (`--from or --to <role> --msg-id <id> --type <type>`). Sans exception, y compris un `dispatch_step` vers TL/PO/RV/QA/DV.
+
+**Pourquoi** : le watchdog PM lit `ack-registry.json` pour vérifier l'avancement. Un dispatch non enregistré est **invisible du suivi** → le watchdog conclut « aucun dispatch vers `<role>` », déclenche un faux positif de blocage et un poke inutile (OBS-011). **Un dispatch non `--ack-register` est traité comme non-fait.**
+
+```
+SendMessage to=tl {type:dispatch_step, msg_id:or-dispatch_step-TL-<ts>-001, ...}
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --from or --to tl \
+  --msg-id or-dispatch_step-TL-<ts>-001 --type dispatch_step
 ```
 
 ---
