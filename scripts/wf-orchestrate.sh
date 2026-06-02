@@ -560,7 +560,19 @@ compute_next_step() {
         *)      echo "IMPLEMENTATION:MERGE_WORKTREES" ;;
       esac
       ;;
-    IMPLEMENTATION:MERGE_WORKTREES) echo "CODE_REVIEW:RV_CODE_REVIEW" ;;
+    IMPLEMENTATION:MERGE_WORKTREES)
+      # ANO-005bis: in subagent-light, no RV/DV agent exists → the CODE_REVIEW phase
+      # has no driver (RV_CODE_REVIEW is rv-skipped, CHECK_CR_EXIT is NEVER_SKIP +
+      # agent=or → PM-light gets trapped, unable to complete an or-step). Mirror the
+      # REVIEW short-circuit (ANO-005 at CHECKPOINT_DESIGN): bypass CODE_REVIEW
+      # straight to VALIDATION. PO_VALIDATE/QA_ACCEPTANCE_TEST are then auto-skipped
+      # in light, landing on HO_VALIDATE.
+      if [[ "$agent_mode" == "subagent-light" ]]; then
+        echo "VALIDATION:PO_VALIDATE"
+      else
+        echo "CODE_REVIEW:RV_CODE_REVIEW"
+      fi
+      ;;
 
     # CODE_REVIEW loop
     CODE_REVIEW:RV_CODE_REVIEW)  echo "CODE_REVIEW:CHECK_CR_EXIT" ;;

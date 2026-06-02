@@ -33,6 +33,7 @@ Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Ch
 | F-023 | REVIEW / CODE_REVIEW | Hint `CHECK_EXIT`/`CHECK_CR_EXIT` ne mentionne pas le flag `--params` → OR passe `converged=true` nu → param ignoré → boucle de review/CR ne sort jamais (faux `continue`) | P0 — ✅ résolu (parseur tolère le positionnel `key=val` + hints corrigés) |
 | F-024 | IMPLEMENTATION | DV en boucle de re-confirmation des tâches passées à chaque transition (mailbox stale) ; OR se fige sur `--complete` mécanique ; faux `TASK_DONE` non vérifiés | P0 |
 | F-025 | * (architecture OR) | OR sature son contexte (full need + historique) alors que son rôle est purement mécanique → ne répond plus. Proposition : OR sur contexte minimal + `/clear` entre phases + re-seed bref | P0 — 🟢 implémenté (OR éphémère par phase : flag `phase_boundary` + handler PM `or_recycle_request`) ; à valider sur run live |
+| F-026 | * (subagent-light) | Doc ambiguë : les skills laissent croire que PM doit `--complete` `CHECKPOINT_DESIGN` entre design et tasks, alors qu'en `light + dark` tous les checkpoints pm-owned s'auto-skippent et TL passe-1 enchaîne design+tasks d'une traite (pas de deadlock) | P3 (doc) |
 
 ---
 
@@ -286,3 +287,26 @@ Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Ch
   - **PM** (`agents/wf-pm.md`) : handler `or_recycle_request` — shutdown OR → respawn OR avec brief resume minimal `team_alive:true` (pas de re-spawn de la team vivante), reset watchdog `respawn_count`. Pas de `spawn_confirmed` (OR mort, le neuf s'auto-pilote).
   - **Resume sequence OR** patchée : `team_alive:true` ⇒ skip étapes 5-6 (re-spawn team) → `--query` direct → pilote `new_phase`.
   - **Reste à valider sur run live** : comportement bout-en-bout OR↔PM (handoff, latence shutdown/respawn, absence de double-recycle) — non testable en unitaire ici.
+
+## F-026 — Ambiguïté doc : checkpoints pm-owned en `subagent-light` + `dark_factory=on` **[P3, doc]**
+
+**Phase** : transverse (TECHNICAL_DESIGN / PLANNING / VALIDATION, mode `subagent-light` dark)
+**Constat** (run `f13-execution-order`, repo `MCP_SWIPE_APEX`, 2026-06-02) : les skills `wf-pm-light` et `wf-tl-light` se lisent comme si un step `CHECKPOINT_DESIGN` (pm-owned) s'intercalait entre `TECHNICAL_DESIGN:GENERATE_DESIGN` (tl) et `PLANNING:GENERATE_TASKS` (tl) — le skill `wf-pm-light` Phase C montre un `--complete TECHNICAL_DESIGN:CHECKPOINT_DESIGN`, et `wf-tl-light` passe-1 demande de compléter `GENERATE_DESIGN` puis `GENERATE_TASKS`. Cela a fait craindre au PM un **deadlock** (TL bloqué par wf-auth sur un step pm-owned au milieu de sa passe 1). En réalité, en `light + dark` : `_wf_auto_skip_light` **auto-skippe tous les steps pm-owned** (`CHECKPOINT_DESIGN`, `CHECKPOINT_TASKS`, `VALIDATION:*`) en plus des steps or/po/rv/qa/ds. Le TL passe-1 enchaîne donc `GENERATE_DESIGN → GENERATE_TASKS → ASSIGN_WORKTREES` d'une seule traite sans interruption, et le state arrive directement à `IMPLEMENTATION:TL_SUPERVISE`. Aucun deadlock. (Le PM a contourné par précaution en briefant le TL « arrête-toi si le step suivant n'est pas agent=tl » — sécurité inutile mais inoffensive.)
+**Impact** : aucun blocage réel ; coût = charge cognitive PM (analyse d'un faux risque de deadlock) + brief TL défensif superflu. Risque latent : un opérateur qui « aide » en faisant un `--complete CHECKPOINT_DESIGN` manuel pourrait désynchroniser (le step est déjà auto-skippé).
+**Recommandation** :
+  - `wf-pm-light` : ajouter une note explicite en tête de Phase C/E/G : « en `dark_factory=on`, les checkpoints pm-owned sont **auto-skippés par la state machine** (`_wf_auto_skip_light`) — ne PAS faire de `--complete CHECKPOINT_*` manuel ; se contenter de logger la décision dark via `--log`. Le TL passe-1 produit design.md **et** tasks.md sans interruption. »
+  - `wf-tl-light` : préciser que la passe 1 va d'une traite de `GENERATE_DESIGN` à `ASSIGN_WORKTREES` en mode light (pas de checkpoint pm bloquant entre les deux).
+
+## F-027 — `CODE_REVIEW` non court-circuité en `subagent-light` → PM piégé sur `CHECK_CR_EXIT` **[P1] [FIXÉ]**
+
+**Phase** : CODE_REVIEW (mode `subagent-light`)
+**Constat** (run `flow-editor`, repo `MCP_SF_CLI`, 2026-06-02) : après la passe 2 (TL implémente solo), le state passe `IMPLEMENTATION:CHECKPOINT_IMPL → MERGE_WORKTREES → CODE_REVIEW:RV_CODE_REVIEW`. `RV_CODE_REVIEW` (agent=rv) est auto-skippé, mais `CODE_REVIEW:CHECK_CR_EXIT` est dans `STEP_NEVER_SKIP_LIGHT` (protection ANO-005 anti-skip des steps de convergence) **et** agent=or. En `subagent-light` il n'y a **pas d'OR**, et `wf-auth` bloque le PM sur ce step → **deadlock**. Jumeau exact d'ANO-005, qui ne court-circuitait que la phase REVIEW (à `CHECKPOINT_DESIGN`, ligne ~501), pas CODE_REVIEW.
+**Impact** : workflow bloqué en fin de parcours (livrable pourtant complet + gates verts). Nécessite une intervention manuelle sur `.wf-state.json`.
+**Fix appliqué (2026-06-02)** : `compute_next_step` — transition `IMPLEMENTATION:MERGE_WORKTREES` court-circuite vers `VALIDATION:PO_VALIDATE` quand `agent_mode == subagent-light` (PO/QA ensuite auto-skippés → `HO_VALIDATE`). Miroir d'ANO-005. À valider sur un prochain run light.
+
+## F-028 — `VALIDATION:HO_VALIDATE` réassigné à OR par `dark_factory` mais aucun OR en `subagent-light` **[P1]**
+
+**Phase** : VALIDATION (mode `subagent-light` + `dark_factory=on`)
+**Constat** (run `flow-editor`, 2026-06-02, après recovery F-027) : `resolve_step_agent` réassigne les steps de décision (`CHECKPOINT_*`, `HO_VALIDATE`) à **OR** quand `dark_factory=on` (auto-approbation sans HO). Mais en `subagent-light` il n'y a pas d'OR → `HO_VALIDATE` (NEVER_SKIP) reste agent=or, et `wf-auth` rebloque le PM. Même classe que F-027 : un step réassigné OR par dark dans un mode sans OR.
+**Impact** : second deadlock à la clôture, juste après F-027.
+**Recommandation** : en `subagent-light`, `dark_factory` doit réassigner les décisions au **PM** (le décideur de dernière instance en light, cf. skill `wf-pm-light`), **pas** à OR. À corriger dans `resolve_step_agent` (garde `agent_mode == subagent-light` → ne pas router vers `or`). Couvre F-027 et F-028 d'un coup si traité à la racine de la réassignation.
