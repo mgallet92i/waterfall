@@ -875,7 +875,7 @@ switch(phase) {
     params.artifacts = ['PRD.md', 'specs.md', 'design.md', 'acceptance.md'];
     if (step === 'RV_REVIEW') params.hint = 'RV : SendMessage to RV with list of artifacts to review (PRD.md, specs.md, design.md, acceptance.md). RV writes review.md with findings and verdict (CONVERGE/ITERATE). Wait for RV report.';
     if (step === 'CHECK_EXIT') {
-      params.hint = 'OR : Read review.md verdict. 3 paths: (1) CONVERGE → complete with converged=true → advances to PLANNING:GENERATE_TASKS. (2) ITERATE and max_runs not reached → complete (default, no params) → continues loop to REVIEW:ANTI_LOOP. (3) Stalled (same issues repeating, no progress) → complete with stall=true → TERMINAL:ESCALATE. Note: if current_run_review >= max_runs, the loop auto-escalates on this step regardless of verdict.';
+      params.hint = 'OR : Read review.md verdict. 3 paths: (1) CONVERGE → `--complete REVIEW:CHECK_EXIT --params converged=true` → advances to PLANNING:GENERATE_TASKS. (2) ITERATE and max_runs not reached → `--complete REVIEW:CHECK_EXIT` (default, no params) → continues loop to REVIEW:ANTI_LOOP. (3) Stalled (same issues repeating, no progress) → `--complete REVIEW:CHECK_EXIT --params stall=true` → TERMINAL:ESCALATE. The flag is mandatory: a bare `converged=true` without `--params` was historically dropped (F-023). Note: if current_run_review >= max_runs, the loop auto-escalates on this step regardless of verdict.';
       params.check_convergence = true;
       params.check_max_runs = runReview >= maxReview;
     }
@@ -919,7 +919,7 @@ switch(phase) {
     params.artifacts = ['tasks.md'];
     if (step === 'RV_CODE_REVIEW') params.hint = 'RV: perform a global implementation review against specs.md and design.md using /code-review and /security-review skills. Apply the multi-run methodology: max 5 findings per run, prioritize P0 blockers first. Run Semgrep if available (helper: wf-semgrep.sh). Produce a findings report (BLOCKER/MAJOR/MINOR). Input artifacts: specs.md, design.md, modified code. Notify OR via SendMessage (brief_complete) with the findings report when done.';
     if (step === 'CHECK_CR_EXIT') {
-      params.hint = 'OR : Evaluate RV code review: if no BLOQUANT findings → complete with converged=true. If fixes needed → complete (default continues loop). If stalled → stall=true.';
+      params.hint = 'OR : Evaluate RV code review: if no BLOQUANT findings → `--complete CODE_REVIEW:CHECK_CR_EXIT --params converged=true` → advances to VALIDATION:PO_VALIDATE. If fixes needed → `--complete CODE_REVIEW:CHECK_CR_EXIT` (default, no params) continues loop. If stalled → `--complete CODE_REVIEW:CHECK_CR_EXIT --params stall=true`. The --params flag is mandatory: a bare positional was historically dropped (F-023).';
       params.check_convergence = true;
       params.check_max_runs = runCr >= maxCr;
     }
@@ -1040,30 +1040,18 @@ handle_complete() {
   local bootstrap_status="" team_name=""
   local -a received_params=()
 
+  # F-023: collect key=val tokens from BOTH `--params k=v ...` and bare positional
+  # `k=v` (without the --params flag). Agents frequently invoke
+  # `--complete STEP converged=true` omitting --params; previously the positional
+  # token hit `*) shift` and was silently dropped → converged stayed empty →
+  # exit_decision=continue → REVIEW/CODE_REVIEW loop never converged (infinite loop).
+  local -a kv_tokens=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --params)
         shift
         while [[ $# -gt 0 ]] && [[ "$1" != --* ]]; do
-          local kv_key="${1%%=*}"
-          local kv_val="${1#*=}"
-          received_params+=("$kv_key")
-          case "$kv_key" in
-            decision)         decision="$kv_val" ;;
-            exit_decision)    exit_decision="$kv_val" ;;
-            has_functional)   has_functional="$kv_val" ;;
-            has_technical)    has_technical="$kv_val" ;;
-            converged)        converged="$kv_val" ;;
-            stall)            stall="$kv_val" ;;
-            card_num)         card_num="$kv_val" ;;
-            branch_type)      branch_type="$kv_val" ;;
-            branch)           branch="$kv_val" ;;
-            validation_ok)    validation_ok="$kv_val" ;;
-            bootstrap_status) bootstrap_status="$kv_val" ;;
-            team_name)        team_name="$kv_val" ;;
-            ho_approved)      validation_ok="$kv_val" ;;
-            pr_url)           ;; # informational only
-          esac
+          kv_tokens+=("$1")
           shift
         done
         ;;
@@ -1071,7 +1059,32 @@ handle_complete() {
         echo "FLAG_REMOVED: --agent is no longer supported; identity is now enforced by PreToolUse hook (hooks/wf-auth.sh)" >&2
         exit 1
         ;;
-      *) shift ;;
+      --*) shift ;;            # unknown flag → ignore
+      *=*) kv_tokens+=("$1"); shift ;;   # bare positional key=val (tolerated)
+      *)   shift ;;            # bare non-param token → ignore
+    esac
+  done
+
+  local _tok
+  for _tok in ${kv_tokens[@]+"${kv_tokens[@]}"}; do
+    local kv_key="${_tok%%=*}"
+    local kv_val="${_tok#*=}"
+    received_params+=("$kv_key")
+    case "$kv_key" in
+      decision)         decision="$kv_val" ;;
+      exit_decision)    exit_decision="$kv_val" ;;
+      has_functional)   has_functional="$kv_val" ;;
+      has_technical)    has_technical="$kv_val" ;;
+      converged)        converged="$kv_val" ;;
+      stall)            stall="$kv_val" ;;
+      card_num)         card_num="$kv_val" ;;
+      branch_type)      branch_type="$kv_val" ;;
+      branch)           branch="$kv_val" ;;
+      validation_ok)    validation_ok="$kv_val" ;;
+      bootstrap_status) bootstrap_status="$kv_val" ;;
+      team_name)        team_name="$kv_val" ;;
+      ho_approved)      validation_ok="$kv_val" ;;
+      pr_url)           ;; # informational only
     esac
   done
 

@@ -30,7 +30,7 @@ Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Ch
 | F-020 | * | Respawn STUCK_PEER : collision de nom (`or`→`or-2`) + ancien OR zombie rejoue un backlog périmé | P1 |
 | F-021 | BOOTSTRAP | `wf-orchestrate --init` cherche les templates dans le projet, pas dans le plugin → fichiers vides | P3 |
 | F-022 | FUNCTIONAL_SPECS | Question PO (`NEED_HO_INPUT`) non auto-relayée au HO — PO idle avec question coincée, PM doit détecter le stall et réclamer le relai | P1 |
-| F-023 | REVIEW / CODE_REVIEW | Hint `CHECK_EXIT`/`CHECK_CR_EXIT` ne mentionne pas le flag `--params` → OR passe `converged=true` nu → param ignoré → boucle de review/CR ne sort jamais (faux `continue`) | P0 |
+| F-023 | REVIEW / CODE_REVIEW | Hint `CHECK_EXIT`/`CHECK_CR_EXIT` ne mentionne pas le flag `--params` → OR passe `converged=true` nu → param ignoré → boucle de review/CR ne sort jamais (faux `continue`) | P0 — ✅ résolu (parseur tolère le positionnel `key=val` + hints corrigés) |
 | F-024 | IMPLEMENTATION | DV en boucle de re-confirmation des tâches passées à chaque transition (mailbox stale) ; OR se fige sur `--complete` mécanique ; faux `TASK_DONE` non vérifiés | P0 |
 | F-025 | * (architecture OR) | OR sature son contexte (full need + historique) alors que son rôle est purement mécanique → ne répond plus. Proposition : OR sur contexte minimal + `/clear` entre phases + re-seed bref | P0 — 🟢 implémenté (OR éphémère par phase : flag `phase_boundary` + handler PM `or_recycle_request`) ; à valider sur run live |
 
@@ -242,6 +242,11 @@ Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Ch
   - **Corriger les hints** (l.878, l.922 et tout hint analogue) pour montrer la commande complète **avec le flag** : `--complete CODE_REVIEW:CHECK_CR_EXIT --params converged=true`. Idem pour `stall=true`.
   - Idéalement, **tolérer les deux formes** côté parseur (accepter `key=val` en argument positionnel après le step, pas seulement après `--params`), pour rendre l'API robuste à cette confusion récurrente.
   - Aligner toute la doc/hints sur une seule convention d'invocation des params.
+
+**Résolution (2026-06-02)** :
+  - **Parseur tolérant** (`wf-orchestrate.sh`, `handle_complete`) : les tokens `key=val` sont collectés depuis `--params k=v` **ET** depuis le positionnel nu (`--complete STEP converged=true`). Avant, le positionnel tombait dans `*) shift` et était silencieusement jeté → `converged` vide → `exit_decision=continue` → boucle infinie. Vérifié en isolation : `converged=true` capté dans les deux formes ; `decision=approve` positionnel idem.
+  - **Hints corrigés** : `CHECK_EXIT` et `CHECK_CR_EXIT` montrent désormais la commande complète `--complete <STEP> --params converged=true|stall=true` + note « flag obligatoire (F-023) ».
+  - `bats tests/wf-step-agents.bats` au vert (14/14), `bash -n` OK.
 
 ## F-024 — DV en boucle de re-confirmation + OR figé sur `--complete` mécanique + faux `TASK_DONE` **[P0]**
 
