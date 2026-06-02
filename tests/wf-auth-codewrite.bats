@@ -84,12 +84,13 @@ teardown() {
   [ "$status" -eq 2 ]
 }
 
-# ─── TF-INV-01 — payload Bash --complete, agent_type=po → exit 0 ─────────────
-# Verifies that the --complete branch (INV-001) is not disrupted by the guard.
+# ─── TF-INV-01 — payload Bash --complete légitime → exit 0 ───────────────────
+# Verifies that the --complete branch (INV-001) is not disrupted by the codewrite
+# guard: a legitimate --complete (caller matches the step owner) passes through.
 # Uses the real repo as PROJECT_ROOT so wf-step-agents.sh can be sourced.
-@test "TF-INV-01: Bash --complete payload agent_type=po → exit 0 (guard not triggered)" {
-  payload='{"tool_name":"Bash","tool_input":{"command":"bash scripts/wf-orchestrate.sh my-need --complete REQUIREMENTS:GENERATE_PRD"},"agent_type":"po"}'
-  # REQUIREMENTS:GENERATE_PRD is not in wf-step-agents.sh → unknown_step → exit 0.
+@test "TF-INV-01: Bash --complete payload caller matches step owner → exit 0 (guard not triggered)" {
+  payload='{"tool_name":"Bash","tool_input":{"command":"bash scripts/wf-orchestrate.sh my-need --complete REQUIREMENTS:GENERATE_PRD"},"agent_type":"pm"}'
+  # REQUIREMENTS:GENERATE_PRD is owned by pm in wf-step-agents.sh → caller=pm matches → exit 0.
   run env PROJECT_ROOT="/c/projets/waterfall" CLAUDE_PROJECT_DIR="/c/projets/waterfall" \
     bash "$HOOK" <<< "$payload"
   [ "$status" -eq 0 ]
