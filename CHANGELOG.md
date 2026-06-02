@@ -5,14 +5,41 @@ All notable changes to the `waterfall` plugin are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.3] - 2026-05-29
+## [1.3.0] - 2026-06-02
 
-### Fixed — Auto-advance des steps `agent=or` mécaniques (backlog F-014/F-015)
+Lot consolidé depuis `v1.2.2` (la version `1.2.3` posée dans `plugin.json` n'a jamais été taggée/releasée — son contenu est intégré ici).
+
+### Added
+
+- **OR éphémère par phase (backlog F-025)** : OR est un driver mécanique sans état — sur les longs runs son contexte conversationnel saturait. Il est désormais recyclé à chaque frontière de phase. `scripts/wf-orchestrate.sh` (`_wf_advance_state`) émet `phase_boundary`/`completed_phase`/`new_phase` dans le JSON de tout `--complete` traversant une frontière ; OR logge `[PHASE-HANDOFF]`, émet `or_recycle_request` à PM puis termine sa vie ; PM respawn un OR neuf avec un brief resume minimal (`team_alive:true` → pas de re-spawn de la team vivante), calqué sur `dv_recycle_request`. Comportement bout-en-bout à valider sur run réel.
+- **DV jetable par tâche (INV-DV-EPHEMERAL)** : après chaque tâche `APPROVED`, TL déclenche un `dv_recycle_request` à PM (shutdown + respawn sous le même nom), worktree préservé (ADR-001). Contexte DV maîtrisé sur les implems longues.
+- **RV propriétaire de la code review** : RV pilote la revue de code (per-task + globale) via `/code-review` et `/security-review`.
+- **`--timeline`** : audit cross-inboxes de `wf-orchestrate.sh` pour suivre l'ordonnancement des messages.
+
+### Fixed
+
+- **F-023 (boucle review/CR infinie)** : le hint `CHECK_EXIT`/`CHECK_CR_EXIT` ne montrait pas `--params` → OR passait `converged=true` en positionnel nu → token jeté par `*) shift` → `exit_decision=continue` → la boucle REVIEW/CODE_REVIEW ne convergeait jamais. `handle_complete` collecte désormais les `key=val` depuis `--params` **et** depuis le positionnel nu (API robuste) ; hints corrigés avec la commande complète.
+- **F-018 (hook `wf-auth.sh`)** : un `--log --msg "...COMPLETE..."` (ou contenant `--complete PHASE:STEP`) était pris pour un flag opérant → faux « cannot extract step ». La valeur de `--msg` est neutralisée (`args_scan`) avant toute détection de flag.
+- **F-014 / F-015 (auto-advance des steps `agent=or` mécaniques)** — voir détail ci-dessous.
+
+#### Détail F-014 / F-015 — Auto-advance des steps `agent=or` mécaniques
 
 - **F-015 (résolu)** : OR se figeait sur `FUNCTIONAL_SPECS:VALIDATE_SPECS` (step `agent=or` dont `--validate` retourne « no artifacts expected »). `wf-orchestrate.sh` collapse désormais ce step dans le `--complete` qui le précède — OR ne le voit plus via `--query` et n'a rien à compléter. La garde de couverture EX/INV/TF reste assurée par `CHECKPOINT_FUNC` juste après (HO, ou OR en `dark_factory=on`) : aucune garde réelle perdue.
 - **F-014 (partiellement adressé — Layer 1)** : la cause racine « OR n'enchaîne pas, idle après chaque action » est structurelle (un agent spawné ne tient pas de boucle persistante). Plutôt que d'empiler des règles persona, on sort les transitions mécaniques de la boucle LLM. Nouvelle table source-of-truth `STEP_OR_AUTO_ADVANCE` (`scripts/wf-step-agents.sh`) + fonction `_wf_chain_or_noop` (`scripts/wf-orchestrate.sh`), appelée par `handle_complete` en modes team/subagent (subagent-light déjà couvert par `_wf_auto_skip_light`). Sortie : un seul JSON final sur stdout (convention de la chaîne NOOP BOOTSTRAP). **Garde de sécurité** : `resolve_step_agent == or` exigé → les `CHECKPOINT_*` réattribués à OR en `dark_factory=on` ne sont jamais auto-avancés. **Reste non couvert** : le trou « OR idle alors que le prochain step exige un dispatch teammate » (couvert par le watchdog PM ; candidat Layer 2).
 - **`agents/wf-or.md`** : `FUNCTIONAL_SPECS:VALIDATE_SPECS` annoté « auto-avancé par le script » dans la liste des steps `agent=or` connus.
 - Validé en isolation sur les 3 modes : `team` (VALIDATE_SPECS collapsé → CHECKPOINT_FUNC, 1 seul JSON), `team + dark_factory=on` (CHECKPOINT_FUNC `agent=or` **non** avalé), `subagent-light` (comportement `_wf_auto_skip_light` inchangé).
+
+### Changed — Durcissement persona QA / OR
+
+- **F-008** (`agents/wf-qa.md`) : `INV-QA-ARTEFACT` — `acceptance-report.md` obligatoire sur disque **avant** tout `--complete`/`validation_ok` ; le log ne remplace pas l'artefact.
+- **F-010** (`agents/wf-or.md`) : table de référence des params `--complete` acceptés par step (miroir de `STEP_PARAMS`) — OR n'invente plus de nom (`branch_created`, `team_spawned_externally`…).
+- **F-016** (`agents/wf-or.md`) : `INV-DISPATCH-ACK` — tout dispatch actionnable (`dispatch_step`, `spawn_request`, brief) suivi immédiatement du `--ack-register` correspondant, sinon invisible du watchdog (faux positif de blocage).
+- **F-019** (`agents/wf-or.md`) : ligne trompeuse corrigée — le hook lit `agent_type` du payload (`STEP_AGENT`/`resolve_step_agent`), le `.team-registry.json` n'est jamais consulté pour l'auth (DEC-001). Constat « `wf-registry.sh init` no-op » vérifié périmé (le script crée bien le fichier).
+- **F-011** : exception `or_retro_log_audit_exception` (OR écrit la section `## Anomalies détectées` de `retro.md` au step `LOG_AUDIT`) vérifiée déjà présente dans `hooks/wf-auth.sh` — aucune action requise.
+
+### Tests
+
+- `tests/wf-auth-codewrite.bats` — `TF-INV-01` : prémisse périmée corrigée (`REQUIREMENTS:GENERATE_PRD` est un step `pm` connu depuis son ajout à `wf-step-agents.sh`). Caller aligné sur le propriétaire du step. Suite auth de nouveau verte.
 
 ## [1.2.2] - 2026-05-17
 
