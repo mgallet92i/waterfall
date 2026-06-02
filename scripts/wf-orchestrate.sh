@@ -1713,6 +1713,17 @@ const result = {
 
 if (escalateAction) result.action = escalateAction;
 
+// F-025 — Phase boundary signal: when this advance crosses from one phase into
+// another (and isn't a terminal/error transition), flag it so OR can hand off to
+// PM for an ephemeral respawn (OR is a stateless mechanical driver — recycling it
+// per phase keeps its context lean; see agents/wf-or.md §"Phase-boundary handoff"
+// and agents/wf-pm.md §"PM handler or_recycle_request").
+if (prevPhase !== nextPhase && nextPhase && nextPhase !== 'TERMINAL' && nextPhase !== 'ERROR') {
+  result.phase_boundary = true;
+  result.completed_phase = prevPhase;
+  result.new_phase = nextPhase;
+}
+
 process.stdout.write(JSON.stringify(result, null, 2) + '\n');
 ENDJS
 }

@@ -549,6 +549,35 @@ result=$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh $NEED --ctx-count 
 
 **Règle consolidate_pending à brief_complete (EX-005, EX-009)** : OR ne doit jamais respawner un teammate en cours de tâche. Le respawn nominal est uniquement déclenché au moment de la réception d'un `brief_complete` (frontière naturelle — la tâche est terminée). Si `consolidate_pending=true` à ce moment, OR prépare le brief consolidé minimal (cf. `design.md §3.5`) et émet un nouveau `spawn_request` AVANT de compléter le step courant.
 
+### Phase-boundary handoff — OR éphémère par phase (F-025)
+
+OR est un **driver déterministe sans état propre** : toute la vérité vit sur disque (`.wf-state.json`, `tasks.md`, `or.log`), lue à chaque tour via `--query`. Garder un contexte conversationnel croissant sur tout un run est un pur passif → saturation. Remède : **OR est recyclé à chaque frontière de phase**. OR ne se respawn pas lui-même (pas de `Agent`/`TeamCreate` — cf. prohibitions) ; il passe le relai à PM, seul détenteur du droit de spawn. Le pattern calque `dv_recycle_request` (TL→PM pour DV).
+
+**Signal** : tout `--complete` qui fait franchir une frontière de phase renvoie dans son JSON `phase_boundary:true`, `completed_phase:<PHASE>`, `new_phase:<PHASE>` (émis par `_wf_advance_state` dans `wf-orchestrate.sh`). Absent en intra-phase et au TERMINAL/ERROR.
+
+**Protocole [PHASE-HANDOFF]** — à chaque `--complete`, OR inspecte le JSON retourné :
+
+```
+boundary=$(echo "$complete_json" | jq -r '.phase_boundary // false')
+if [[ "$boundary" == "true" ]]; then
+  completed=$(echo "$complete_json" | jq -r '.completed_phase')
+  newp=$(echo "$complete_json"      | jq -r '.new_phase')
+  # 1. Logger la passation
+  bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log \
+    --msg "[PHASE-HANDOFF] completed=$completed new=$newp -> or_recycle_request"
+  # 2. Passer le relai à PM (payload minimal — PM relit tout sur disque)
+  SendMessage(to: pm, type: or_recycle_request, payload: { need: <name>, completed_phase: $completed, new_phase: $newp })
+  # 3. STOP — ne PAS re-query, ne PAS continuer la boucle. Un OR neuf reprend la phase suivante.
+  return  # fin de vie de cet OR
+fi
+```
+
+**Invariants** :
+- **INV-OR-HANDOFF-01** : à `phase_boundary:true`, l'OR courant **termine sa vie** après l'émission du `or_recycle_request`. Il ne re-query pas, ne dispatche rien de la nouvelle phase — c'est le rôle du nouvel OR. Continuer la boucle = bug (annule le bénéfice de contexte léger).
+- **INV-OR-HANDOFF-02** : le nouvel OR démarre via un brief `resume` minimal de PM, exécute la **Resume sequence** (re-lecture `config.agent_mode`/`dark_factory` depuis `.wf-state.json`), puis `--query` → pilote `new_phase`. Aucune synthèse métier/technique héritée.
+- **INV-OR-HANDOFF-03** : le handoff ne s'applique **qu'en mode `team`/`subagent`**. En `subagent-light` il n'y a pas d'OR (PM+TL solo) — le flag est ignoré de fait.
+- **INV-OR-HANDOFF-04** (idempotence) : si l'OR neuf, au `--query`, retombe sur un step dont la phase == `new_phase` attendue, il pilote normalement ; aucun second `or_recycle_request` n'est émis pour la même frontière (le flag n'apparaît qu'au `--complete` traversant, pas au `--query`).
+
 ---
 
 ## Self-execution — agent=or steps
@@ -986,6 +1015,9 @@ Triggered if OR receives a resume brief or detects a pre-existing `.sdd-state.js
 2. Read `wf/needs/<name>/or.log` to recover context.
 3. Re-read `config.agent_mode` and `config.dark_factory` from `.wf-state.json` (post-context-clear fallback — see §Reading `config.agent_mode` and §Dark factory).
 4. `current_run_review` / `current_run_cr` survivent au context clear via `.wf-state.json` — pas de re-read tracking.md nécessaire. `--query` (étape 1) les expose dans son payload.
+
+> **⚠ Variante recycle de phase (F-025) — `team_alive:true`** : si le brief resume porte `team_alive: true` (cas du `or_recycle_request` à frontière de phase — cf. §Phase-boundary handoff), la team (PO/TL/RV/QA/DS) est **déjà vivante**. OR **SAUTE les étapes 5-6** (aucun `spawn_request`, aucun resume brief aux teammates) et passe directement à l'étape 7 : `--query` → pilote `new_phase`. Re-spawner une team vivante = bug (doublons). Les étapes 5-6 ci-dessous ne s'appliquent qu'au resume post-crash/context-clear complet (team potentiellement perdue).
+
 5. Emit `spawn_request` for the agents required by the current phase (Matrix lookup).
 6. Send resume briefs to each agent:
 

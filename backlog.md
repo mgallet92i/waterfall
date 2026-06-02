@@ -29,6 +29,10 @@ Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Ch
 | F-019 | BOOTSTRAP | `wf-registry.sh init` est un no-op alors que RULE 4 le présente comme prérequis d'auth | P2 |
 | F-020 | * | Respawn STUCK_PEER : collision de nom (`or`→`or-2`) + ancien OR zombie rejoue un backlog périmé | P1 |
 | F-021 | BOOTSTRAP | `wf-orchestrate --init` cherche les templates dans le projet, pas dans le plugin → fichiers vides | P3 |
+| F-022 | FUNCTIONAL_SPECS | Question PO (`NEED_HO_INPUT`) non auto-relayée au HO — PO idle avec question coincée, PM doit détecter le stall et réclamer le relai | P1 |
+| F-023 | REVIEW / CODE_REVIEW | Hint `CHECK_EXIT`/`CHECK_CR_EXIT` ne mentionne pas le flag `--params` → OR passe `converged=true` nu → param ignoré → boucle de review/CR ne sort jamais (faux `continue`) | P0 |
+| F-024 | IMPLEMENTATION | DV en boucle de re-confirmation des tâches passées à chaque transition (mailbox stale) ; OR se fige sur `--complete` mécanique ; faux `TASK_DONE` non vérifiés | P0 |
+| F-025 | * (architecture OR) | OR sature son contexte (full need + historique) alors que son rôle est purement mécanique → ne répond plus. Proposition : OR sur contexte minimal + `/clear` entre phases + re-seed bref | P0 — 🟢 implémenté (OR éphémère par phase : flag `phase_boundary` + handler PM `or_recycle_request`) ; à valider sur run live |
 
 ---
 
@@ -211,3 +215,61 @@ Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Ch
 **Constat** : `wf-orchestrate.sh <need> --init` émet `WARN: template PRD.md not found in <projet>/wf/templates — creating empty file` pour chaque artefact, car les templates vivent dans `${CLAUDE_PLUGIN_ROOT}/wf/templates/<lang>`, pas dans le repo projet. Dans ce run les copies faites au Step 2.bis (skill `wf-new`) ont survécu (les fichiers existaient déjà, non écrasés), mais la logique est fragile : sur un autre ordre d'exécution, `--init` pourrait écrire des templates vides par-dessus.
 **Impact** : Warnings systématiques, risque d'écrasement par fichiers vides selon l'ordre.
 **Recommandation** : `wf-orchestrate --init` doit résoudre les templates depuis `${CLAUDE_PLUGIN_ROOT}/wf/templates/<lang>` (fallback `en`), comme le fait le skill `wf-new`, et **ne jamais écraser** un artefact non vide existant. Source de vérité unique pour le chemin des templates.
+
+---
+
+# Source 3 — need `mcp-sf-cli-socle-retrieve-data` (2026-06-02, repo `MCP_SF_CLI`)
+
+> Socle d'un serveur MCP TypeScript wrappant le `sf` CLI + premier tool read-only `soql_query` (sandbox `swipe-full`), mode **`team`**, tous rôles `opus`, `dark_factory=off`, `watchdog.interval=3min`.
+
+## F-022 — Question PO (`NEED_HO_INPUT`) non auto-relayée jusqu'au HO
+
+**Phase** : FUNCTIONAL_SPECS (`INTERVIEW_SPECS`), transverse au canal `NEED_HO_INPUT`
+**Constat** : En `INTERVIEW_SPECS`, le PO a posé une question de cadrage destinée au HO (arbitrage `describe_object` : inclus ou reporté). Le PO s'est mis **idle avec la question coincée** : elle n'a pas été propagée par le canal `PO → OR (NEED_HO_INPUT) → PM (NEED_HO_INPUT) → AskUserQuestion HO`. Aucune trace dans `specs.md` (resté au template), `or.log`, ni `ack-registry.json`. Le PM ne l'a découverte qu'en constatant le **stall** (`specs.md` à 33 lignes inchangé ~5 min) puis en réclamant explicitement à l'OR de collecter et relayer les questions du PO. Après poke PM→OR, l'OR a re-poké le PO, récupéré la question et l'a relayée correctement en `NEED_HO_INPUT` — preuve que le canal **fonctionne** mais n'est **pas déclenché automatiquement** quand le PO produit une question.
+**Impact** : Le HO ne voit jamais la question tant que le PM ne diagnostique pas le blocage et ne force pas le relai. Latence + dépendance au watchdog PM pour un cas qui devrait être réactif. Risque que la question soit perdue si le PM ne détecte pas le stall.
+**Analyse** : symptomatique du même fond que F-014 (les agents ne « poussent » pas spontanément, ils agissent puis idle). Ici le PO a bien émis sa question mais probablement **dans son output texte / vers OR sans le type `NEED_HO_INPUT` attendu**, ou OR ne l'a pas relayée tant que non poké. Le maillon faible : rien ne garantit qu'une question d'agent remonte la chaîne sans intervention PM.
+**Recommandation** :
+  - `agents/wf-po.md` (et tous agents) règle persona DURE : « Toute question destinée au HO = `SendMessage` à OR avec `type: NEED_HO_INPUT` **immédiatement**, jamais juste dans l'output texte. Tant que la réponse n'est pas reçue, l'agent reste en attente explicite (pas un idle muet) et ré-émet la question si poké. »
+  - `agents/wf-or.md` : « À réception d'un `NEED_HO_INPUT` d'un agent, relayer au PM **sans attendre** d'être poké. Si un agent reste idle sur un step `INTERVIEW_*` sans artefact ni message, `--query` puis re-poke en demandant explicitement s'il a une question HO en attente. »
+  - Envisager un enforcement : un agent sur un step `INTERVIEW_*` qui idle sans avoir ni produit d'artefact ni émis de `NEED_HO_INPUT` est un état anormal détectable (watchdog OR/PM) → poke ciblé « as-tu une question HO ? ».
+
+## F-023 — Hint `CHECK_EXIT`/`CHECK_CR_EXIT` omet le flag `--params` → boucle review/CR infinie **[P0]**
+
+**Phase** : REVIEW (`CHECK_EXIT`) et CODE_REVIEW (`CHECK_CR_EXIT`)
+**Constat** : pour sortir de la boucle de review, OR doit compléter le step de sortie avec une convergence. Le hint moteur dit littéralement « complete with `converged=true` » (`wf-orchestrate.sh` l.878 et l.922). Mais le parseur ne lit le couple `converged=true` **que** s'il est passé via le flag `--params` (l.1223 `if [[ "$converged" == "true" ]]; then exit_decision="converged"` ; l'exemple correct est l.3412 `--complete REVIEW:CHECK_EXIT --params converged=true`). En suivant le hint à la lettre — `--complete CODE_REVIEW:CHECK_CR_EXIT converged=true` (sans `--params`) — le token est ignoré, `exit_decision` reste `continue` (défaut l.450), et la boucle **ne sort jamais** : elle tourne jusqu'à `max_runs` (auto-escalation) alors que le verdict RV est APPROVED.
+**Impact** : boucle CODE_REVIEW/REVIEW qui ne converge jamais malgré un verdict APPROVED/CONVERGE. Sur ce run, observé sur 2 instances OR successives (l'ancien `or` puis `or2`) → systémique, pas une erreur d'instance. Bloque l'entrée en VALIDATION. Diagnostiqué par lecture du script côté PM.
+**Recommandation** :
+  - **Corriger les hints** (l.878, l.922 et tout hint analogue) pour montrer la commande complète **avec le flag** : `--complete CODE_REVIEW:CHECK_CR_EXIT --params converged=true`. Idem pour `stall=true`.
+  - Idéalement, **tolérer les deux formes** côté parseur (accepter `key=val` en argument positionnel après le step, pas seulement après `--params`), pour rendre l'API robuste à cette confusion récurrente.
+  - Aligner toute la doc/hints sur une seule convention d'invocation des params.
+
+## F-024 — DV en boucle de re-confirmation + OR figé sur `--complete` mécanique + faux `TASK_DONE` **[P0]**
+
+**Phase** : IMPLEMENTATION (transverse)
+**Constat** : 3 dysfonctionnements cumulés observés en `team` mode pendant l'implémentation :
+1. **DV en boucle de re-confirmation** : à chaque transition de tâche, le DV (`dv1`) re-annonçait la tâche **précédente** comme DONE (avec de nouveaux commits parasites) au lieu de démarrer la suivante, sans jamais créer le fichier de la tâche courante. Cause probable : **replay de messages stale** accumulés dans la mailbox (les autres agents ré-émettent des confirmations de la tâche passée, le DV répond à chacune). Mitigation appliquée : **respawn fresh** (`dv1`→`dv2`) = mailbox + contexte propres → a réglé la boucle immédiatement.
+2. **OR figé sur un `--complete` mécanique** : OR est resté ~17 min sur `IMPLEMENTATION:DV_IMPLEMENT` sans exécuter le `--complete` final (toutes tâches APPROVED), malgré 2 instructions explicites avec la commande exacte. PM ne peut pas le faire à sa place (hook wf-auth bloque PM sur step `agent=or`). Mitigation : **respawn OR** (`or`→`or2`) = a débloqué en exécutant le `--complete`. Récurrence du fond de F-014.
+3. **Faux `TASK_DONE` non vérifiés** : le DV a annoncé « 4 critères verts » sur T-001 alors qu'aucun artefact ESLint n'existait (vérifié disque par PM). Plusieurs occurrences. Seule la **vérif disque systématique côté PM** (relire les fichiers + relancer tsc/eslint/biome/vitest) les a interceptés avant validation.
+**Impact** : run fortement ralenti, 2 respawns d'agents nécessaires, risque réel de valider du travail inexistant si le PM faisait confiance aux rapports d'agents.
+**Recommandation** :
+  - **Mailbox** : purger / ignorer les messages stale au passage de tâche (borne « 1 seul `TASK_DONE` par tâche » ; un DV qui re-confirme une tâche déjà DONE doit être un no-op silencieux). Évaluer un respawn DV automatique au passage de tâche **uniquement** si la mailbox est polluée (pas en routine — cf. coût, le recycle per-tâche systématique est surdimensionné pour 1 DV séquentiel sans worktree).
+  - **OR figé sur step mécanique** : étendre l'auto-advance script (cf. F-014) à `DV_IMPLEMENT`-complete quand toutes les tâches sont APPROVED, ou prévoir un watchdog qui réveille l'OR (pas seulement le PM) sur step `agent=or` inchangé depuis N min.
+  - **Faux DONE** : rendre normatif côté DV « coller la sortie réelle des 4 gates avant tout `TASK_DONE` » + côté TL/PM « vérif disque obligatoire, ne jamais faire confiance au rapport d'agent ». Envisager un hook qui refuse le passage `IMPLEMENTED→UNIT_TESTS_OK` sans preuve de sortie de test attachée.
+
+## F-025 — OR sature son contexte alors que son rôle est purement mécanique **[P0, architectural]**
+
+**Phase** : transverse (rôle `wf-or`, mode `team` et `subagent`)
+**Constat** (observation HO, 2026-06-02) : sur un run long (~3 h wall-clock, BOOTSTRAP→VALIDATION), l'OR a **cessé de répondre** : context window saturée. L'OR accumule dans son contexte la totalité du déroulé — chaque dispatch, chaque `brief_complete`, chaque verdict, les artefacts cités, l'historique complet de la state machine. Or **le rôle d'OR est purement mécanique et sans mémoire** : à chaque tour il fait `--query` → lit l'état sur disque → dispatche l'agent du step courant (ou `--complete` si step `agent=or`) → boucle. Il n'a **pas besoin** de connaître le métier du besoin, ni le détail technique, ni l'historique des tours précédents : l'état canonique vit dans `.wf-state.json` + `tasks.md` + `or.log`, pas dans la tête de l'OR. Conséquence vécue : OR figé → 2 respawns nécessaires sur ce seul run (`or`→`or2`, et avant cela le respawn aurait été utile plus tôt), chacun coûteux et source de races stale.
+**Analyse** : l'OR est un **driver déterministe sans état propre**. Tout son état utile est sur disque (lu via `--query`). Garder un contexte conversationnel croissant est un pur passif : ça le fait saturer sans rien apporter à sa fonction.
+**Recommandation (proposition HO)** :
+  - **Contexte minimal permanent** : OR ne devrait porter que (a) les commandes `wf-orchestrate.sh` + la convention de params (cf. F-023), (b) le roster d'agents + comment les adresser, (c) le `need_name`/`need_dir`/`project_root`. **Aucune synthèse métier/technique du besoin** — il lit `--query` à chaque tour.
+  - **`/clear` régulier de l'OR entre chaque phase** (BOOTSTRAP / REQUIREMENTS / FUNCTIONAL_SPECS / TECHNICAL_DESIGN / REVIEW / PLANNING / IMPLEMENTATION / CODE_REVIEW / VALIDATION / CLOSURE), suivi d'un **re-seed bref** (brief de reprise minimal : « tu es OR, voici le need_dir, fais `--query` et pilote »). L'équivalent du **post-clear context recovery** déjà documenté côté PM (`agents/wf-pm.md`), mais appliqué systématiquement à l'OR au lieu d'attendre la saturation.
+  - Côté implémentation : soit un mécanisme de `/clear` piloté (PM ou cron déclenche le reset OR à chaque transition de phase), soit rendre l'OR **stateless par design** (un OR éphémère re-spawné par phase, briefé en 5 lignes). Cette dernière option rejoint F-014/F-024 (respawn comme outil de routine, pas seulement de recovery) — **pour l'OR spécifiquement, le respawn/clear par phase est sain** (contrairement au DV séquentiel où le contexte chaud a de la valeur).
+  - Lien : recoupe F-014 (OR ne s'auto-pilote pas) — un OR à contexte léger et régulièrement remis à zéro est aussi plus fiable pour exécuter ses `--complete` mécaniques sans se figer.
+
+**Résolution (2026-06-02) — OR éphémère par phase** : option « respawn par phase » retenue (la plus robuste, calque `dv_recycle_request`). Le respawn est piloté par PM (seul détenteur du droit de spawn) ; OR détecte la frontière et passe le relai.
+  - **Script** (`wf-orchestrate.sh`, `_wf_advance_state`) : tout `--complete` traversant une frontière de phase ajoute `phase_boundary:true` + `completed_phase`/`new_phase` au JSON de retour (absent en intra-phase et au TERMINAL/ERROR). Logique vérifiée en isolation ; `bats tests/wf-step-agents.bats` au vert (14/14), `bash -n` OK.
+  - **OR** (`agents/wf-or.md`) : §"Phase-boundary handoff" — à `phase_boundary:true`, OR logge `[PHASE-HANDOFF]`, émet `or_recycle_request` à PM, puis **termine sa vie** (ne re-query pas). INV-OR-HANDOFF-01..04.
+  - **PM** (`agents/wf-pm.md`) : handler `or_recycle_request` — shutdown OR → respawn OR avec brief resume minimal `team_alive:true` (pas de re-spawn de la team vivante), reset watchdog `respawn_count`. Pas de `spawn_confirmed` (OR mort, le neuf s'auto-pilote).
+  - **Resume sequence OR** patchée : `team_alive:true` ⇒ skip étapes 5-6 (re-spawn team) → `--query` direct → pilote `new_phase`.
+  - **Reste à valider sur run live** : comportement bout-en-bout OR↔PM (handoff, latence shutdown/respawn, absence de double-recycle) — non testable en unitaire ici.

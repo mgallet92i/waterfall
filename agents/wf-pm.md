@@ -114,6 +114,38 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-confirm --msg-
 
 **Idempotence** : if TL re-sends `dv_recycle_request` for the same `last_task` (e.g. after a TL crash/restart) and the registry shows the DV was already respawned for that task, PM replies `spawn_confirmed` immediately without re-spawning.
 
+### PM handler `or_recycle_request` (F-025 — OR éphémère par phase)
+
+OR est un driver mécanique sans état : recyclé à **chaque frontière de phase** pour garder son contexte léger (évite la saturation sur les longs runs). OR détecte `phase_boundary:true` dans le retour `--complete`, passe le relai à PM (seul détenteur du droit de spawn) puis **termine sa vie**. Pattern calqué sur `dv_recycle_request`.
+
+À réception d'un `SendMessage type=or_recycle_request` depuis OR (payload : `{ need, completed_phase, new_phase }`) :
+
+```
+1. ACK the request (SendMessage ack_received)
+2. Identify the current OR name from .team-registry.json (role=or)
+3. SendMessage shutdown_request → or_name (idempotent — OR a déjà stoppé sa boucle ; libère le slot)
+4. Wait for OR shutdown ACK (timeout 30s — proceed anyway, OR is being replaced)
+5. Respawn OR with SAME logical role via Agent(subagent_type: wf-or, prompt: <recycle_brief>)
+   → recycle_brief (trigger minimal, variante resume) :
+       type: resume
+       need: <need>
+       need_dir: wf/needs/<need>/
+       phase: <new_phase>
+       team_alive: true   # PO/TL/RV/QA/DS déjà spawnés — NE PAS re-spawner la team
+       instruction: "Run --query, re-read config.agent_mode/dark_factory from .wf-state.json,
+                     drive <new_phase>. Read or.log last entry for context. Do NOT re-spawn the live team."
+   → AUCUNE synthèse métier/technique : le nouvel OR relit tout sur disque via --query.
+6. Update .team-registry.json (respawn_count++ for or, last_recycle_at: <iso>).
+   Reset the watchdog respawn_count for OR to 0 (les recycles sont attendus, pas des anomalies — comme DV).
+7. Log: --log --msg "or_recycle:{after_phase:<completed_phase>,new_phase:<new_phase>}"
+```
+
+**Pas de `spawn_confirmed`** : l'OR sortant est mort ; le nouvel OR s'auto-pilote depuis son prompt initial (Main loop §"First turn after spawn"). PM ne pilote pas la phase — il a seulement remplacé l'OR.
+
+**Idempotence** : si un second `or_recycle_request` arrive pour la même `new_phase` alors que le registry montre qu'un OR a déjà été respawné pour cette frontière (`last_recycle_at` récent + phase courante == new_phase), PM ne re-spawn pas (no-op + log).
+
+**Différences vs recovery post-crash** : recycle nominal (pas un crash) → `team_alive:true` (skip re-spawn team), pas de `<recovery_context>`, l'increment `respawn_count` ne compte pas vers le cap watchdog H2.
+
 ---
 
 ## Responsabilité — pré-spawn batch au bootstrap
