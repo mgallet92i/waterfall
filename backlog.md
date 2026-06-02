@@ -18,14 +18,14 @@ Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Ch
 | F-008 | VALIDATION | QA omet de créer `acceptance-report.md` | P1 — ✅ résolu (INV-QA-ARTEFACT : artefact obligatoire avant `--complete`) |
 | F-009 | CLOSURE | wf-auth bloque OR sur `src/**` — délégation TL/DV nécessaire | P3 (documenté) |
 | F-010 | * | Params `--complete` incorrects dans briefs OR | P1 — ✅ résolu (table de réf params par step dans wf-or.md, miroir de STEP_PARAMS) |
-| F-011 | CLOSURE | wf-auth bloque OR sur `retro.md` § Anomalies | P2 |
+| F-011 | CLOSURE | wf-auth bloque OR sur `retro.md` § Anomalies | P2 — ✅ déjà résolu (exception `or_retro_log_audit_exception` dans wf-auth.sh, step LOG_AUDIT) |
 | F-012 | REVIEW | RV vivant idle après job, oublie `--complete` final | P1 |
 | F-013 | TECHNICAL_DESIGN | TL n'introspecte pas le schéma cible avant de poser un data model SQL/SOQL | P0 |
 | F-014 | * (team) | OR ne s'auto-pilote pas : idle après chaque action au lieu d'enchaîner le step suivant | P0 — 🟢 partiellement adressé (auto-advance script) |
 | F-015 | * | OR se fige sur un step mécanique sans artefact attendu (ex. VALIDATE_SPECS) | P1 — ✅ résolu (auto-advance VALIDATE_SPECS) |
 | F-016 | * | `dispatch_step` envoyé en SendMessage mais non `--ack-register` → invisible du watchdog | P1 — ✅ résolu (INV-DISPATCH-ACK : tout dispatch actionnable suivi d'un --ack-register) |
 | F-017 | * | Watchdog PM lit un état périmé (race lecture disque vs écritures OR) | P2 |
-| F-018 | * (hook) | `wf-auth.sh` rejette les `--log` dont le message contient le mot « COMPLETE » | P1 |
+| F-018 | * (hook) | `wf-auth.sh` rejette les `--log` dont le message contient le mot « COMPLETE » | P1 — ✅ résolu (neutralisation de la valeur `--msg` avant détection des flags) |
 | F-019 | BOOTSTRAP | `wf-registry.sh init` est un no-op alors que RULE 4 le présente comme prérequis d'auth | P2 |
 | F-020 | * | Respawn STUCK_PEER : collision de nom (`or`→`or-2`) + ancien OR zombie rejoue un backlog périmé | P1 |
 | F-021 | BOOTSTRAP | `wf-orchestrate --init` cherche les templates dans le projet, pas dans le plugin → fichiers vides | P3 |
@@ -115,6 +115,8 @@ Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Ch
   - (a) Autoriser OR à écrire la seule section `## Anomalies détectées` de `retro.md` (whitelist sectionnelle dans wf-auth)
   - (b) Reassigner `CLOSURE:LOG_AUDIT` à `agent=pm` et PM relaye OR via mailbox
 
+**Résolution** : option (a) **déjà implémentée** (`hooks/wf-auth.sh`, exception `or_retro_log_audit_exception`, fact-8988fa8e) — OR est autorisé à écrire `retro.md` via Bash uniquement quand `.wf-state.json:step == LOG_AUDIT`. Finding vérifié clos lors de la passe quick-wins 2026-06-02 (aucune action requise).
+
 ## F-012 — RV vivant idle après job, oublie `--complete` final
 
 **Phase** : REVIEW (et CODE_REVIEW)
@@ -192,6 +194,8 @@ Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Ch
 **Constat** : Un `wf-orchestrate.sh <need> --log --msg "...COMPLETE..."` est rejeté par le hook `wf-auth.sh` avec `cannot extract step from ...`. Le hook fait un match trop greedy : il cherche le motif d'un `--complete <phase>:<step>` **sur toute la ligne** au lieu de ne matcher que le flag réel. Contournement adopté : éviter le mot « COMPLETE » dans les messages de log. (OBS-003 du need.)
 **Impact** : Messages de log/rodage mutilés, contournement permanent nécessaire.
 **Recommandation** : Corriger `wf-auth.sh` pour ne parser le couple `phase:step` **que** lorsque le flag `--complete` est réellement présent en position d'argument (parsing par token d'argument, pas regex sur la ligne entière / le contenu de `--msg`). Fix trivial, gain de confort élevé.
+
+**Résolution (2026-06-02)** : `hooks/wf-auth.sh` neutralise la valeur de `--msg` (`args_scan`, strip des deux styles de quotes) **avant** toute détection de flag (`--fast-path-skip`, `--complete`, extraction du step). Un `--complete`/`PHASE:STEP` figurant dans le contenu d'un `--msg` de `--log` n'est plus pris pour un flag opérant. Vérifié : T1 (`--log` avec "COMPLETE" + `--complete REVIEW:CHECK_EXIT` dans le msg) → exit 0 ; T2 (PHASE:STEP dans msg) → exit 0 ; T3 (vrai `--complete` pm sur step or) → bloqué exit 2 (enforcement intact).
 
 ## F-019 — `wf-registry.sh init` no-op alors que RULE 4 le présente comme prérequis
 

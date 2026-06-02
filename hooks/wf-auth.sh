@@ -401,9 +401,16 @@ name_from_cmd="${BASH_REMATCH[3]}"
 args_after="${command#*wf-orchestrate.sh }"
 args_after="${args_after#"$name_from_cmd"}"
 
+# F-018: neutralise the --msg value before any flag detection. A `--log --msg "...COMPLETE..."`
+# or a log message quoting `--complete PHASE:STEP` must NOT be mistaken for an operative
+# --complete flag (the old line-wide match blocked legitimate log messages — OBS-003).
+# Strip both quote styles; flag checks below run on the de-msg'd copy.
+args_scan="$args_after"
+args_scan=$(printf '%s' "$args_scan" | sed -E 's/--msg[[:space:]]+"[^"]*"//g; s/--msg[[:space:]]+'\''[^'\'']*'\''//g')
+
 # 3b. PM whitelist for --fast-path-skip (ADR-FP-02, T-003).
 # --fast-path-skip is reserved to the pm agent (like --abort).
-if [[ "$args_after" == *"--fast-path-skip"* ]]; then
+if [[ "$args_scan" == *"--fast-path-skip"* ]]; then
   local_name="$name_from_cmd"
   agent_type_fps=$(echo "$payload" | jq -r '.agent_type // ""')
   agent_type_fps="$(_wf_normalize_agent_type "$agent_type_fps")"
@@ -419,7 +426,7 @@ if [[ "$args_after" == *"--fast-path-skip"* ]]; then
   exit 0
 fi
 
-if [[ "$args_after" != *"--complete"* ]]; then
+if [[ "$args_scan" != *"--complete"* ]]; then
   exit 0
 fi
 
@@ -431,7 +438,7 @@ if [[ "$name" == --* ]]; then
 fi
 
 # 5. Extract <step> after --complete.
-if [[ ! "$args_after" =~ --complete[[:space:]]+([A-Za-z0-9_:]+) ]]; then
+if [[ ! "$args_scan" =~ --complete[[:space:]]+([A-Za-z0-9_:]+) ]]; then
   echo "wf-auth: cannot extract step from --complete. Blocked." >&2
   exit 2
 fi
