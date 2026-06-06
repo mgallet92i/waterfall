@@ -306,12 +306,19 @@ Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Ch
 **Impact** : workflow bloqué en fin de parcours (livrable pourtant complet + gates verts). Nécessite une intervention manuelle sur `.wf-state.json`.
 **Fix appliqué (2026-06-02)** : `compute_next_step` — transition `IMPLEMENTATION:MERGE_WORKTREES` court-circuite vers `VALIDATION:PO_VALIDATE` quand `agent_mode == subagent-light` (PO/QA ensuite auto-skippés → `HO_VALIDATE`). Miroir d'ANO-005. À valider sur un prochain run light.
 
-## F-028 — `VALIDATION:HO_VALIDATE` réassigné à OR par `dark_factory` mais aucun OR en `subagent-light` **[P1]**
+## F-028 — `VALIDATION:HO_VALIDATE` réassigné à OR par `dark_factory` mais aucun OR en `subagent-light` **[P1] [NON-BUG en flux nominal — fermé]**
 
 **Phase** : VALIDATION (mode `subagent-light` + `dark_factory=on`)
 **Constat** (run `flow-editor`, 2026-06-02, après recovery F-027) : `resolve_step_agent` réassigne les steps de décision (`CHECKPOINT_*`, `HO_VALIDATE`) à **OR** quand `dark_factory=on` (auto-approbation sans HO). Mais en `subagent-light` il n'y a pas d'OR → `HO_VALIDATE` (NEVER_SKIP) reste agent=or, et `wf-auth` rebloque le PM. Même classe que F-027 : un step réassigné OR par dark dans un mode sans OR.
 **Impact** : second deadlock à la clôture, juste après F-027.
-**Recommandation** : en `subagent-light`, `dark_factory` doit réassigner les décisions au **PM** (le décideur de dernière instance en light, cf. skill `wf-pm-light`), **pas** à OR. À corriger dans `resolve_step_agent` (garde `agent_mode == subagent-light` → ne pas router vers `or`). Couvre F-027 et F-028 d'un coup si traité à la racine de la réassignation.
+**Recommandation initiale (ÉCARTÉE)** : ~~en `subagent-light`, `dark_factory` doit réassigner les décisions au **PM**, pas à OR (garde dans `resolve_step_agent`).~~
+
+**Résolution (2026-06-06) — non-bug en flux nominal, reco initiale écartée car nuisible.**
+  - **Repro empirique** (code actuel, F-027 corrigé) : `--complete IMPLEMENTATION:MERGE_WORKTREES` en `subagent-light`+`dark` cascade l'auto-skip `PO_VALIDATE → QA_ACCEPTANCE_TEST → HO_VALIDATE → CHECKPOINT_VALID → CLEANUP_WORKTREES → CLOSURE:COMMIT`. `HO_VALIDATE` est **`skipped`, pas deadlock**. Confirmé aussi sur le run archivé `dv-tasks-dashboard` (light+dark, 2026-05-13) : `HO_VALIDATE`/`CHECKPOINT_VALID` y sont `skipped`.
+  - **Mécanique** : `resolve_step_agent(HO_VALIDATE, dark=on, light)` → `or` (DARK_OVERRIDE) ; or `or ∈ STEP_AGENT_SKIP_LIGHT` ⇒ la condition de `break` de `_wf_auto_skip_light` (l.1579) ne déclenche pas ⇒ le step est auto-skippé. La combinaison short-circuit F-027 + `or`-skiplist couvre la fin de parcours.
+  - **Pourquoi la reco est écartée** : réassigner le dark override à `pm` en light ferait résoudre `HO_VALIDATE` → `pm` (∉ `STEP_AGENT_SKIP_LIGHT`) ⇒ l'auto-skip `break` dessus ⇒ PM doit compléter manuellement ⇒ **régression de l'autonomie dark** (le mode dark vise zéro stop). Le « fix » réintroduirait un arrêt là où il n'y en a plus.
+  - **Cause du deadlock observé sur `flow-editor`** : artefact de la **recovery manuelle** de F-027 alors non corrigé (state hand-édité en plein VALIDATION → un `--query` renvoie `HO_VALIDATE/agent=or` mais `_wf_auto_skip_light` ne tourne que sur `--complete`, pas `--query`). Avec F-027 corrigé, plus de recovery manuelle nécessaire → plus de deadlock.
+  - **Aucun changement de code.** Finding fermé.
 
 ---
 
