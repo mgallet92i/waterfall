@@ -179,6 +179,25 @@ Lire l'output en entier. Il décrit le contrat complet : commandes, params, rout
 
 ---
 
+## Anti-silence — vérifier l'exit code de chaque appel `wf-orchestrate.sh` (F-030)
+
+Tout appel à `wf-orchestrate.sh` (`--query`, `--complete`, `--ack-*`, `--log`, `--init`, …) **DOIT** être suivi d'une vérification de son **code de sortie** et de son **contenu** avant d'en tirer une conclusion. Un appel qui échoue ne doit **jamais** passer en silence.
+
+- **Exit ≠ 0** (ex. `{"error":"STATE_NOT_FOUND",...}`, exit 1) : NE PAS continuer comme si l'état était connu. Logger l'erreur et **remonter à PM/OR** (SendMessage), ou corriger la cause (souvent un **cwd** hors du repo projet → se replacer à la racine, ou exporter `WF_PROJECT_ROOT`). Un `STATE_NOT_FOUND` signifie que le script n'a pas trouvé le projet — surtout pas inventer un état.
+- **Exit 0 mais sortie inattendue** : si `--query` renvoie `BOOTSTRAP:DETERMINE_NAME` alors que le workflow est censé être avancé, c'est suspect (historiquement : mauvais cwd → projet fantôme). Re-vérifier le cwd / `WF_PROJECT_ROOT` avant d'agir.
+- **Forme recommandée** :
+
+```bash
+out=$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query) || {
+  echo "[ERREUR] wf-orchestrate --query a échoué (exit $?): $out" >&2
+  # remonter à PM/OR, ne pas poursuivre sur un état supposé
+}
+```
+
+**Règle dure** : aucune affirmation d'état (« le step est X », « j'avance vers Y ») ne doit reposer sur un appel dont l'exit code n'a pas été vérifié. Un échec non remonté = blocage muet (le pire mode de panne — cf. F-030/OBS-009).
+
+---
+
 ## Bash write prohibition
 
 Tout agent disposant des outils `Write` et `Edit` **ne doit jamais utiliser `Bash` pour écrire des fichiers** (`echo > file`, `cat > file`, `tee`, heredoc `<<EOF >`, etc.).
