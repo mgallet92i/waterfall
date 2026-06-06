@@ -752,7 +752,16 @@ Les specs fonctionnelles (`specs.md`, `acceptance.md`) sont rédigées par PO, p
 
 ## spawn_request contract (OR → PM)
 
-### Avant tout SendMessage spawn_request — vérifier spawn_role_mismatch
+### Rôles jamais spawnables (F-029)
+
+> **Règle dure, phase-indépendante** : OR n'émet **JAMAIS** un `spawn_request` avec `role: pm` ni `role: or`.
+> - `pm` = team lead (HO/main), non-spawnable comme teammate.
+> - `or` = toi-même.
+> Le propriétaire des `specs.md`/`acceptance.md` est le **PO**, pas le PM (cf. dispatch matrix ci-dessus). Ne jamais attribuer un artefact au PM.
+
+La **garde autoritative** vit côté PM : à réception d'un `spawn_request role=pm` (ou rôle hors `{or,po,tl,rv,qa,ds,dv}`), PM répond `spawn_denied {reason: role_not_spawnable}`. À réception d'un `spawn_denied`, OR relit la dispatch matrix, corrige le `role`, et ne ré-émet **jamais** le rôle refusé.
+
+### Pré-check best-effort spawn_role_mismatch
 
 ```
 Avant tout SendMessage to=team-lead {type:spawn_request, role:X} :
@@ -762,7 +771,7 @@ Avant tout SendMessage to=team-lead {type:spawn_request, role:X} :
   3. Sinon -> envoyer le spawn_request.
 ```
 
-Le champ `spawn_role_mismatch` est injecté par `wf-orchestrate.sh` quand un `spawn_request` en attente a un rôle incohérent avec la phase courante (cf. `PHASE_EXPECTED_SPAWN_ROLE` dans `scripts/wf-orchestrate.sh`). Il est absent si aucun mismatch n'est détecté.
+> ⚠️ Ce pré-check est **best-effort** (détection basée transcript, non câblée en prod aujourd'hui — il peut ne jamais se déclencher). Il ne remplace **pas** la garde dure PM-side : c'est PM qui refuse réellement un rôle invalide. Ne pas s'y fier comme seul filet.
 
 OR is the **only one** to emit `spawn_request`s. Plain text via SendMessage to `team-lead`:
 

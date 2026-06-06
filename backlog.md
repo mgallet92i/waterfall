@@ -225,6 +225,8 @@ Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Ch
 **Impact** : Warnings systématiques, risque d'écrasement par fichiers vides selon l'ordre.
 **Recommandation** : `wf-orchestrate --init` doit résoudre les templates depuis `${CLAUDE_PLUGIN_ROOT}/wf/templates/<lang>` (fallback `en`), comme le fait le skill `wf-new`, et **ne jamais écraser** un artefact non vide existant. Source de vérité unique pour le chemin des templates.
 
+**Récurrence (2026-06-06, need `dap-debug-bridge`, repo `FIXER`, mode `team`)** : reproduit à l'identique sur un repo neuf — 9 `WARN: template X not found in FIXER/wf/templates — creating empty file` à l'`--init`. Les copies du Step 2.bis (`wf-new`) ont de nouveau survécu (fichiers non vides non écrasés), donc bénin sur ce run, mais c'est la **3e occurrence** du même comportement → la classe P3 sous-estime la fréquence. Proposition : **P2**, le fix (résolution templates depuis `${CLAUDE_PLUGIN_ROOT}` + garde anti-écrasement) étant trivial et le warning bruyant à chaque bootstrap.
+
 ---
 
 # Source 3 — need `mcp-sf-cli-socle-retrieve-data` (2026-06-02, repo `MCP_SF_CLI`)
@@ -310,3 +312,30 @@ Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Ch
 **Constat** (run `flow-editor`, 2026-06-02, après recovery F-027) : `resolve_step_agent` réassigne les steps de décision (`CHECKPOINT_*`, `HO_VALIDATE`) à **OR** quand `dark_factory=on` (auto-approbation sans HO). Mais en `subagent-light` il n'y a pas d'OR → `HO_VALIDATE` (NEVER_SKIP) reste agent=or, et `wf-auth` rebloque le PM. Même classe que F-027 : un step réassigné OR par dark dans un mode sans OR.
 **Impact** : second deadlock à la clôture, juste après F-027.
 **Recommandation** : en `subagent-light`, `dark_factory` doit réassigner les décisions au **PM** (le décideur de dernière instance en light, cf. skill `wf-pm-light`), **pas** à OR. À corriger dans `resolve_step_agent` (garde `agent_mode == subagent-light` → ne pas router vers `or`). Couvre F-027 et F-028 d'un coup si traité à la racine de la réassignation.
+
+---
+
+# Source 4 — need `dap-debug-bridge` (2026-06-06, repo `FIXER`)
+
+> Outil FIXER : debugger pilotable par agent LLM via DAP (pont Rust + adapter `js-debug`). Mode **`team`**, tous rôles `sonnet`, `dark_factory=off`, `watchdog.interval=3min`.
+
+## F-029 — OR confond la topologie de la team : demande de spawner un "PM" + mauvais owner d'artefact **[P1] [FIXÉ Layer A]**
+
+**Phase** : BOOTSTRAP → FUNCTIONAL_SPECS
+**Constat** : juste après le bootstrap (state machine **encore à `BOOTSTRAP:DETERMINE_NAME`**, jamais avancée), l'OR (`sonnet`) a, en un seul message :
+1. **Inventé une task-chain hors state machine** : 6 tâches harness `#1-#6` (PM→TL→DV→RV→QA→OR-CLOSURE) créées dans la TaskList partagée, traitées comme le pilote réel du workflow à la place de `wf-orchestrate.sh --query/--complete`.
+2. **Demandé au PM de spawner un agent "PM"** avec le brief de rédaction des specs — alors que **PM = team lead** (la conversation principale, non spawnable comme teammate).
+3. **Attribué `specs.md` + `acceptance.md` au "PM"** au lieu du **PO** (déjà spawné, en stand-by) — violation directe du mapping artefacts→owners de la constitution (`specs/acceptance = PO`).
+
+Recoupe F-001 (brief out-of-order, state machine non avancée) mais l'élément **nouveau** est la **confusion de topologie/rôles** : OR ne sait pas que PM est le lead non-spawnable, ni que l'auteur des specs est le PO. PM a dû compléter `BOOTSTRAP:DETERMINE_NAME` lui-même et remettre OR sur les rails.
+**Impact** : si le PM avait obéi, il aurait spawné un teammate "PM" parasite (collision de rôle), fait écrire les specs au mauvais agent, et laissé le PO en stand-by indéfini. State machine totalement court-circuitée.
+**Recommandation** :
+  - `agents/wf-or.md` : table explicite **rôle → artefact → owner** (PM=PRD+commit ; PO=specs+acceptance ; TL=design+tasks ; DV=code ; RV=review ; QA=acceptance-report ; DS=ui). Règle DURE : « **Ne jamais demander de spawner PM** (c'est le team lead). Pour les specs/acceptance, l'agent est **PO**. »
+  - Rappeler dans le brief OR que le pilote unique du workflow est `--query`/`--complete`, **pas** une TaskList harness auto-créée (recoupe F-014 : la TaskList est un miroir de suivi, jamais la source de vérité).
+  - Candidat enforcement : `--query` pourrait renvoyer explicitement `expected_agent_role` + `expected_artifact` pour couper court à l'invention de rôles.
+
+**Résolution (2026-06-06)** — diagnostic + fix racine côté décideur :
+  - **Constat aggravant découvert** : les garde-fous "anti-mismatch" existants étaient **inopérants en prod**. (1) `detect_pending_spawn_role_mismatch` (`wf-orchestrate.sh`) ne fonctionne que si `WF_TEST_TRANSCRIPT_PATH` est set → en run réel retourne toujours "pas de mismatch" (scaffolding TF-OR-03, transcript non câblé). (2) `PHASE_EXPECTED_SPAWN_ROLE[BOOTSTRAP]=""` → aucune détection à `DETERMINE_NAME`, justement là où F-029 s'est produit. (3) `role=pm` n'était jamais rejeté en tant qu'invariant phase-indépendant. (4) Tous ces filets sont **côté OR** — inutiles quand c'est OR (sonnet) le fautif.
+  - **Layer A (appliqué, racine)** — garde dure **PM-side** dans le dispatcher `spawn_request` (`agents/wf-pm.md`) : rejet de tout `role=pm` (lead non-spawnable) et de tout rôle hors `{or,po,tl,rv,qa,ds,dv}` (+ alias dv1..dv9) → réponse `spawn_denied {reason: role_not_spawnable}` + log `[F-029]`. Indépendant du comportement d'OR.
+  - **Layer B (appliqué, doc)** — `agents/wf-or.md` : règle dure phase-indépendante « OR n'émet jamais `spawn_request role=pm|or` » + dispatch matrix rappelant que les specs/acceptance appartiennent au **PO** ; le pré-check `spawn_role_mismatch` est requalifié **best-effort** (non câblé en prod) et explicitement présenté comme **non-substitut** de la garde PM-side (fin de la fausse promesse).
+  - **Reste** : câblage prod du détecteur transcript (Layer B "câbler") volontairement **non retenu** cette itération (garde PM-side suffit). À valider sur un prochain run team.

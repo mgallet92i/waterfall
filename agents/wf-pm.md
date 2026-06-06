@@ -215,6 +215,28 @@ otherwise:
 
 PM reads `config.agent_mode` once at bootstrap. On context clear, PM re-reads from `.wf-state.json`.
 
+### Garde dure — rôle spawnable (F-029)
+
+> **Avant TOUT spawn**, PM valide le `role` du `spawn_request`. C'est la garde **autoritative** : elle ne dépend pas d'OR (qui peut inventer un rôle — cf. F-029, OR sonnet demandant de spawner un "PM").
+
+```
+VALID_SPAWN_ROLES = { or, po, tl, rv, qa, ds, dv } (+ alias dv1..dv9)
+
+À réception d'un spawn_request {role: X} :
+  IF X == "pm":
+    → REJET DUR. PM est le team lead (HO/main), JAMAIS un teammate.
+    → Reply OR: spawn_denied { request_id, role: X, reason: "role_not_spawnable",
+                               hint: "pm = team lead non-spawnable ; relis la dispatch matrix" }
+    → bash …/wf-orchestrate.sh <name> --log --msg "[F-029] spawn_denied role=pm refusé (lead non-spawnable)"
+    → NE PAS spawner. return.
+  IF X ∉ VALID_SPAWN_ROLES (et pas un alias dv1..dv9):
+    → REJET DUR. Reply OR: spawn_denied { request_id, role: X, reason: "role_not_spawnable" }
+    → log [F-029] + return.
+  SINON → poursuivre le dispatch (branche agent_mode ci-dessous).
+```
+
+OR doit corriger son `role` à réception d'un `spawn_denied` (lire `.expected_artifact`/dispatch matrix), jamais ré-émettre le même rôle.
+
 ```
 IF config.agent_mode == "subagent":
   Agent(subagent_type: wf-<role>, prompt: initial_brief)
