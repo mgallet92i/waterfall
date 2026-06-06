@@ -294,6 +294,38 @@ PROJECT_ROOT="${WF_PROJECT_ROOT:-$(pwd)}"
 BASH_TMPDIR=$(mktemp -d)
 trap 'rm -rf "$BASH_TMPDIR"' EXIT
 
+# _wf_resolve_project_root [<name>] — robust PROJECT_ROOT resolution (F-030).
+# The plain `pwd` default (above) silently resolves a PHANTOM project when an
+# agent invokes the script from a wrong cwd: --query then finds no state file
+# and returns the default BOOTSTRAP:DETERMINE_NAME with exit 0 (OBS-009). This
+# walks UP from pwd to anchor the real project root regardless of cwd within
+# the tree. Order: (1) explicit WF_PROJECT_ROOT wins; (2) dir holding the
+# need's own state file (most precise); (3) any waterfall project marker
+# (.wf-config.json or a wf/needs dir); (4) fallback pwd (downstream emits a
+# loud STATE_NOT_FOUND rather than a phantom default).
+_wf_resolve_project_root() {
+  local name="${1:-}"
+  if [[ -n "${WF_PROJECT_ROOT:-}" ]]; then
+    echo "$WF_PROJECT_ROOT"
+    return
+  fi
+  local start p
+  start="$(pwd)"
+  if [[ -n "$name" ]]; then
+    p="$start"
+    while [[ -n "$p" && "$p" != "/" ]]; do
+      [[ -f "$p/wf/needs/$name/.wf-state.json" ]] && { echo "$p"; return; }
+      p="$(dirname "$p")"
+    done
+  fi
+  p="$start"
+  while [[ -n "$p" && "$p" != "/" ]]; do
+    [[ -f "$p/.wf-config.json" || -d "$p/wf/needs" ]] && { echo "$p"; return; }
+    p="$(dirname "$p")"
+  done
+  echo "$start"
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Section 3 : STATE I/O
 # ─────────────────────────────────────────────────────────────────────────────
@@ -731,9 +763,15 @@ handle_query() {
   local state_file="$need_dir/.wf-state.json"
 
   if [[ ! -f "$state_file" ]]; then
-    log "No state file found — returning initial step (pre-bootstrap)"
-    printf '{"phase":"BOOTSTRAP","step":"DETERMINE_NAME","agent":"pm","action":"validate_need_name","params":{"need_name":"%s"},"should_stop":false}\n' "$name"
-    return
+    # F-030: emit the pre-bootstrap default ONLY from a genuine project root.
+    # Outside any waterfall project (wrong cwd), fail loudly instead of
+    # returning a phantom BOOTSTRAP:DETERMINE_NAME with exit 0 (OBS-009).
+    if [[ -f "$PROJECT_ROOT/.wf-config.json" || -d "$PROJECT_ROOT/wf/needs" ]]; then
+      log "No state file found — returning initial step (pre-bootstrap)"
+      printf '{"phase":"BOOTSTRAP","step":"DETERMINE_NAME","agent":"pm","action":"validate_need_name","params":{"need_name":"%s"},"should_stop":false}\n' "$name"
+      return
+    fi
+    emit_error "State file not found for need '$name' from cwd=$(pwd) (PROJECT_ROOT=$PROJECT_ROOT) and no waterfall project root detected. Run from the project directory or set WF_PROJECT_ROOT." "STATE_NOT_FOUND"
   fi
 
   local state_json
@@ -3464,6 +3502,11 @@ EXAMPLES:
 HELPTEXT
   exit 0
 }
+
+# F-030: re-resolve PROJECT_ROOT now that the first CLI arg (need name, or a
+# no-name flag) is known. Anchors the real project root by walking up from cwd,
+# so an agent invoking from a wrong cwd no longer hits a phantom project.
+PROJECT_ROOT="$(_wf_resolve_project_root "${1:-}")"
 
 # Handle no-name commands first: --list, --help/-h
 case "${1:-}" in
