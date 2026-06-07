@@ -36,6 +36,7 @@ Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Ch
 | F-026 | * (subagent-light) | Doc ambiguë : les skills laissent croire que PM doit `--complete` `CHECKPOINT_DESIGN` entre design et tasks, alors qu'en `light + dark` tous les checkpoints pm-owned s'auto-skippent et TL passe-1 enchaîne design+tasks d'une traite (pas de deadlock) | P3 (doc) |
 | F-031 | * (watchdog) | ack-registry : schéma producteur (`{entries:[]}`, epoch) ≠ consommateur watchdog (`.[]` racine, date ISO) → détection ACTOR_IDLE par ACK morte en prod | P0 — ✅ résolu (issu de [ARCH-02]) |
 | F-032 | * (paths) | `PROJECT_ROOT` résolu de 3 façons : orchestrate cwd-walk (F-030 OK) mais watchdog/registry `script_dir/..` = clone plugin → surveillent/écrivent le mauvais arbre | P0 — ✅ résolu (issu de [ARCH-01]) |
+| F-033 | REVIEW/CR | Nommage artefact de revue incohérent : `rv.md`/`code-review.md` (personas) vs `review.md` (script/template/hints) | P2 — issu de [ARCH-06] |
 
 > **Revue d'architecture globale (2026-06-07)** : 10 causes racines `ARCH-01..10` consolidées en fin de fichier — voir section dédiée. Chaque `ARCH-xx` agrège plusieurs F-xxx symptômes.
 >
@@ -427,12 +428,16 @@ Recoupe F-001 (brief out-of-order, state machine non avancée) mais l'élément 
 **Symptômes** : F-014 (idle), F-015 (fige sur step mécanique), F-023 (boucle si flag oublié), F-024 (OR figé sur `--complete`), F-025 (saturation contexte). Les fixes existants (auto-advance, OR éphémère) traitent les symptômes, pas la cause.
 **Remédiation** : faire de CHECK_EXIT/CHECK_CR_EXIT/DISPATCH des steps qui **lisent `review.md`** (verdict structuré CONVERGE/ITERATE) et décident dans le script ; l'agent ne fournit que le verdict brut. Question de fond : OR doit-il être un LLM ? Un driver déterministe scripté supprimerait la classe entière.
 
+**Avancement (2026-06-07) — safety-net REVIEW appliqué (option A).** Investigation : le verdict de RV n'était PAS consommé (`STEP_PARAMS[RV_REVIEW]=""` alors que `wf-rv.md` demande `--params verdict=…` → rejeté/ignoré — drift corrigé au passage). Fix **additif** : `verdict` accepté à `RV_REVIEW`, persisté en state (`review_verdict`), et `CHECK_EXIT` traite `verdict=CONVERGE` exactement comme le flag `converged` d'OR. Un flag oublié (F-023) ne gaspille donc plus de cycles ni ne déclenche de fausse escalade quand RV a déjà rendu CONVERGE. Vérifié : CONVERGE / ITERATE / rétro-compat flag + `bats` 80/80. **Reste** : CODE_REVIEW (`RV_CODE_REVIEW` ne passe aucun verdict — plomberie différente), portage déterministe de DISPATCH, et le débat OR-LLM-vs-driver. Drift de nommage artefact découvert → [F-033].
+
 ## ARCH-04 — Aucun gate de vérification à `--complete` **[P0]**
 
 **Constat** : `--complete` fait avancer la state machine sans jamais appeler `--validate` (commande **séparée** que l'agent invoque ou non, `wf-orchestrate.sh:3262,3577`). La règle « vérifier que l'artefact existe avant de compléter » (FS-CHECK) vit **uniquement** dans le prompt (`wf-or.md:140-152`). La complétion est auto-certifiée.
 **Cause racine** : le seul garde-fou est délégué au jugement du LLM, hors du chemin d'exécution.
 **Symptômes** : F-002 (`--complete` sans exécution réelle), F-008 (artefact QA manquant), F-024#3 (faux TASK_DONE), famille F-030 (état avancé sans substrat réel).
 **Remédiation** : `--complete` exécute le `--validate` du step courant et **refuse l'avancement** si l'artefact attendu est absent/trivial — transformer le FS-CHECK documentaire en gate machine.
+
+**Avancement (2026-06-07) — gate déjà présent, dé-dupliqué.** Constat correctif : contrairement à l'analyse initiale, `handle_complete` (l.~1294) **enforce déjà** l'existence + modification de l'artefact (`ARTIFACT_NOT_FOUND`/`ARTIFACT_NOT_MODIFIED`, exit 1) avant d'avancer — le gate machine existe. Le vrai défaut était la **duplication** de ce check avec `handle_validate` (deux copies divergentes, instance d'ARCH-06). Factorisé en un helper unique `_wf_check_step_artifact` (au passage `handle_validate` gagne le fallback gitignore qui lui manquait). Vérifié : 3 cas `--validate` + `bats` 80/80. Le faux-DONE niveau **tâche** (F-024#3 : DV annonce des gates verts sans preuve) reste un chantier distinct (hook « preuve de sortie de test »).
 
 ## ARCH-05 — Explosion combinatoire des modes **[P1]**
 
@@ -453,6 +458,8 @@ Recoupe F-001 (brief out-of-order, state machine non avancée) mais l'élément 
 **Cause racine** : personas écrits comme doc de référence exhaustive au lieu de pointer vers la sortie runtime. Quand le script change, le `.md` ment.
 **Symptômes** : F-010 (params inventés), F-019, F-023 (hint), F-026, F-029 Layer B.
 **Remédiation** : purger les tables `STEP_*` des `.md` et skills ; agents strictement *hint-driven* sur `--query` ; générer `phases_and_steps` depuis `STEPS[]` ; test CI qui échoue si une table réapparaît dans un `.md`.
+
+**Avancement (2026-06-07) — étape 1 faite.** `phases_and_steps` (contrat émis par `--help`, lu par OR) est désormais **généré depuis `STEPS[]`** au lieu d'être hardcodé → le drift interne `PR_TRIAGE` (absent de la liste hardcodée) est résorbé ; égalité `--help` == `STEPS[]` vérifiée + `bats` 80/80. **Étape 2 NON faite** (gros morceau comportemental) : purge des tables `STEP_*` dupliquées dans les 9 `.md`/skills + bascule agents *hint-driven* + test CI anti-réapparition — à planifier (change le contrat des personas).
 
 ## ARCH-07 — Dette de prose : logique en consignes LLM, code mort, collisions `INV-` **[P1]**
 
@@ -513,7 +520,18 @@ Le plugin étant installé depuis un clone (ex. `C:\projets\waterfall`) mais con
   2. watchdog/registry doivent recevoir le projet via `WF_PROJECT_ROOT`/argument (déjà résolu par l'appelant), jamais via `script_dir/..`.
   3. Test de non-régression : invoquer watchdog/registry depuis un cwd ≠ clone plugin et vérifier qu'ils résolvent le bon `.wf-state.json`.
 
+> **Note** : voir aussi [F-033] (drift de nommage `rv.md`/`review.md`) ci-dessous, découvert lors de l'implémentation d'ARCH-03-A.
+
 **Résolution (2026-06-07)** : resolveur canonique extrait dans `scripts/lib/wf-paths.sh` (`_wf_resolve_project_root`, ordre WF_PROJECT_ROOT → walk-up state file du need → marqueur projet → fallback pwd). Sourcé par les 3 scripts : `wf-watchdog.sh` (`_wf_resolve_project_root "$name"`) et `wf-registry.sh` (`_wf_reg_path` résout par-need) remplacent leur `script_dir/..` ; `wf-orchestrate.sh` source la lib et supprime sa copie inline (comportement identique, re-résolution l.3485 inchangée). Vérifié : `bash -n` 5/5, `bats tests/` 80/80 PASS (dont paths + STEP_AGENT + wf-auth, aucune régression sur l'extraction). Migration B1 (158 réfs `${CLAUDE_PLUGIN_ROOT}`) reste P2 reportée (cf. [F-030]).
+
+---
+
+## F-033 — Nommage incohérent de l'artefact de revue : `rv.md`/`code-review.md` vs `review.md` **[P2]** [issu de ARCH-06]
+
+**Phase** : REVIEW / CODE_REVIEW
+**Constat** : `agents/wf-rv.md:50-51` indique à RV de produire `rv.md` (REVIEW) et `code-review.md` (CODE_REVIEW). Mais le template (`wf/templates/*/review.md`), le `--init` (`wf-orchestrate.sh:2082`), les hints OR et le court-circuit `compute_next_step` (« no review.md ») référencent tous **`review.md`**. RV écrit donc potentiellement `rv.md` pendant que le moteur regarde `review.md` resté au template (`verdict: PENDING`).
+**Impact** : OR ne peut pas lire le verdict dans le fichier attendu ; le short-circuit « no review.md » peut se déclencher à tort. **N'affecte PAS** le fix [ARCH-03-A] (qui propage le verdict via `--params`/state, pas via le fichier) — découvert pendant son implémentation.
+**Recommandation** : trancher UN nom unique (`review.md` recommandé — déjà câblé partout sauf `wf-rv.md`) et corriger `agents/wf-rv.md`. Idem pour CODE_REVIEW. Instance directe d'ARCH-06 (drift doc/script).
 
 ---
 
