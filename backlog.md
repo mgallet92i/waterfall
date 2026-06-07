@@ -34,6 +34,12 @@ Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Ch
 | F-024 | IMPLEMENTATION | DV en boucle de re-confirmation des tâches passées à chaque transition (mailbox stale) ; OR se fige sur `--complete` mécanique ; faux `TASK_DONE` non vérifiés | P0 |
 | F-025 | * (architecture OR) | OR sature son contexte (full need + historique) alors que son rôle est purement mécanique → ne répond plus. Proposition : OR sur contexte minimal + `/clear` entre phases + re-seed bref | P0 — 🟢 implémenté (OR éphémère par phase : flag `phase_boundary` + handler PM `or_recycle_request`) ; à valider sur run live |
 | F-026 | * (subagent-light) | Doc ambiguë : les skills laissent croire que PM doit `--complete` `CHECKPOINT_DESIGN` entre design et tasks, alors qu'en `light + dark` tous les checkpoints pm-owned s'auto-skippent et TL passe-1 enchaîne design+tasks d'une traite (pas de deadlock) | P3 (doc) |
+| F-031 | * (watchdog) | ack-registry : schéma producteur (`{entries:[]}`, epoch) ≠ consommateur watchdog (`.[]` racine, date ISO) → détection ACTOR_IDLE par ACK morte en prod | P0 — ✅ résolu (issu de [ARCH-02]) |
+| F-032 | * (paths) | `PROJECT_ROOT` résolu de 3 façons : orchestrate cwd-walk (F-030 OK) mais watchdog/registry `script_dir/..` = clone plugin → surveillent/écrivent le mauvais arbre | P0 — ✅ résolu (issu de [ARCH-01]) |
+
+> **Revue d'architecture globale (2026-06-07)** : 10 causes racines `ARCH-01..10` consolidées en fin de fichier — voir section dédiée. Chaque `ARCH-xx` agrège plusieurs F-xxx symptômes.
+>
+> **Chantiers d'amélioration (`ENH-xxx`)** : sujets d'enrichissement (≠ anomalies in-vivo) en fin de fichier. `ENH-001` — enrichir les templates d'artefacts via le template « Étude d'impacts et Solution Technique ». `ENH-002` — agent **MO** (amélioration continue auto), concept détaillé dans une doc à part.
 
 ---
 
@@ -365,3 +371,210 @@ Recoupe F-001 (brief out-of-order, state machine non avancée) mais l'élément 
   - **(2) Chemin du script — migration B1 [P2, reporté]** : enregistrer `config.orchestrate_path` (absolu, auto-déterminé par `SCRIPT_DIR` à `--init`) dans `.wf-state.json` et migrer les 158 `${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh` pour le lire. **Reporté en P2** (décision 2026-06-07) : l'étape 1 a corrigé le vrai bug silencieux ; le risque `CLAUDE_PLUGIN_ROOT` UNSET échoue *bruyamment* (pas la cause du silence) et la garde anti-silence le rattrape. Churn 158 réfs disproportionné tant que la friction ne se reproduit pas in vivo. À ressortir si `CLAUDE_PLUGIN_ROOT` UNSET est confirmé en contexte agent réel.
   - **Garde anti-silence (constitution) — ✅ APPLIQUÉE (2026-06-07)** : section « Anti-silence » dans `agents/_shared/constitution.md` — tout appel `wf-orchestrate.sh` vérifie exit code + contenu, remonte à PM/OR si ≠ 0, ne jamais inventer un état. Couvre aussi le résiduel `STATE_NOT_FOUND` de l'étape 1.
 **Note histo (ancien diagnostic 127, conservé)** : `CLAUDE_PLUGIN_ROOT` est UNSET dans le shell main ; 158 occurrences en dépendent. Réel mais **secondaire** (échouerait bruyamment) — traité par le chantier (2), pas la cause racine du blocage muet.
+
+---
+
+# Revue d'architecture globale — 2026-06-07 (repo `waterfall` lui-même)
+
+> Revue de code globale du framework (déclencheur : régime de maintenance corrective lourd — ratio `fix/feat ≈ 0,92` sur 8 semaines, 16 codes F-0xx distincts, F-030 corrigé en 4 commits). Objectif : remonter des **symptômes** (F-001..F-032) aux **causes racines architecturales** qui les régénèrent.
+>
+> **Méthode** : revue en éventail (state machine, personas agents, couche coordination/hook, churn git) + vérification empirique sur le code des claims structurants.
+>
+> **Constat empirique** (analyse git 8 semaines) : hotspots de churn = `wf-or.md` (32 modifs), `wf-orchestrate.sh` (29), `wf-pm.md` (19), `wf-auth.sh` (15). **Le cœur de 3620 lignes (`wf-orchestrate.sh`) a 0 test dédié** (80 tests bats, 63 sur `wf-auth.sh`, 0 sur la state machine). Les 2 thèmes les plus coûteux (cwd/état fantôme, skip light/dark) ne sont couverts par aucun test → chaque récidive est rejouée manuellement.
+>
+> **Fil rouge** : la frontière entre *« ce que le script décide de façon déterministe »* et *« ce que l'agent LLM décide / ce qui est documenté en prose »* n'est jamais tranchée nettement, et il n'existe **pas de source de vérité unique** de l'état.
+
+## Index des causes racines
+
+| ID | Cause racine | Gravité | Effort | Symptômes (F-xxx) régénérés |
+|----|--------------|---------|--------|------------------------------|
+| ARCH-01 | Pas de source de vérité unique ; `PROJECT_ROOT` résolu de 3 façons incompatibles | **P0** | Moyen | F-017, F-030 (→ **F-032**) |
+| ARCH-02 | ack-registry : schéma producteur/consommateur incompatible → idle-detection morte | **P0** | Faible | inédit (→ **F-031**) |
+| ARCH-03 | Pilotage state machine délégué au jugement LLM-OR (convergence, dispatch, NOOP) | **P0** | Élevé | F-014, F-015, F-023, F-024, F-025 |
+| ARCH-04 | Aucun gate de vérification à `--complete` (confiance totale) | **P0** | Moyen | F-002, F-008, F-024#3 |
+| ARCH-05 | Explosion combinatoire des modes (team/subagent/light × dark) via tables dispersées | **P1** | Élevé | ANO-002/003/004/005/006, F-027, F-028 |
+| ARCH-06 | Drift doc/script : les `.md` re-encodent les tables canoniques du script | **P0** | Élevé | F-010, F-019, F-023, F-026, F-029(B) |
+| ARCH-07 | Dette de prose : logique en consignes LLM, code mort, collisions `INV-` | **P1** | Moyen | F-025 (saturation OR) |
+| ARCH-08 | wf-auth = gatekeeper par regex sur command-lines + exceptions accumulées | **P1** | Élevé | F-009, F-011, F-012, F-018 |
+| ARCH-09 | Mailbox sans dédup/TTL/ordering → replay de messages stale | **P1** | Moyen | F-020, F-024#1, team-inbox-race |
+| ARCH-10 | Monolithe 3620 l. + anti-pattern shell→node/jq + 0 test sur le cœur | **P1** | Élevé | récidive F-017→F-030, régressions light/dark |
+
+---
+
+## ARCH-01 — Pas de source de vérité unique ; `PROJECT_ROOT` résolu de 3 façons incompatibles **[P0]**
+
+**Constat** : l'avancement vit simultanément dans `.wf-state.json:history`, `ack-registry.json` et la mailbox harness, lus par 3 composants (orchestrate `--query`, watchdog `jq` direct, hook `wf-auth`), chacun avec son propre code d'accès → divergences. Aggravé par 3 résolutions de `PROJECT_ROOT` :
+- `wf-orchestrate.sh:293,306,3509` — cwd-walk robuste (`_wf_resolve_project_root`, fix F-030).
+- `wf-watchdog.sh:36` — `project_root="$(cd "$script_dir/.." && pwd)"` = **racine du clone du plugin**, pas le projet consommateur.
+- `wf-registry.sh:27` — `_WF_REG_PROJECT_ROOT="$(cd "$_WF_REG_SCRIPT_DIR/.." && pwd)"` = idem.
+
+**Cause racine** : aucune fonction canonique de résolution de projet partagée. Le plugin étant installé depuis un clone mais consommé depuis un autre repo, `script_dir/..` pointe sur le clone — le watchdog et le registry lisent un `.wf-state.json`/`.team-registry.json` d'un **autre arbre** que celui qu'orchestrate fait avancer.
+**Symptômes** : F-017, F-030 (fix incomplet : seul orchestrate corrigé). **Voir F-032** (actionnable).
+**Remédiation** : extraire `_wf_resolve_project_root` dans une lib sourcée (`scripts/lib/wf-paths.sh`) appelée par les 3+ scripts ; watchdog/registry doivent recevoir le projet via env/arg, pas via `script_dir/..`.
+
+## ARCH-02 — ack-registry : schéma producteur/consommateur incompatible **[P0]**
+
+**Constat** : producteur `wf-orchestrate.sh:2251,2456-2462` écrit `{"entries":[{…, "last_sent_at":<epoch>}]}` (epoch via `date +%s` l.2427). Consommateur `wf-watchdog.sh:280` lit `[.[] | select(.from==$a …) | .last_sent_at] | max` — un **tableau racine** (pas `.entries[]`) — puis `date -d "$ts"` (l.297) le parse comme **date ISO**. Double incompatibilité (structure + format de timestamp).
+**Cause racine** : 2 composants écrivent/lisent le même fichier sans contrat de schéma partagé ni validation ; le schéma a dérivé et les tests (`test-watchdog-v3.sh`) verrouillent la mauvaise version (tableau racine + ISO).
+**Impact** : `.[]` sur un objet → vide → `ref_epoch=0` → **ACTOR_IDLE par ACK ne se déclenche jamais en prod**. Le mécanisme principal de détection d'agent silencieux est inopérant (faux négatifs systématiques). Statut de l'ack-registry par ailleurs ambigu : « traçabilité » (DEC-001) mais consommé opérationnellement par le watchdog ET rendu obligatoire par `wf-or.md:415`.
+**Symptômes** : inédit au backlog. **Voir F-031** (actionnable).
+**Remédiation** : unifier schéma (`.entries[]`) + format timestamp (epoch partout) ; corriger les tests qui valident le mauvais schéma ; trancher le statut (source de vérité réconciliée avec `history[]` OU traçabilité pure + retirer le watchdog de sa dépendance).
+
+## ARCH-03 — Pilotage de la state machine délégué au jugement LLM-OR **[P0]**
+
+**Constat** : le script se présente comme « deterministic state-machine driver » (`wf-orchestrate.sh:3244`) mais externalise au LLM-OR : (1) l'évaluation de convergence — `exit_decision` dérive d'un flag `converged`/`stall` que l'agent doit poser (`:1286-1294`), alors que `check_max_runs` est **déjà calculé** par le script (`:927,971`) ; (2) le routage DISPATCH (`has_functional`/`has_technical`, `:936-938`) ; (3) l'auto-complétion des NOOP, rapatriée coup par coup (`STEP_OR_AUTO_ADVANCE`, `_wf_chain_or_noop`).
+**Cause racine** : frontière floue déterministe/jugement. OR est un driver mécanique sans état propre (tout son état utile est sur disque) mais implémenté comme agent LLM à contexte croissant.
+**Symptômes** : F-014 (idle), F-015 (fige sur step mécanique), F-023 (boucle si flag oublié), F-024 (OR figé sur `--complete`), F-025 (saturation contexte). Les fixes existants (auto-advance, OR éphémère) traitent les symptômes, pas la cause.
+**Remédiation** : faire de CHECK_EXIT/CHECK_CR_EXIT/DISPATCH des steps qui **lisent `review.md`** (verdict structuré CONVERGE/ITERATE) et décident dans le script ; l'agent ne fournit que le verdict brut. Question de fond : OR doit-il être un LLM ? Un driver déterministe scripté supprimerait la classe entière.
+
+## ARCH-04 — Aucun gate de vérification à `--complete` **[P0]**
+
+**Constat** : `--complete` fait avancer la state machine sans jamais appeler `--validate` (commande **séparée** que l'agent invoque ou non, `wf-orchestrate.sh:3262,3577`). La règle « vérifier que l'artefact existe avant de compléter » (FS-CHECK) vit **uniquement** dans le prompt (`wf-or.md:140-152`). La complétion est auto-certifiée.
+**Cause racine** : le seul garde-fou est délégué au jugement du LLM, hors du chemin d'exécution.
+**Symptômes** : F-002 (`--complete` sans exécution réelle), F-008 (artefact QA manquant), F-024#3 (faux TASK_DONE), famille F-030 (état avancé sans substrat réel).
+**Remédiation** : `--complete` exécute le `--validate` du step courant et **refuse l'avancement** si l'artefact attendu est absent/trivial — transformer le FS-CHECK documentaire en gate machine.
+
+## ARCH-05 — Explosion combinatoire des modes **[P1]**
+
+**Constat** : variabilité `team × subagent × subagent-light × dark on/off` gérée par ≥8 tables associatives (`STEP_AGENT`, `STEP_AGENT_DARK_OVERRIDE`, `STEP_AGENT_LIGHT_OVERRIDE`, `STEP_AGENT_SKIP_LIGHT`, `STEP_SKIP_LIGHT`, `STEP_NEVER_SKIP_LIGHT`, `STEP_OR_AUTO_ADVANCE`, `STEP_AGENT_ALWAYS_OR` *vidée mais conservée*) + court-circuits dispersés dans 3 fonctions (`compute_next_step:533,602`, `_wf_auto_skip_light:1578`, `resolve_step_agent`). `STEP_NEVER_SKIP_LIGHT` = rustine par énumération.
+**Cause racine** : aucune table unique « pour ce mode, voici le pipeline effectif ». Chaque croisement de mode = un nouvel `if` + une note ANO-xxx.
+**Symptômes** : ANO-002/003/004/005/006, F-027, F-028 (7 commits correctifs en cascade après l'intro de `subagent-light`).
+**Remédiation** : dériver **une** liste de steps effective par mode à l'init (filtrer `STEPS[]` une fois) au lieu de recalculer skip/short-circuit à chaque transition. Test : matrice (3 modes × 2 dark) parcourue de bout en bout.
+
+## ARCH-06 — Drift doc/script : les personas re-encodent les tables du script **[P0]**
+
+**Constat** : le script est auto-descriptif (`--query` renvoie `expected_params`/`hint`/`agent`, `:1048-1057`) mais les `.md` recopient en prose les tables canoniques :
+- `STEP_PARAMS[]` (`:148-208`) → recopié `wf-or.md:80-99`.
+- `STEP_AGENT[]`+`DARK_OVERRIDE` (`wf-step-agents.sh:11-90`) → recopié `wf-or.md:49-72` **et** `wf-pm.md:39-50`.
+- owner-mapping en 3 endroits (`STEP_ARTIFACTS` `:212-219`, `wf-or.md:728-738`, `constitution.md:156-164`).
+- séquences + params littéraux recopiés `skills/wf-pm-light/SKILL.md:73-234`.
+- drift même **interne** : `phases_and_steps` (sortie `--help`, ~`:3311`) **omet `PR_TRIAGE`** alors que `STEPS[]:82` l'inclut.
+
+**Cause racine** : personas écrits comme doc de référence exhaustive au lieu de pointer vers la sortie runtime. Quand le script change, le `.md` ment.
+**Symptômes** : F-010 (params inventés), F-019, F-023 (hint), F-026, F-029 Layer B.
+**Remédiation** : purger les tables `STEP_*` des `.md` et skills ; agents strictement *hint-driven* sur `--query` ; générer `phases_and_steps` depuis `STEPS[]` ; test CI qui échoue si une table réapparaît dans un `.md`.
+
+## ARCH-07 — Dette de prose : logique en consignes LLM, code mort, collisions `INV-` **[P1]**
+
+**Constat** : `wf-or.md` = 1396 l. / 77 KB pour un rôle « purement mécanique », 53 tags de findings. Règles déjà enforced par le hook redites en prose (bruit qui dilue l'attention). Code/exceptions morts conservés : `STEP_AGENT_ALWAYS_OR` (`wf-step-agents.sh:73-77`), `INV-BILAN-PM` deprecated (`wf-or.md:1394`), 23 alias FR legacy (`wf-orchestrate.sh:251-289`). Collisions de namespace : `INV-003` a **3 sens différents** dans `wf-or.md` (l.333, 711, 1385). Owner-mapping dupliqué constitution vs dispatch matrix.
+**Cause racine** : mode « rodage in vivo » qui matérialise chaque OBS en ajout de prose, sans cycle de refactor/GC. Politique d'ajout, jamais de retrait → croissance super-linéaire de la dette.
+**Symptômes** : F-025 (saturation contexte OR), oubli probabiliste de règles sous charge → justifie d'ajouter encore une règle (cercle vicieux).
+**Remédiation** : auditer chaque règle prose (enforced par hook/script → supprimer ; sinon → évaluer si enforceable) ; registre `INV-` unique dans la constitution ; passe de suppression code/prose mort ; extraire les protocoles rares d'OR hors persona (chargés à la demande).
+
+## ARCH-08 — wf-auth : gatekeeper par regex sur command-lines **[P1]**
+
+**Constat** : le hook s'exécute pour chaque commande Bash (`wf-auth.sh:7-15`) et **devine par regex** s'il s'agit d'un `wf-orchestrate.sh`, quel flag, quel step, quelle intention d'écriture. Historique de bugs de parsing inscrit dans le code : F-018 (neutraliser `--msg "...COMPLETE..."`, `:404-409`), exclusion `git commit` (`:393-398`), extraction step greedy (`:441`), `_wf_bash_guard` qui **admet ses faux négatifs** (`:226-228`). ~9 exceptions accumulées : alias `dv1..dv9`, `or/or1/or2/or-1/or-2`, `retro.md`@LOG_AUDIT, TL écrit steps `or` en light, sentinel `.or-codewrite-bypass`.
+**Cause racine** : politique d'autorisation **sémantique** (qui écrit quoi) dérivée d'une analyse **syntaxique** de chaînes shell arbitraires — intrinsèquement non décidable → rustines perpétuelles. Deadlock structurel évité par patch : `subagent-light` n'a pas d'OR mais des steps restent `agent=or` (sauvés par `STEP_NEVER_SKIP_LIGHT` + auto-skip + exception `:516-519`).
+**Symptômes** : F-009, F-011, F-012, F-018 ; faux blocages + faux passages (15 modifs, 5 fix parsing). NB : paradoxalement le mieux testé (63 tests) → c'est là que les récidives sont les moins graves (preuve que les tests marchent).
+**Remédiation** : retirer à l'agent la capacité d'écrire les artefacts en Bash et router les écritures par un canal unique vérifiable, plutôt que du regex-patching.
+
+## ARCH-09 — Mailbox sans dédup/TTL/ordering → replay de messages stale **[P1]**
+
+**Constat** : la mailbox est le FS du harness (`~/.claude/teams/<team>/inboxes/*.json`) ; aucun composant Waterfall ne dédoublonne ni n'expire ces messages. Le seul anti-stale est **documentaire** (`wf-or.md:341-349`). Le `msg_id` existe dans l'ack-registry mais n'est **jamais consulté à la réception** pour rejeter un doublon.
+**Cause racine** : le transport ne garantit ni ordre ni unicité, et aucune couche d'idempotence applicative n'a été posée par-dessus.
+**Symptômes** : F-020 (OR zombie rejoue un backlog périmé), F-024#1 (DV re-confirme la tâche passée), briefs traités après `brief_complete` (team-inbox-race, cf. mémoire).
+**Remédiation** : table `processed_msg_ids` + rejet idempotent à la réception, en réutilisant le `msg_id` déjà émis.
+
+## ARCH-10 — Monolithe 3620 l. + anti-pattern shell→node/jq + 0 test sur le cœur **[P1]**
+
+**Constat** : `wf-orchestrate.sh` = 3620 l. dans un seul fichier, ~20 handlers. **28 invocations `node --input-type=module` + 23 `jq`** dans le même fichier ; deux parsers JSON du même state file dans la même exécution (`read_state` node `:341` vs `_wf_auto_skip_light` jq `:1586`). État implicite via env `_WF_*` exportées. Défauts silencieux : `node … 2>/dev/null || echo "off"` (`:403`) → décision prise sur valeur par défaut fantôme si node hoquette. **0 test dédié** à la state machine (80 tests bats, 63 sur `wf-auth`).
+**Cause racine** : bash choisi comme hôte d'une state machine non-triviale alors qu'il ne sait pas manipuler du JSON → chaque op délègue à un sous-process ; le fichier accrète toutes les responsabilités faute de modularisation.
+**Symptômes** : testabilité quasi nulle → chaque fix est une repro manuelle → récidives (F-017→F-030) ; incohérences de parsing latentes ; pièges `set -e` + arithmétique (OBS-001).
+**Remédiation** : à terme, porter la state machine en un binaire Node (JSON natif, testable unitairement) ; à défaut extraire State I/O / ACK / context-budget en libs + unifier sur **un seul** parseur JSON ; **prioritaire** : suite de tests sur `handle_complete`/`handle_query` + résolution cwd + matrice de skip par mode.
+
+---
+
+## F-031 — ack-registry : schéma producteur/consommateur incompatible → ACTOR_IDLE mort **[P0]** [issu de ARCH-02]
+
+**Phase** : transverse (watchdog / détection de silence)
+**Constat** : le producteur (`scripts/wf-orchestrate.sh:2251,2456-2462`) sérialise l'ack-registry en `{"entries":[{…, "last_sent_at":<epoch>}]}` (epoch via `date +%s`, l.2427). Le consommateur (`scripts/wf-watchdog.sh:280`) lit `'[.[] | select(.from==$a and .status!="escalated") | .last_sent_at] | max'` — un **tableau racine** (`.[]`, pas `.entries[]`) — puis convertit via `date -d "$ts" +%s` (l.297), traitant la valeur comme une **date ISO**. Les tests `scripts/test-watchdog-v3.sh` écrivent eux aussi un tableau racine + ISO → ils valident un schéma que l'orchestrateur n'écrit jamais.
+**Impact** : `.[]` sur un objet `{"entries":…}` ne matche rien → `max // ""` vide → `ref_epoch=0` → la branche **ACTOR_IDLE par ACK ne se déclenche jamais en production**. Faux négatifs systématiques de détection d'agent bloqué/silencieux (le mécanisme principal de surveillance est inopérant, et invisible car « tout a l'air calme »).
+**Repro** : poser un `ack-registry.json` réel (format orchestrate) avec un `last_sent_at` ancien, lancer le watchdog → aucun ACTOR_IDLE émis.
+**Recommandation** :
+  1. **Unifier le schéma** : watchdog lit `.entries[]` (pas `.[]`) et le **format epoch** (pas `date -d`). OU exposer une commande `--ack-query` que le watchdog consomme (évite la divergence de schéma — cf. ARCH-01 source unique).
+  2. **Corriger les tests** `test-watchdog-v3.sh` pour produire le vrai schéma orchestrate (sinon ils continuent de verrouiller la mauvaise version).
+  3. Trancher le statut de l'ack-registry (DEC-001 « traçabilité » vs usage opérationnel réel par le watchdog).
+
+**Résolution (2026-06-07)** : `wf-watchdog.sh` consommateur aligné sur le producteur — filtre jq `.[]` → `.entries[]`, et `last_sent_at` (epoch) extrait de la boucle ISO `date -d` pour être comparé numériquement (garde `^[0-9]+$`), sans toucher les autres lectures ISO (`or.log`, history). `test-watchdog-v3.sh` régénère désormais le vrai schéma producteur. Vérifié : `test-watchdog-v3.sh` 13/13 PASS, suite `bats tests/` 80/80 PASS, `bash -n` OK. Volet 3 (statut ack-registry) non tranché — laissé en suspens, hors scope du fix.
+
+## F-032 — `PROJECT_ROOT` résolu de 3 façons : watchdog/registry visent le clone du plugin **[P0]** [issu de ARCH-01]
+
+**Phase** : transverse (paths)
+**Constat** : la résolution du projet diverge entre scripts :
+  - `scripts/wf-orchestrate.sh:293,306,3509` — cwd-walk robuste (`_wf_resolve_project_root`, fix F-030, + échec bruyant `STATE_NOT_FOUND` l.774).
+  - `scripts/wf-watchdog.sh:36` — `project_root="$(cd "$script_dir/.." && pwd)"`.
+  - `scripts/wf-registry.sh:27` — `_WF_REG_PROJECT_ROOT="$(cd "$_WF_REG_SCRIPT_DIR/.." && pwd)"`.
+
+Le plugin étant installé depuis un clone (ex. `C:\projets\waterfall`) mais consommé depuis un autre repo, `script_dir/..` pointe sur le **clone du plugin**, pas sur le projet où vit le besoin. Le watchdog surveille alors un `.wf-state.json` d'un autre arbre (ou inexistant), et `wf-registry.sh` écrit `.team-registry.json` au mauvais endroit.
+**Lien** : F-030 a corrigé `wf-orchestrate.sh` uniquement → la **même cause racine survit dans 2 scripts sur 3**. (Le repo `waterfall` lui-même masque le bug car clone == projet ; il se manifeste en usage normal cross-repo.)
+**Impact** : watchdog qui surveille un état périmé/inexistant (faux « stuck » ou faux « calme »), registry désynchronisé. Intermittent et difficile à diagnostiquer (dépend de l'arbre).
+**Recommandation** :
+  1. Extraire `_wf_resolve_project_root` dans `scripts/lib/wf-paths.sh` (sourcée par orchestrate, watchdog, registry, et idéalement le hook).
+  2. watchdog/registry doivent recevoir le projet via `WF_PROJECT_ROOT`/argument (déjà résolu par l'appelant), jamais via `script_dir/..`.
+  3. Test de non-régression : invoquer watchdog/registry depuis un cwd ≠ clone plugin et vérifier qu'ils résolvent le bon `.wf-state.json`.
+
+**Résolution (2026-06-07)** : resolveur canonique extrait dans `scripts/lib/wf-paths.sh` (`_wf_resolve_project_root`, ordre WF_PROJECT_ROOT → walk-up state file du need → marqueur projet → fallback pwd). Sourcé par les 3 scripts : `wf-watchdog.sh` (`_wf_resolve_project_root "$name"`) et `wf-registry.sh` (`_wf_reg_path` résout par-need) remplacent leur `script_dir/..` ; `wf-orchestrate.sh` source la lib et supprime sa copie inline (comportement identique, re-résolution l.3485 inchangée). Vérifié : `bash -n` 5/5, `bats tests/` 80/80 PASS (dont paths + STEP_AGENT + wf-auth, aucune régression sur l'extraction). Migration B1 (158 réfs `${CLAUDE_PLUGIN_ROOT}`) reste P2 reportée (cf. [F-030]).
+
+---
+
+# Chantiers d'amélioration
+
+## ENH-001 — Enrichir les templates d'artefacts via le template « Étude d'impacts et Solution Technique » **[P2]**
+
+**Type** : amélioration (≠ anomalie in-vivo)
+**Source** : template Hartwood « Etude d'impacts et Solution Technique » (Loop/SharePoint, réf. `Etude_impacts_et_Solution_Technique_Template.pdf`, 2026-06-07). Document Tech Lead destiné aux Dev/TL : analyse en profondeur du besoin, justification des choix techniques, identification des impacts sur l'existant, chiffrage.
+
+**Objectif** : l'actuel `wf/templates/{fr,en}/design.md` est squelettique (8 sections : Overview, Architecture, Interfaces, Data Model, Invariants, Trade-offs, Dependencies, Security & Perf). Le template Hartwood est nettement plus riche sur l'**étude d'impacts** et la **rigueur d'analyse de l'existant**. Le but n'est PAS de copier le PDF (plusieurs sections ne collent pas à un workflow agent-driven) mais d'**identifier les manques à fort intérêt et enrichir l'existant**, sans dupliquer ce qui vit déjà dans d'autres artefacts.
+
+**Gap analysis (PDF → templates waterfall)** :
+
+| Section PDF | Existant | Statut | Cible |
+|---|---|---|---|
+| Objet (public, auteur, réf EB/Jira) | frontmatter `need` | partiel | design.md frontmatter (+ réf carte) — mineur |
+| Prép PO — questions / interview LLM | phase FUNCTIONAL_SPECS (PO↔TL) | **couvert** (process) | — |
+| Prép PO — exigences non-fonctionnelles (perf, volumétrie) | specs.md = EX/INV only | **manquant** | **specs.md** : section NFR |
+| État des lieux (code, tests, CI/CD, BDD réf) | aucun | **manquant** | **design.md** : nouvelle section |
+| Archi — flux de données (systèmes sources/intermédiaires/cibles, modules connexes) | design.md §2 | partiel | design.md §2 enrichi |
+| Archi — architecture technique/infra (serveurs/VM, BDD, cloud, LB) | aucun | **manquant** | design.md : section infra/déploiement |
+| Archi — archi logicielle (patterns, opportunités refacto) | design.md §2/§7 | partiel | design.md enrichi |
+| Archi — pile techno (justif, POC, formation) | design.md §6/§7 | partiel | design.md enrichi |
+| Impl — impacts modèle de données (effets de bord, script migration, rollback) | design.md §4 = erDiagram seul | **manquant** | design.md §4 : table impacts + migration/rollback |
+| Impl — impacts code existant (composant/type d'impact/refacto) | aucun | **manquant** | design.md : table impacts code |
+| Sécurité (données sensibles/RGPD/chiffrement, auth & autz, OWASP Top 10) | design.md §8 = 1 ligne | **manquant** (design-time) | design.md : section sécurité dédiée |
+| Tests — stratégie/effort (TU, couverture cible, framework) | tasks.md (rounds) + acceptance (TF) | partiel | design.md : section stratégie test |
+| Tests — non-régression (suites à rejouer, modules à risque) | aucun | **manquant** | design.md stratégie test |
+| Chiffrage (découpage tâches, lots, effort) | tasks.md | **couvert** | — (ne pas dupliquer) |
+| Acteurs externes & prérequis (infra, firewall, SSL, DBA, deps inter-équipes) | aucun | **manquant** | design.md : section prérequis |
+
+**Manques retenus (à enrichir)** :
+1. **design.md — § « État des lieux »** (nouveau) : dette technique de la zone touchée, couverture de test actuelle, état CI/CD + BDD de référence. Force le TL à auditer l'existant **avant** de concevoir → adresse directement [F-013] (TL n'introspecte pas le schéma cible) et la classe [F-005]/[F-006] (régressions silencieuses sur l'existant).
+2. **design.md — §4 Data Model enrichi** : ajouter une table d'**impacts** (Objet | Action création/modif/suppression | Description | **Effets de bord**) + **script de migration** + **stratégie de rollback**. Adresse [F-005]/[F-007].
+3. **design.md — § « Impacts sur le code existant »** (nouveau) : table (Composant/Classe | Type d'impact | Description | Opportunité de refacto). Rend l'analyse d'impact explicite et reviewable → adresse [F-006].
+4. **design.md — § Sécurité dédiée** (remplace le §8 d'une ligne) : données sensibles/RGPD/chiffrement, auth & autorisation, **checklist OWASP Top 10** (Risque | Applicable ? | Mitigation). Complète `/security-review` (runtime) par une analyse **design-time**.
+5. **design.md — § Architecture technique/infra** (nouveau ou enrichit §2) : topologie de déploiement (serveurs/VM, BDD nouvelle/existante, services cloud, LB) + flux de données (systèmes sources/intermédiaires/cibles, modules connexes impactés). `N/A` si pas d'impact infra.
+6. **design.md — § Stratégie de test & non-régression** (nouveau) : effort TU estimé + couverture cible (rappel seuil Apex 75 %), suites de non-régression à rejouer, modules connexes à risque. Complète acceptance.md (scénarios TF) par l'angle effort/risque.
+7. **design.md — § Prérequis & acteurs externes** (nouveau) : prérequis techniques (infra, réseau/firewall, accès/credentials, SSL, DNS), acteurs externes impliqués (IT/Infra, DBA, intégrateurs), dépendances inter-équipes bloquantes. `N/A` si aucun.
+8. **design.md — Pile technologique enrichie** (§6/§7) : pour toute nouvelle techno/lib → justification vs alternatives, POC réalisé ou prévu, formation nécessaire.
+9. **specs.md — § Exigences non-fonctionnelles** (nouveau, PO-owned) : performance (temps de réponse cible), volumétrie (utilisateurs concurrents, volume données). Référencées ensuite par design.md §Sécurité&Perf.
+
+**Écarté (peu pertinent en workflow agent-driven, ne PAS ajouter)** : jalons calendaires / dates de MEP (pas de planning humain), formation équipe avec estimation temps, contacts email nominatifs des acteurs, « préparation de l'échange PO » (déjà = phase FUNCTIONAL_SPECS). Découpage des tâches & chiffrage : **déjà** dans `tasks.md`, ne pas dupliquer.
+
+**Contraintes de réalisation** :
+- Appliquer **à l'identique sur `fr/` ET `en/`** (templates miroirs).
+- Garder le principe « sections non pertinentes → `N/A` » (le template doit rester utilisable pour un petit besoin sans le sur-charger).
+- Cohérence avec [ARCH-06] : ces sections sont des **canevas d'artefact** (légitimes dans le template), pas des copies de tables du script — aucun risque de drift doc/script.
+- Mettre à jour `agents/wf-tl.md` (persona TL) si de nouvelles sections obligatoires changent le contrat de complétude de `design.md` attendu par RV — sinon RV pourrait ITERATE sur des sections nouvellement requises. À cadrer.
+- Vérifier l'impact sur la grille de review `agents/wf-rv.md` (nouvelles sections = nouveaux points de contrôle).
+
+**Effort estimé** : M (rédaction des 2 templates fr+en + ajustement personas TL/RV). Candidat à un `/waterfall:new` en mode `subagent-light`.
+
+## ENH-002 — Agent MO : amélioration continue automatique de waterfall **[concept]**
+
+**Type** : concept d'architecture (≠ anomalie in-vivo).
+**Doc dédiée** : [`docs/mo-amelioration-continue.md`](docs/mo-amelioration-continue.md) — design complet (pour ne pas gonfler ce fichier).
+
+**Résumé** : agent **MO** (Monitoring/Observabilité) dédié au rodage continu du framework. Lit la **trace** d'exécution (pas le chat) → cluster + dédup vs backlog/Momento → **propose** des findings sous **gate** PM/HO → prépare les fixes pour le pipeline vérifié. Deux déclencheurs : **MO-CLOSURE** (éphémère, greffé sur `CLOSURE:BILAN`, per-need) + **MO-CRON** (planifié, cross-session, cause-racine ARCH-level). Ne touche **jamais** la state machine ni le backlog en direct ; ne hot-patche jamais en plein run.
+
+**Prérequis dur** : la télémétrie doit marcher d'abord → [F-031] + [F-032] (les signaux que MO lit sont aujourd'hui partiellement morts). À réaliser via `/waterfall:new` (`team`) après ce fix.
+
+**Reste à cadrer** : (a) schéma de capture des OBS, (c) gate anti-hallucination. Voir doc §7.
