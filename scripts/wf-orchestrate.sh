@@ -91,6 +91,10 @@ source "$(dirname "${BASH_SOURCE[0]}")/wf-step-agents.sh"
 # shellcheck source=./lib/wf-segments.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/wf-segments.sh"
 
+# Canonical PROJECT_ROOT resolver (F-032) — _wf_resolve_project_root
+# shellcheck source=./lib/wf-paths.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/wf-paths.sh"
+
 declare -A STEP_ACTION=(
   ["DETERMINE_NAME"]="validate_need_name"
   ["RUN_BOOTSTRAP"]="run_bootstrap"
@@ -294,37 +298,9 @@ PROJECT_ROOT="${WF_PROJECT_ROOT:-$(pwd)}"
 BASH_TMPDIR=$(mktemp -d)
 trap 'rm -rf "$BASH_TMPDIR"' EXIT
 
-# _wf_resolve_project_root [<name>] — robust PROJECT_ROOT resolution (F-030).
-# The plain `pwd` default (above) silently resolves a PHANTOM project when an
-# agent invokes the script from a wrong cwd: --query then finds no state file
-# and returns the default BOOTSTRAP:DETERMINE_NAME with exit 0 (OBS-009). This
-# walks UP from pwd to anchor the real project root regardless of cwd within
-# the tree. Order: (1) explicit WF_PROJECT_ROOT wins; (2) dir holding the
-# need's own state file (most precise); (3) any waterfall project marker
-# (.wf-config.json or a wf/needs dir); (4) fallback pwd (downstream emits a
-# loud STATE_NOT_FOUND rather than a phantom default).
-_wf_resolve_project_root() {
-  local name="${1:-}"
-  if [[ -n "${WF_PROJECT_ROOT:-}" ]]; then
-    echo "$WF_PROJECT_ROOT"
-    return
-  fi
-  local start p
-  start="$(pwd)"
-  if [[ -n "$name" ]]; then
-    p="$start"
-    while [[ -n "$p" && "$p" != "/" ]]; do
-      [[ -f "$p/wf/needs/$name/.wf-state.json" ]] && { echo "$p"; return; }
-      p="$(dirname "$p")"
-    done
-  fi
-  p="$start"
-  while [[ -n "$p" && "$p" != "/" ]]; do
-    [[ -f "$p/.wf-config.json" || -d "$p/wf/needs" ]] && { echo "$p"; return; }
-    p="$(dirname "$p")"
-  done
-  echo "$start"
-}
+# _wf_resolve_project_root [<name>] is defined in lib/wf-paths.sh (F-032),
+# sourced above. The plain `pwd` default (l.293) is just a placeholder that is
+# re-resolved below once the CLI need name is known.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Section 3 : STATE I/O

@@ -33,7 +33,11 @@ WF_WATCHDOG_STUCK_THRESHOLD="${WF_WATCHDOG_STUCK_THRESHOLD:-2}"
 # ─── Paths ───────────────────────────────────────────────────────────────────
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
-project_root="$(cd "$script_dir/.." && pwd)"
+# F-032: source the canonical resolver; resolve project_root from cwd/need/env
+# instead of the brittle script_dir/.. (which pointed at the plugin clone).
+# shellcheck source=./lib/wf-paths.sh
+source "$script_dir/lib/wf-paths.sh"
+project_root="$(_wf_resolve_project_root "$name")"
 need_dir="$project_root/wf/needs/$name"
 heartbeat_log="$need_dir/heartbeat.log"
 alert_file="$need_dir/watchdog.alert"
@@ -277,7 +281,7 @@ if ! $skip_actor_idle; then
   last_ack_ts=""
   if [[ -f "$ack_registry" ]]; then
     last_ack_ts="$(jq -r --arg a "$step_agent" \
-      '[.[] | select(.from==$a and .status!="escalated") | .last_sent_at] | max // ""' \
+      '[.entries[] | select(.from==$a and .status!="escalated") | .last_sent_at] | max // ""' \
       "$ack_registry" 2>/dev/null || echo "")"
   fi
 
@@ -291,12 +295,18 @@ if ! $skip_actor_idle; then
   step_entered_ts="$history_last_ts"
 
   # EX-002 — actor_reference_ts = max of available sources
+  # last_idle_ts (or.log) and step_entered_ts (state history) are ISO → date -d.
   ref_epoch=0
-  for ts in "$last_ack_ts" "$last_idle_ts" "$step_entered_ts"; do
+  for ts in "$last_idle_ts" "$step_entered_ts"; do
     [[ -z "$ts" ]] && continue
     e=$(date -d "$ts" +%s 2>/dev/null || echo 0)
     (( e > ref_epoch )) && ref_epoch=$e
   done
+  # F-031: last_ack_ts (ack-registry last_sent_at) is EPOCH seconds, not ISO.
+  # Compare it numerically — the ^[0-9]+$ guard skips empty/non-epoch values.
+  if [[ "$last_ack_ts" =~ ^[0-9]+$ ]] && (( last_ack_ts > ref_epoch )); then
+    ref_epoch=$last_ack_ts
+  fi
 
   if (( ref_epoch > 0 )); then
     actor_idle_elapsed_s=$(( now_epoch_early - ref_epoch ))

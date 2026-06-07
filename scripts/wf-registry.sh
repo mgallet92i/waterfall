@@ -22,9 +22,10 @@
 
 set -euo pipefail
 
-# Root resolved from script location (stable regardless of cwd).
-_WF_REG_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_WF_REG_PROJECT_ROOT="$(cd "$_WF_REG_SCRIPT_DIR/.." && pwd)"
+# F-032: resolve PROJECT_ROOT per-need via the canonical resolver (cwd/need/env)
+# instead of script_dir/.. (which pointed at the plugin clone, not the project).
+# shellcheck source=./lib/wf-paths.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/wf-paths.sh"
 
 _wf_reg_require_jq() {
   command -v jq >/dev/null 2>&1 || {
@@ -35,7 +36,8 @@ _wf_reg_require_jq() {
 
 _wf_reg_path() {
   local need="$1"
-  echo "$_WF_REG_PROJECT_ROOT/wf/needs/$need/.team-registry.json"
+  local root; root="$(_wf_resolve_project_root "$need")"
+  echo "$root/wf/needs/$need/.team-registry.json"
 }
 
 _wf_reg_iso_now() {

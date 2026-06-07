@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-watchdog-v3.sh — Tests automatisés TF-001..TF-012 pour wf-watchdog.sh ACTOR_IDLE
+# test-watchdog-v3.sh — Tests automatisés TF-001..TF-013 pour wf-watchdog.sh ACTOR_IDLE
 # Usage: bash scripts/test-watchdog-v3.sh
 # Exit: 0 si tous OK, 1 sinon.
 set -euo pipefail
@@ -50,7 +50,7 @@ EOF
   echo '{"last_history_ts":"","stuck_ticks":0}' > "$NEED_DIR/.watchdog-state.json"
 
   # ack-registry.json vide
-  echo '[]' > "$NEED_DIR/ack-registry.json"
+  echo '{"entries":[]}' > "$NEED_DIR/ack-registry.json"
 
   # watchdog.alert vide
   > "$NEED_DIR/watchdog.alert"
@@ -65,10 +65,10 @@ run_watchdog() {
 tf001() {
   setup_need
   # ACK po datant de > 480s
-  local old_ts
-  old_ts="$(date -u -d '20 minutes ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-20M +%Y-%m-%dT%H:%M:%SZ)"
+  local old_epoch
+  old_epoch="$(date -d '20 minutes ago' +%s 2>/dev/null || date -v-20M +%s)"
   cat > "$NEED_DIR/ack-registry.json" <<EOF
-[{"from":"po","status":"sent","last_sent_at":"$old_ts"}]
+{"entries":[{"from":"po","status":"sent","last_sent_at":$old_epoch}]}
 EOF
 
   WF_WATCHDOG_ACTOR_IDLE_THRESHOLD=480 run_watchdog
@@ -92,10 +92,10 @@ EOF
 tf002() {
   setup_need
   # ACK po récent (< 480s)
-  local recent_ts
-  recent_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  local recent_epoch
+  recent_epoch="$(date +%s)"
   cat > "$NEED_DIR/ack-registry.json" <<EOF
-[{"from":"po","status":"sent","last_sent_at":"$recent_ts"}]
+{"entries":[{"from":"po","status":"sent","last_sent_at":$recent_epoch}]}
 EOF
 
   WF_WATCHDOG_ACTOR_IDLE_THRESHOLD=480 run_watchdog
@@ -125,7 +125,7 @@ tf003() {
 }
 EOF
   # Pas d'ACK or
-  echo '[]' > "$NEED_DIR/ack-registry.json"
+  echo '{"entries":[]}' > "$NEED_DIR/ack-registry.json"
 
   WF_WATCHDOG_ACTOR_IDLE_THRESHOLD=1 run_watchdog
 
@@ -151,7 +151,7 @@ tf004() {
   "history": [{"agent": "pm", "ts": "2020-01-01T00:00:00Z"}]
 }
 EOF
-  echo '[]' > "$NEED_DIR/ack-registry.json"
+  echo '{"entries":[]}' > "$NEED_DIR/ack-registry.json"
 
   WF_WATCHDOG_ACTOR_IDLE_THRESHOLD=1 run_watchdog
 
@@ -177,10 +177,10 @@ tf005() {
   "history": [{"agent": "pm", "ts": "2020-01-01T00:00:00Z"}]
 }
 EOF
-  local old_ts
-  old_ts="$(date -u -d '20 minutes ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-20M +%Y-%m-%dT%H:%M:%SZ)"
+  local old_epoch
+  old_epoch="$(date -d '20 minutes ago' +%s 2>/dev/null || date -v-20M +%s)"
   cat > "$NEED_DIR/ack-registry.json" <<EOF
-[{"from":"pm","status":"sent","last_sent_at":"$old_ts"}]
+{"entries":[{"from":"pm","status":"sent","last_sent_at":$old_epoch}]}
 EOF
   > "$NEED_DIR/or.log"
 
@@ -204,7 +204,7 @@ EOF
 
 tf006() {
   setup_need
-  echo '[]' > "$NEED_DIR/ack-registry.json"  # Aucun ACK
+  echo '{"entries":[]}' > "$NEED_DIR/ack-registry.json"  # Aucun ACK
 
   WF_WATCHDOG_ACTOR_IDLE_THRESHOLD=0 run_watchdog
 
@@ -223,10 +223,10 @@ tf006() {
 
 tf007() {
   setup_need
-  local old_ts
-  old_ts="$(date -u -d '20 minutes ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-20M +%Y-%m-%dT%H:%M:%SZ)"
+  local old_epoch
+  old_epoch="$(date -d '20 minutes ago' +%s 2>/dev/null || date -v-20M +%s)"
   cat > "$NEED_DIR/ack-registry.json" <<EOF
-[{"from":"po","status":"sent","last_sent_at":"$old_ts"}]
+{"entries":[{"from":"po","status":"sent","last_sent_at":$old_epoch}]}
 EOF
 
   # Tick 1
@@ -251,10 +251,10 @@ EOF
 
 tf008() {
   setup_need
-  local old_ts
-  old_ts="$(date -u -d '20 minutes ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-20M +%Y-%m-%dT%H:%M:%SZ)"
+  local old_epoch
+  old_epoch="$(date -d '20 minutes ago' +%s 2>/dev/null || date -v-20M +%s)"
   cat > "$NEED_DIR/ack-registry.json" <<EOF
-[{"from":"po","status":"sent","last_sent_at":"$old_ts"}]
+{"entries":[{"from":"po","status":"sent","last_sent_at":$old_epoch}]}
 EOF
 
   # Tick 1 — génère actor_idle_ticks=1
@@ -264,10 +264,10 @@ EOF
   ticks_after_1="$(jq -r '.actor_idle_ticks // 0' "$NEED_DIR/.watchdog-state.json" 2>/dev/null || echo "0")"
 
   # Nouvel ACK po (timestamp récent)
-  local new_ts
-  new_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  local new_epoch
+  new_epoch="$(date +%s)"
   cat > "$NEED_DIR/ack-registry.json" <<EOF
-[{"from":"po","status":"sent","last_sent_at":"$new_ts"}]
+{"entries":[{"from":"po","status":"sent","last_sent_at":$new_epoch}]}
 EOF
 
   # Tick 2 — ACK a progressé → reset
@@ -288,10 +288,11 @@ EOF
 
 tf009() {
   setup_need
-  local old_ts
+  local old_epoch old_ts
+  old_epoch="$(date -d '20 minutes ago' +%s 2>/dev/null || date -v-20M +%s)"
   old_ts="$(date -u -d '20 minutes ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-20M +%Y-%m-%dT%H:%M:%SZ)"
   cat > "$NEED_DIR/ack-registry.json" <<EOF
-[{"from":"po","status":"sent","last_sent_at":"$old_ts"}]
+{"entries":[{"from":"po","status":"sent","last_sent_at":$old_epoch}]}
 EOF
 
   # Simuler un step_advanced dans or.log daté de > 120s (sans PLEASE_COMPLETE_STEP postérieur)
@@ -322,10 +323,10 @@ tf010() {
   echo "[$old_ts] OR heartbeat" > "$NEED_DIR/heartbeat.log"
 
   # ACK po récent → pas de ACTOR_IDLE
-  local recent_ts
-  recent_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  local recent_epoch
+  recent_epoch="$(date +%s)"
   cat > "$NEED_DIR/ack-registry.json" <<EOF
-[{"from":"po","status":"sent","last_sent_at":"$recent_ts"}]
+{"entries":[{"from":"po","status":"sent","last_sent_at":$recent_epoch}]}
 EOF
 
   WF_WATCHDOG_ACTOR_IDLE_THRESHOLD=480 run_watchdog
@@ -352,7 +353,7 @@ tf011() {
   "history": [{"agent": "po", "ts": "2020-01-01T00:00:00Z"}]
 }
 EOF
-  echo '[]' > "$NEED_DIR/ack-registry.json"
+  echo '{"entries":[]}' > "$NEED_DIR/ack-registry.json"
 
   local exit_code=0
   WF_WATCHDOG_ACTOR_IDLE_THRESHOLD=1 run_watchdog || exit_code=$?
@@ -380,7 +381,7 @@ tf012() {
   "history": [{"agent": "dv1", "ts": "2020-01-01T00:00:00Z"}]
 }
 EOF
-  echo '[]' > "$NEED_DIR/ack-registry.json"
+  echo '{"entries":[]}' > "$NEED_DIR/ack-registry.json"
 
   WF_WATCHDOG_ACTOR_IDLE_THRESHOLD=1 run_watchdog
 
@@ -395,9 +396,42 @@ EOF
   fi
 }
 
+# ─── TF-013 — ACTOR_IDLE via un ack-registry produit par le VRAI producteur (F-031) ─
+# Non-régression : prouve que watchdog et wf-orchestrate --ack-register partagent le
+# même schéma ({"entries":[...]} + last_sent_at epoch). Pas de fixture écrite à la main.
+tf013() {
+  setup_need
+  local orch="$script_dir/wf-orchestrate.sh"
+  # Le producteur écrit ack-registry.json sous $PROJECT_ROOT/wf/needs/<need>/.
+  # On vise le même need que run_watchdog : wf-watchdog-v3/test-fixtures/need.
+  WF_PROJECT_ROOT="$project_root" bash "$orch" wf-watchdog-v3/test-fixtures/need \
+    --ack-register --from po --to or --msg-id tf013-msg-001 --type step_complete >/dev/null 2>&1
+  # Backdate last_sent_at à un epoch ancien (> seuil) en gardant le schéma producteur.
+  local old_epoch tmp
+  old_epoch="$(date -d '20 minutes ago' +%s 2>/dev/null || date -v-20M +%s)"
+  tmp="$NEED_DIR/ack-registry.json.tmp"
+  jq --argjson e "$old_epoch" '.entries |= map(.last_sent_at = $e)' \
+    "$NEED_DIR/ack-registry.json" > "$tmp" && mv "$tmp" "$NEED_DIR/ack-registry.json"
+
+  WF_WATCHDOG_ACTOR_IDLE_THRESHOLD=480 run_watchdog
+
+  local reason actor schema
+  reason="$(jq -r '.reason // ""' "$NEED_DIR/watchdog.alert" 2>/dev/null || echo "")"
+  actor="$(jq -r '.actor // ""' "$NEED_DIR/watchdog.alert" 2>/dev/null || echo "")"
+  # Garde-fou : le registre doit bien être au schéma producteur (objet .entries).
+  schema="$(jq -r '.entries | type' "$NEED_DIR/ack-registry.json" 2>/dev/null || echo "")"
+
+  if [[ "$reason" == "ACTOR_IDLE" && "$actor" == "po" && "$schema" == "array" ]]; then
+    assert_pass
+    echo "PASS: TF-013"
+  else
+    assert_fail "TF-013" "reason=$reason actor=$actor schema=$schema (producer-schema ACTOR_IDLE)"
+  fi
+}
+
 # ─── Run all ──────────────────────────────────────────────────────────────────
 
-echo "=== test-watchdog-v3.sh — TF-001..TF-012 ==="
+echo "=== test-watchdog-v3.sh — TF-001..TF-013 ==="
 echo ""
 
 tf001
@@ -412,6 +446,7 @@ tf009
 tf010
 tf011
 tf012
+tf013
 
 # Cleanup
 rm -rf "$FIXTURE_DIR"
