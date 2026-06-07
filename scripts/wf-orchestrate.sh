@@ -172,7 +172,7 @@ declare -A STEP_PARAMS=(
   ["GENERATE_DESIGN"]=""
   ["CHECKPOINT_DESIGN"]="decision"
   # REVIEW
-  ["RV_REVIEW"]=""
+  ["RV_REVIEW"]="verdict"
   ["CHECK_EXIT"]="converged stall"
   ["ANTI_LOOP"]=""
   ["DISPATCH"]="has_functional has_technical"
@@ -1063,7 +1063,7 @@ handle_complete() {
   # Parse --params key=value pairs (no --agent flag: enforcement via PreToolUse hook wf-auth.sh)
   local decision="" exit_decision="" has_functional="false" has_technical="false"
   local converged="" stall="" card_num="" branch_type="" branch="" validation_ok=""
-  local bootstrap_status="" team_name=""
+  local bootstrap_status="" team_name="" verdict=""
   local -a received_params=()
 
   # F-023: collect key=val tokens from BOTH `--params k=v ...` and bare positional
@@ -1103,6 +1103,7 @@ handle_complete() {
       has_technical)    has_technical="$kv_val" ;;
       converged)        converged="$kv_val" ;;
       stall)            stall="$kv_val" ;;
+      verdict)          verdict="$kv_val" ;;   # ARCH-03-A: RV's CONVERGE/ITERATE at RV_REVIEW
       card_num)         card_num="$kv_val" ;;
       branch_type)      branch_type="$kv_val" ;;
       branch)           branch="$kv_val" ;;
@@ -1113,6 +1114,10 @@ handle_complete() {
       pr_url)           ;; # informational only
     esac
   done
+
+  # ARCH-03-A: propagate RV's verdict (non-empty only when completing RV_REVIEW) to the
+  # advance writer, so CHECK_EXIT can derive convergence even if OR omits the flag (F-023).
+  export _WF_ADV_REVIEW_VERDICT="${verdict:-}"
 
   # Param validation against STEP_PARAMS[] — INV-002
   # Reject unknown params; enforce required params per step.
@@ -1258,8 +1263,13 @@ handle_complete() {
     local cur_run
     cur_run=$(get_field "$state_json" "current_run_review")
     cur_run="${cur_run:-0}"
+    local review_verdict
+    review_verdict=$(get_field "$state_json" "review_verdict")
 
-    if [[ "$converged" == "true" ]]; then
+    # ARCH-03-A: a CONVERGE verdict from RV (stored at RV_REVIEW) converges the loop
+    # exactly like OR's converged flag — so a forgotten flag (F-023) no longer wastes
+    # cycles nor triggers a false escalation when RV already rendered CONVERGE.
+    if [[ "$converged" == "true" || "$review_verdict" == "CONVERGE" ]]; then
       exit_decision="converged"
     elif [[ "$stall" == "true" ]]; then
       exit_decision="stall"
@@ -1268,7 +1278,7 @@ handle_complete() {
     else
       exit_decision="${exit_decision:-continue}"
     fi
-    log "REVIEW CHECK_EXIT: cur_run=$cur_run max=$max_review exit_decision=$exit_decision"
+    log "REVIEW CHECK_EXIT: cur_run=$cur_run max=$max_review verdict=${review_verdict:-none} exit_decision=$exit_decision"
   fi
 
   # CODE_REVIEW:CHECK_CR_EXIT
@@ -1291,58 +1301,22 @@ handle_complete() {
     log "CODE_REVIEW CHECK_CR_EXIT: cur_cr=$cur_cr max=$max_cr exit_decision=$exit_decision"
   fi
 
-  # Artifact guards — INV-003
-  # For steps listed in STEP_ARTIFACTS[], verify the artifact exists and was modified.
-  if [[ -n "${STEP_ARTIFACTS[$comp_step]+x}" ]]; then
-    local artifact="${STEP_ARTIFACTS[$comp_step]}"
-    if [[ -z "$artifact" ]]; then
-      # DV_IMPLEMENT special case: verify git diff non-empty in need_dir
-      local git_diff_out
-      git_diff_out=$(git -C "$PROJECT_ROOT" diff --name-only HEAD -- "wf/needs/$name" 2>/dev/null)
-      if [[ -z "$git_diff_out" ]]; then
-        git_diff_out=$(git -C "$PROJECT_ROOT" diff --name-only -- "wf/needs/$name" 2>/dev/null)
-      fi
-      if [[ -z "$git_diff_out" ]]; then
-        git_diff_out=$(git -C "$PROJECT_ROOT" status --porcelain "wf/needs/$name" 2>/dev/null)
-      fi
-      # Fallback for gitignored need_dir: accept any non-empty content under wf/needs/<name>/
-      if [[ -z "$git_diff_out" ]] && git -C "$PROJECT_ROOT" check-ignore -q "wf/needs/$name" 2>/dev/null; then
-        if [[ -n "$(find "$need_dir" -type f -not -empty 2>/dev/null | head -1)" ]]; then
-          git_diff_out="ignored:wf/needs/$name"
-        fi
-      fi
-      if [[ -z "$git_diff_out" ]]; then
+  # Artifact guards — INV-003 / ARCH-04 (shared check via _wf_check_step_artifact).
+  # For steps in STEP_ARTIFACTS[], the artifact must exist and be modified before the
+  # state advances; otherwise refuse (exit 1). Same logic as --validate (single source).
+  _wf_check_step_artifact "$name" "$comp_step"
+  case "$_WF_ART_RESULT" in
+    not_found)
+      printf '{"ok":false,"error":"Artifact not found: %s","code":"ARTIFACT_NOT_FOUND"}\n' "$_WF_ART_NAME"
+      exit 1 ;;
+    not_modified)
+      if [[ -z "$_WF_ART_NAME" ]]; then
         printf '{"ok":false,"error":"No modified files detected in wf/needs/%s (git diff empty)","code":"ARTIFACT_NOT_MODIFIED"}\n' "$name"
-        exit 1
+      else
+        printf '{"ok":false,"error":"Artifact not modified: %s","code":"ARTIFACT_NOT_MODIFIED"}\n' "$_WF_ART_NAME"
       fi
-    else
-      local artifact_path="$need_dir/$artifact"
-      if [[ ! -f "$artifact_path" ]]; then
-        printf '{"ok":false,"error":"Artifact not found: %s","code":"ARTIFACT_NOT_FOUND"}\n' "$artifact"
-        exit 1
-      fi
-      # Check modified: git diff (unstaged), git diff --cached (staged), or untracked
-      local artifact_rel="wf/needs/$name/$artifact"
-      local diff_out
-      diff_out=$(git -C "$PROJECT_ROOT" diff --name-only -- "$artifact_rel" 2>/dev/null)
-      if [[ -z "$diff_out" ]]; then
-        diff_out=$(git -C "$PROJECT_ROOT" diff --cached --name-only -- "$artifact_rel" 2>/dev/null)
-      fi
-      if [[ -z "$diff_out" ]]; then
-        diff_out=$(git -C "$PROJECT_ROOT" status --porcelain -- "$artifact_rel" 2>/dev/null)
-      fi
-      # Fallback for gitignored artifact: accept if file exists and is non-empty
-      if [[ -z "$diff_out" ]] && git -C "$PROJECT_ROOT" check-ignore -q "$artifact_rel" 2>/dev/null; then
-        if [[ -s "$artifact_path" ]]; then
-          diff_out="ignored:$artifact_rel"
-        fi
-      fi
-      if [[ -z "$diff_out" ]]; then
-        printf '{"ok":false,"error":"Artifact not modified: %s","code":"ARTIFACT_NOT_MODIFIED"}\n' "$artifact"
-        exit 1
-      fi
-    fi
-  fi
+      exit 1 ;;
+  esac
 
   # Compute next step
   local next
@@ -1696,6 +1670,7 @@ const extraBranchType = process.env._WF_ADV_BRANCH_TYPE || null;
 const extraBranch = process.env._WF_ADV_BRANCH || null;
 const extraTeam = process.env._WF_ADV_TEAM || null;
 const extraReason = process.env._WF_ADV_REASON || null;
+const reviewVerdict = process.env._WF_ADV_REVIEW_VERDICT || '';
 
 let state;
 try {
@@ -1734,6 +1709,9 @@ if (incrReview) {
 if (incrCr) {
   state.current_run_cr = (state.current_run_cr || 0) + 1;
 }
+// ARCH-03-A: persist RV's verdict (set only when completing RV_REVIEW) so CHECK_EXIT
+// can derive convergence deterministically even if OR omits the converged flag (F-023).
+if (reviewVerdict) state.review_verdict = reviewVerdict;
 if (extraCardNum) state.card_num = extraCardNum;
 if (extraBranchType) state.branch_type = extraBranchType;
 if (extraBranch) state.branch = extraBranch;
@@ -3215,7 +3193,17 @@ ENDJS
   fi
 
   # Global help — LLM-oriented contract (obs #87)
-  node --input-type=module <<'ENDJS'
+  # phases_and_steps is generated from STEPS[] — single source of truth (ARCH-06).
+  local steps_json
+  steps_json=$(printf '%s\n' "${STEPS[@]}" | jq -Rsc 'split("\n") | map(select(length>0))')
+  WF_STEPS_JSON="$steps_json" node --input-type=module <<'ENDJS'
+const steps = JSON.parse(process.env.WF_STEPS_JSON || "[]");
+const phases_and_steps = {};
+for (const s of steps) {
+  const i = s.indexOf(":");
+  const p = s.slice(0, i);
+  (phases_and_steps[p] = phases_and_steps[p] || []).push(s.slice(i + 1));
+}
 const contract = {
   role: "wf-orchestrate.sh is a deterministic state-machine driver for the Waterfall workflow. Agents (OR, PM) drive it via the commands below. The script itself does not make decisions — it enforces the state machine and validates inputs.",
 
@@ -3274,18 +3262,7 @@ const contract = {
     { code: 2, meaning: "Auth blocked — agent_id does not match STEP_AGENT (hook wf-auth.sh)" }
   ],
 
-  phases_and_steps: {
-    BOOTSTRAP:        ["DETERMINE_NAME","RUN_BOOTSTRAP","STORE_PATH","COLLECT_CARD_NUM","COLLECT_BRANCH_TYPE","CREATE_BRANCH_Q","SPAWN_TEAM"],
-    REQUIREMENTS:     ["COLLECT_PRD","GENERATE_PRD","CHECKPOINT_REQ"],
-    FUNCTIONAL_SPECS: ["INTERVIEW_SPECS","GENERATE_SPECS","GENERATE_ACCEPTANCE","VALIDATE_SPECS","CHECKPOINT_FUNC"],
-    TECHNICAL_DESIGN: ["GENERATE_DESIGN","CHECKPOINT_DESIGN"],
-    REVIEW:           ["RV_REVIEW","CHECK_EXIT","ANTI_LOOP","DISPATCH","PO_UPDATE","TL_UPDATE","UPDATE_TRACKING"],
-    PLANNING:         ["GENERATE_TASKS","ASSIGN_WORKTREES","CHECKPOINT_TASKS"],
-    IMPLEMENTATION:   ["DV_IMPLEMENT","TL_SUPERVISE","CHECKPOINT_IMPL","MERGE_WORKTREES"],
-    CODE_REVIEW:      ["RV_CODE_REVIEW","CHECK_CR_EXIT","DV_FIX","UPDATE_TRACKING_CR"],
-    VALIDATION:       ["PO_VALIDATE","QA_ACCEPTANCE_TEST","HO_VALIDATE","CHECKPOINT_VALID"],
-    CLOSURE:          ["CLEANUP_WORKTREES","COMMIT","PUSH","PR_CREATE","HO_MERGE","BILAN","LOG_AUDIT","CLEANUP","ARCHIVE"]
-  }
+  phases_and_steps
 };
 process.stdout.write(JSON.stringify(contract, null, 2) + '\n');
 ENDJS
@@ -3294,6 +3271,61 @@ ENDJS
 # ─────────────────────────────────────────────────────────────────────────────
 # Section 6e : VALIDATE (EX-011, EX-016)
 # ─────────────────────────────────────────────────────────────────────────────
+
+# _wf_check_step_artifact <name> <step> — shared artifact existence/modified check.
+# ARCH-04 dedup: single source of truth for handle_complete's gate AND handle_validate.
+# Sets globals: _WF_ART_RESULT (no_artifact|ok|not_found|not_modified), _WF_ART_NAME.
+_wf_check_step_artifact() {
+  local name="$1" step="$2"
+  local need_dir="$PROJECT_ROOT/wf/needs/$name"
+  _WF_ART_NAME=""
+  if [[ -z "${STEP_ARTIFACTS[$step]+x}" ]]; then
+    _WF_ART_RESULT="no_artifact"; return 0
+  fi
+  local artifact="${STEP_ARTIFACTS[$step]}"
+  _WF_ART_NAME="$artifact"
+  if [[ -z "$artifact" ]]; then
+    # DV_IMPLEMENT special case: any modified file under wf/needs/<name>
+    local git_diff_out
+    git_diff_out=$(git -C "$PROJECT_ROOT" diff --name-only HEAD -- "wf/needs/$name" 2>/dev/null)
+    if [[ -z "$git_diff_out" ]]; then
+      git_diff_out=$(git -C "$PROJECT_ROOT" diff --name-only -- "wf/needs/$name" 2>/dev/null)
+    fi
+    if [[ -z "$git_diff_out" ]]; then
+      git_diff_out=$(git -C "$PROJECT_ROOT" status --porcelain "wf/needs/$name" 2>/dev/null)
+    fi
+    # Fallback for gitignored need_dir: accept any non-empty file
+    if [[ -z "$git_diff_out" ]] && git -C "$PROJECT_ROOT" check-ignore -q "wf/needs/$name" 2>/dev/null; then
+      if [[ -n "$(find "$need_dir" -type f -not -empty 2>/dev/null | head -1)" ]]; then
+        git_diff_out="ignored:wf/needs/$name"
+      fi
+    fi
+    if [[ -z "$git_diff_out" ]]; then _WF_ART_RESULT="not_modified"; else _WF_ART_RESULT="ok"; fi
+    return 0
+  fi
+  # Named artifact: existence then git diff
+  local artifact_path="$need_dir/$artifact"
+  if [[ ! -f "$artifact_path" ]]; then
+    _WF_ART_RESULT="not_found"; return 0
+  fi
+  local artifact_rel="wf/needs/$name/$artifact"
+  local diff_out
+  diff_out=$(git -C "$PROJECT_ROOT" diff --name-only -- "$artifact_rel" 2>/dev/null)
+  if [[ -z "$diff_out" ]]; then
+    diff_out=$(git -C "$PROJECT_ROOT" diff --cached --name-only -- "$artifact_rel" 2>/dev/null)
+  fi
+  if [[ -z "$diff_out" ]]; then
+    diff_out=$(git -C "$PROJECT_ROOT" status --porcelain -- "$artifact_rel" 2>/dev/null)
+  fi
+  # Fallback for gitignored artifact: accept if file exists and is non-empty
+  if [[ -z "$diff_out" ]] && git -C "$PROJECT_ROOT" check-ignore -q "$artifact_rel" 2>/dev/null; then
+    if [[ -s "$artifact_path" ]]; then
+      diff_out="ignored:$artifact_rel"
+    fi
+  fi
+  if [[ -z "$diff_out" ]]; then _WF_ART_RESULT="not_modified"; else _WF_ART_RESULT="ok"; fi
+  return 0
+}
 
 handle_validate() {
   local name="$1"
@@ -3313,54 +3345,22 @@ handle_validate() {
   local current_step
   current_step=$(get_field "$state_json" "step")
 
-  # Check if this step produces an artifact
-  if [[ -z "${STEP_ARTIFACTS[$current_step]+x}" ]]; then
-    printf '{"valid":true,"note":"no artifacts expected for this step"}\n'
-    return
-  fi
-
-  local artifact="${STEP_ARTIFACTS[$current_step]}"
-
-  # DV_IMPLEMENT special case: any modified file in need_dir
-  if [[ -z "$artifact" ]]; then
-    local git_diff_out
-    git_diff_out=$(git -C "$PROJECT_ROOT" diff --name-only HEAD -- "wf/needs/$name" 2>/dev/null)
-    if [[ -z "$git_diff_out" ]]; then
-      git_diff_out=$(git -C "$PROJECT_ROOT" diff --name-only -- "wf/needs/$name" 2>/dev/null)
-    fi
-    if [[ -z "$git_diff_out" ]]; then
-      git_diff_out=$(git -C "$PROJECT_ROOT" status --porcelain "wf/needs/$name" 2>/dev/null)
-    fi
-    if [[ -z "$git_diff_out" ]]; then
-      printf '{"valid":false,"missing":["(any modified file)"],"reason":"No modified files detected in wf/needs/%s (git diff empty)"}\n' "$name"
-    else
-      printf '{"valid":true}\n'
-    fi
-    return
-  fi
-
-  # Named artifact: check existence then git diff
-  local artifact_path="$need_dir/$artifact"
-  if [[ ! -f "$artifact_path" ]]; then
-    printf '{"valid":false,"missing":["%s"],"reason":"Artifact not found"}\n' "$artifact"
-    return
-  fi
-
-  local artifact_rel="wf/needs/$name/$artifact"
-  local diff_out
-  diff_out=$(git -C "$PROJECT_ROOT" diff --name-only -- "$artifact_rel" 2>/dev/null)
-  if [[ -z "$diff_out" ]]; then
-    diff_out=$(git -C "$PROJECT_ROOT" diff --cached --name-only -- "$artifact_rel" 2>/dev/null)
-  fi
-  if [[ -z "$diff_out" ]]; then
-    diff_out=$(git -C "$PROJECT_ROOT" status --porcelain -- "$artifact_rel" 2>/dev/null)
-  fi
-  if [[ -z "$diff_out" ]]; then
-    printf '{"valid":false,"missing":["%s"],"reason":"Artifact not modified (git diff empty)"}\n' "$artifact"
-    return
-  fi
-
-  printf '{"valid":true}\n'
+  # Artifact check shared with handle_complete's gate (ARCH-04 dedup)
+  _wf_check_step_artifact "$name" "$current_step"
+  case "$_WF_ART_RESULT" in
+    no_artifact)
+      printf '{"valid":true,"note":"no artifacts expected for this step"}\n' ;;
+    not_found)
+      printf '{"valid":false,"missing":["%s"],"reason":"Artifact not found"}\n' "$_WF_ART_NAME" ;;
+    not_modified)
+      if [[ -z "$_WF_ART_NAME" ]]; then
+        printf '{"valid":false,"missing":["(any modified file)"],"reason":"No modified files detected in wf/needs/%s (git diff empty)"}\n' "$name"
+      else
+        printf '{"valid":false,"missing":["%s"],"reason":"Artifact not modified (git diff empty)"}\n' "$_WF_ART_NAME"
+      fi ;;
+    ok)
+      printf '{"valid":true}\n' ;;
+  esac
 }
 
 # Section 7 : MAIN
