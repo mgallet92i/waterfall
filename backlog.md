@@ -489,6 +489,8 @@ Recoupe F-001 (brief out-of-order, state machine non avancée) mais l'élément 
 **Symptômes** : testabilité quasi nulle → chaque fix est une repro manuelle → récidives (F-017→F-030) ; incohérences de parsing latentes ; pièges `set -e` + arithmétique (OBS-001).
 **Remédiation** : à terme, porter la state machine en un binaire Node (JSON natif, testable unitairement) ; à défaut extraire State I/O / ACK / context-budget en libs + unifier sur **un seul** parseur JSON ; **prioritaire** : suite de tests sur `handle_complete`/`handle_query` + résolution cwd + matrice de skip par mode.
 
+**Avancement (2026-06-07) — volet « suite de tests » fait (le plus prioritaire).** Première couverture dédiée du cœur : `tests/wf-orchestrate-helper.bash` (harness : projet isolé git-init sous `BATS_TMPDIR` via `WF_PROJECT_ROOT`, zéro pollution) + 7 fichiers de caractérisation (64 `@test`) : `paths` (résolution PROJECT_ROOT, F-030/F-032 + anti-état-fantôme), `query`, `complete` (advance/STEP_MISMATCH/UNKNOWN_PARAM/history), `artifact-gate` (ARCH-04, cohérence `--complete`/`--validate`), `convergence` (ARCH-03-A + F-023 + max_runs), `skip` (light/dark, ARCH-05), `contract` (`--help`==`STEPS[]`, ARCH-06-1). Suite totale : **144 passed, 0 failed**. Ces tests verrouillent tout ce qui a été corrigé aujourd'hui. **Reste** : le refactor du monolithe (port Node ou extraction en libs + parseur JSON unique) — non entamé. Limites connues du harness : le gate DV_IMPLEMENT n'est pas testable en isolation (git sans commit initial → `git diff HEAD` fatale) — cas omis explicitement.
+
 ---
 
 ## F-031 — ack-registry : schéma producteur/consommateur incompatible → ACTOR_IDLE mort **[P0]** [issu de ARCH-02]
