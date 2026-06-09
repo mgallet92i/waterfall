@@ -47,7 +47,7 @@ For steps where `--query` returns `agent=dv`, the order is **STRICT** and **NON-
 
 | Phase | Step | Inputs to Read | Output to Write | Self-complete |
 |-------|------|----------------|-----------------|---------------|
-| IMPLEMENTATION | IMPLEMENT_TASK | tasks.md *(T-xxx)*, design.md, specs.md | *(code source + tests)* | `--complete IMPLEMENTATION:IMPLEMENT_TASK` *(via TL)* |
+| IMPLEMENTATION | *(hors state machine — tâches T-xxx pilotées par TL)* | tasks.md *(T-xxx)*, design.md, specs.md | *(code source + tests)* | *(aucun — DV notifie TL via SendMessage ; le step machine `IMPLEMENTATION:DV_IMPLEMENT` est complété côté OR)* |
 
 Note : DV reçoit ses tâches de TL via `task_assignment`. Le `context_overrides` du trigger inclut `task_id` pour les spawns multi-DV.
 

@@ -48,7 +48,7 @@ For steps where `--query` returns `agent=tl`, the order is **STRICT** and **NON-
 | Phase | Step | Inputs to Read | Output to Write | Self-complete |
 |-------|------|----------------|-----------------|---------------|
 | TECHNICAL_DESIGN | GENERATE_DESIGN | specs.md, acceptance.md | design.md | `--complete TECHNICAL_DESIGN:GENERATE_DESIGN` |
-| REVIEW | ITERATE_DESIGN | review.md, design.md | design.md *(corrections)* | `--complete REVIEW:ITERATE_DESIGN` |
+| REVIEW | TL_UPDATE | review.md, design.md | design.md *(corrections)* | `--complete REVIEW:TL_UPDATE` |
 | PLANNING | GENERATE_TASKS | design.md, review.md, tracking.md | tasks.md | `--complete PLANNING:GENERATE_TASKS` |
 | CODE_REVIEW | — | — | — | **Owned by RV** (step `CODE_REVIEW:RV_CODE_REVIEW`). TL only relays per-task review briefs to RV during IMPLEMENTATION. See [wf-rv.md](./wf-rv.md). |
 | CLOSURE | CLEANUP_WORKTREES | tasks.md *(liste des DVs)* | *(worktrees supprimés)* | `--complete CLOSURE:CLEANUP_WORKTREES` |

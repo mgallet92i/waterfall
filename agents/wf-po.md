@@ -47,9 +47,10 @@ For steps where `--query` returns `agent=po`, the order is **STRICT** and **NON-
 
 | Phase | Step | Inputs to Read | Output to Write | Self-complete |
 |-------|------|----------------|-----------------|---------------|
-| FUNCTIONAL_SPECS | INTERVIEW_SPECS | PRD.md | specs.md, tf.md | `--complete FUNCTIONAL_SPECS:INTERVIEW_SPECS` |
-| FUNCTIONAL_SPECS | GENERATE_ACCEPTANCE | specs.md, tf.md | tf.md *(finalisation)* | `--complete FUNCTIONAL_SPECS:GENERATE_ACCEPTANCE` |
-| REVIEW | ITERATE_CORRECTIONS | review.md, specs.md | specs.md *(corrections)* | `--complete REVIEW:ITERATE_CORRECTIONS` |
+| FUNCTIONAL_SPECS | INTERVIEW_SPECS | PRD.md | *(interview — questions HO via canal NEED_HO_INPUT)* | `--complete FUNCTIONAL_SPECS:INTERVIEW_SPECS` |
+| FUNCTIONAL_SPECS | GENERATE_SPECS | PRD.md | specs.md | `--complete FUNCTIONAL_SPECS:GENERATE_SPECS` |
+| FUNCTIONAL_SPECS | GENERATE_ACCEPTANCE | specs.md | acceptance.md | `--complete FUNCTIONAL_SPECS:GENERATE_ACCEPTANCE` |
+| REVIEW | PO_UPDATE | review.md, specs.md | specs.md *(corrections)* | `--complete REVIEW:PO_UPDATE` |
 
 ---
 

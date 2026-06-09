@@ -56,6 +56,22 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh --help
 
 ## Workflow
 
+### Boucle standard d'avancement (référencée par toutes les phases)
+
+Les steps, leur ordre, leurs params et les auto-skips sont **propriété du script** — ne jamais
+les recopier ni les supposer (ARCH-06). Pour faire avancer la machine :
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query
+```
+
+puis lire la réponse :
+- **`agent=pm`** → exécuter ce que dit le champ `hint` (il contient l'action et la forme exacte du `--complete`), avec pour seuls noms de params ceux de `expected_params`.
+- **`agent=tl`** → territoire d'une passe TL (Phases D/F) — ne pas compléter à sa place.
+- Steps des autres rôles (po/rv/qa/ds/or) → **auto-skippés** par la state machine en light(+dark) au `--complete` précédent ; si la machine semble bloquée sur l'un d'eux, c'est un bug à signaler, pas à contourner.
+
+Répéter query→hint→complete jusqu'au jalon visé par la phase courante.
+
 ### Phase A — Élicitation (2–4 AskUserQuestion)
 
 Poser un grill ciblé pour comprendre le besoin. Questions avec options preview quand pertinent.
@@ -63,25 +79,8 @@ Objectif : obtenir assez de contexte pour rédiger `specs.md` sans ambiguïté.
 
 **Ne pas démarrer la rédaction de specs.md avant la fin de l'élicitation.**
 
-Compléter les steps bootstrap pm-owned au fil de l'exécution :
-
-```bash
-# Query pour connaître l'étape courante
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query
-
-# Compléter BOOTSTRAP:DETERMINE_NAME
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete BOOTSTRAP:DETERMINE_NAME --params need_name=<name>
-
-# BOOTSTRAP:RUN_BOOTSTRAP — copier les templates si besoin, le state file existe déjà (créé par wf-new)
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete BOOTSTRAP:RUN_BOOTSTRAP
-
-# BOOTSTRAP:STORE_PATH — NOOP, compléter immédiatement
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete BOOTSTRAP:STORE_PATH
-```
-
-Les steps `agent=or` (COLLECT_CARD_NUM, COLLECT_BRANCH_TYPE, CREATE_BRANCH_Q, SPAWN_TEAM) sont
-auto-skippés par `_wf_auto_skip_light` après chaque `--complete`. Idem pour tous les steps
-`agent=po`, `agent=rv`, `agent=qa`, `agent=ds`.
+Compléter les steps bootstrap pm-owned au fil de l'exécution via la **boucle standard**
+(query→hint→complete), jusqu'à sortir de BOOTSTRAP.
 
 ### Phase B — Rédaction specs.md
 
@@ -90,15 +89,8 @@ Rédiger `wf/needs/<name>/specs.md` au format :
 - INV-xxx (invariants et contraintes)
 - Test manuel associé à chaque exigence majeure
 
-Compléter les steps REQUIREMENTS pm-owned :
-
-```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete REQUIREMENTS:COLLECT_PRD
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete REQUIREMENTS:GENERATE_PRD
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete REQUIREMENTS:CHECKPOINT_REQ --params decision=approve
-```
-
-Les steps FUNCTIONAL_SPECS (agent=po) sont auto-skippés. Avancer jusqu'à TECHNICAL_DESIGN.
+Compléter les steps REQUIREMENTS pm-owned via la **boucle standard** (le checkpoint
+s'approuve avec le param indiqué par `expected_params`/`hint`). Avancer jusqu'à TECHNICAL_DESIGN.
 
 ### Phase C — Checkpoint specs (interaction HO n°1 — skippée si dark=on)
 
@@ -110,11 +102,7 @@ Passer directement à la Phase D.
 Options proposées : valider / corriger / ajouter / abandonner.
 
 Si corrections : itérer sur specs.md (toujours dans cette même interaction n°1).
-Une fois validé : passer à la Phase D.
-
-```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete TECHNICAL_DESIGN:CHECKPOINT_DESIGN --params decision=approve
-```
+Une fois validé : approuver le checkpoint courant via la **boucle standard**, puis passer à la Phase D.
 
 > **REVIEW phase short-circuitée en light** (ANO-005). `CHECKPOINT_DESIGN` transitionne
 > directement vers `PLANNING:GENERATE_TASKS` — pas de RV, pas de `review.md`,
@@ -163,11 +151,7 @@ Options : valider / ajuster / rejeter.
 Si ajustements : éditer `tasks.md` directement (micro-tweak PM) ou demander à TL de corriger
 si les modifications dépassent 5 lignes ou touchent la logique technique.
 
-Une fois validé : passer à la Phase F.
-
-```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete PLANNING:CHECKPOINT_TASKS --params decision=approve
-```
+Une fois validé : approuver le checkpoint courant via la **boucle standard**, puis passer à la Phase F.
 
 **Implémentation conditionnée à la validation HO.** (EX-010)
 
@@ -211,12 +195,8 @@ auto-approuve si OK, sinon itère sur TL. Logger `[DARK] validation auto-decided
 
 Options : ok (passer à CLOSURE) / ko (itérer sur TL ou micro-tweak PM).
 
-Compléter les steps VALIDATION :
-
-```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete VALIDATION:HO_VALIDATE --params ho_approved=true
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete VALIDATION:CHECKPOINT_VALID --params decision=approve
-```
+Compléter les steps VALIDATION pm-owned via la **boucle standard** (approbation = params
+indiqués par `expected_params`/`hint` ; en cas de KO, suivre le `hint` pour la voie retry).
 
 ### Phase H — Commit + clôture
 
@@ -227,15 +207,8 @@ git commit -m "<message conventionnel>"
 
 Pas de `Co-Authored-By` dans le commit message (mode light, agent seul).
 
-Compléter les steps CLOSURE pm-owned :
-
-```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete CLOSURE:COMMIT
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete CLOSURE:BILAN
-```
-
-Les steps CLOSURE `agent=or` (PUSH, HO_MERGE, LOG_AUDIT, CLEANUP, ARCHIVE, PR_TRIAGE) sont
-auto-skippés. Compléter PR_CREATE si une PR est demandée.
+Compléter les steps CLOSURE pm-owned via la **boucle standard** jusqu'à l'état TERMINAL
+(les steps `agent=or` sont auto-skippés ; compléter le step de création de PR si une PR est demandée).
 
 ---
 

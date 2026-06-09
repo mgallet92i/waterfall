@@ -106,8 +106,8 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --fro
 
 | Phase | Step | Inputs to Read | Output to Write | Self-complete |
 |-------|------|----------------|-----------------|---------------|
-| TECHNICAL_DESIGN | GENERATE_UI | PRD.md, specs.md, design.md | ui.md | `--complete TECHNICAL_DESIGN:GENERATE_UI` |
-| REVIEW | ITERATE_UI | review.md, ui.md | ui.md *(corrections)* | `--complete REVIEW:ITERATE_UI` |
+| TECHNICAL_DESIGN | *(hors state machine — production initiale)* | PRD.md, specs.md, design.md | ui.md | *(aucun — DS notifie TL/OR via SendMessage `brief_complete` ; aucun step DS n'existe en machine)* |
+| REVIEW | *(hors state machine — corrections)* | review.md, ui.md | ui.md *(corrections)* | *(aucun — idem, notifier via SendMessage)* |
 
 ---
 

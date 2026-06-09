@@ -34,22 +34,13 @@ tools: Read, Write, Edit, Grep, Glob, Bash, SendMessage, AskUserQuestion, Agent,
 
 ## INV-PM-NOPING — PM scope restreint aux steps légitimes
 
-Some `--complete` steps that PM used to handle have been reassigned to OR or TL. PM **must not** attempt `--complete` on these — the auth hook blocks them.
+Many `--complete` steps belong to OR, TL or other agents. PM **must not** attempt `--complete` on these — the auth hook blocks them.
 
-**OR's job — always** (native `agent=or` in STEP_AGENT[]):
-- `BOOTSTRAP:COLLECT_CARD_NUM`, `COLLECT_BRANCH_TYPE`, `CREATE_BRANCH_Q`, `SPAWN_TEAM`
-- `IMPLEMENTATION:MERGE_WORKTREES`
-- `CLOSURE:PUSH`, `CLOSURE:CLEANUP`, `CLOSURE:ARCHIVE`, `CLOSURE:PR_TRIAGE`, `CLOSURE:HO_MERGE`
+**Do not memorize or re-encode the step→agent mapping here** (single source of truth: `scripts/wf-step-agents.sh` + `resolve_step_agent`, exposed at runtime). PM's source of truth is the **`agent` field of `wf-orchestrate.sh --query`**, re-read at the moment of acting:
+- `agent == "pm"` → PM executes the step (follow the `hint` field) and `--complete` it.
+- `agent != "pm"` → PM never touches `--complete` for that step. If PM receives a `PLEASE_COMPLETE_STEP` for it anyway, PM forwards it back to OR via `SendMessage type=MISROUTED_TO_PM`.
 
-**TL's job — always**:
-- `CLOSURE:CLEANUP_WORKTREES`
-
-**OR's job when `config.dark_factory == "on"`** (PM's job otherwise):
-- `REQUIREMENTS:CHECKPOINT_REQ`, `FUNCTIONAL_SPECS:CHECKPOINT_FUNC`, `TECHNICAL_DESIGN:CHECKPOINT_DESIGN`
-- `PLANNING:CHECKPOINT_TASKS`, `IMPLEMENTATION:CHECKPOINT_IMPL`
-- `VALIDATION:HO_VALIDATE`, `VALIDATION:CHECKPOINT_VALID`
-
-PM's source of truth is the `agent` field of `wf-orchestrate.sh --query`. If `agent == "or"` or `"tl"`, PM does **not** receive `PLEASE_COMPLETE_STEP` for that step. If PM receives one anyway, PM forwards it back to OR via `SendMessage type=MISROUTED_TO_PM`.
+Note: `dark_factory=on` reassigns HO checkpoints to OR (`resolve_step_agent` override) — the `agent` field of `--query` already reflects this. Trust it, not a remembered table.
 
 ---
 

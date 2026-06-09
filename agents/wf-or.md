@@ -42,61 +42,19 @@ If OR cannot identify the need from the brief: `ERROR_UNRECOVERABLE`. No inferen
 
 When in doubt: `--query` first, read `agent`, route accordingly. If `agent != or`, OR does **not** touch `--complete`.
 
-### OR native steps
+### OR steps — hint-driven, no memorized tables
 
-These steps have `agent=or` natively in `STEP_AGENT[]` (single source of truth: `scripts/wf-step-agents.sh`). OR sees them via `--query` and self-completes — no `PLEASE_COMPLETE_STEP` to PM, no ALWAYS_OR override needed.
+The step→agent mapping, the action to perform and the accepted params are **never** to be memorized or re-encoded here (single sources of truth: `scripts/wf-step-agents.sh` + `STEP_PARAMS[]` in `scripts/wf-orchestrate.sh`, exposed at runtime). OR works exclusively from the `--query` response, re-read at the moment of acting:
 
-**Always OR — BOOTSTRAP** (regardless of `dark_factory`):
-- `BOOTSTRAP:COLLECT_CARD_NUM` — complete with `--params card_num=null` if no ticket context, else `card_num=<id>`.
-- `BOOTSTRAP:COLLECT_BRANCH_TYPE` — complete with `--params branch_type=feature` (default) or `branch_type=hotfix`.
-- `BOOTSTRAP:CREATE_BRANCH_Q` — `git checkout -b <branch_type>/<name>` (or `<branch_type>/<card_num>-<name>` if card_num set), then complete with `--params branch=<branch_name>`.
-- `BOOTSTRAP:SPAWN_TEAM` — NOOP, complete with `--params team_name=wf-<name>`.
+- **`agent`** — `or` → OR executes and self-completes (no `PLEASE_COMPLETE_STEP` to PM). Anything else → dispatch and wait.
+- **`hint`** — the action to perform for the current step (including exact commands and the `--complete` form). Follow it literally.
+- **`expected_params`** — the only param names accepted by `--complete` for this step. Empty/absent → complete **without** `--params`.
 
-**Always OR — IMPLEMENTATION**:
-- `IMPLEMENTATION:MERGE_WORKTREES` — NOOP, complete without params.
+Note: `dark_factory=on` reassigns HO checkpoints to OR (`resolve_step_agent` override) — the `agent` field already reflects this; OR self-approves on behalf of HO by following the `hint`.
 
-**Always OR — CLOSURE**:
-- `CLOSURE:PUSH` — execute `git push origin <branch>`, then complete without params.
-- `CLOSURE:CLEANUP` — remove temp markers/files (`.wf-marker-*`, etc.), then complete.
-- `CLOSURE:ARCHIVE` — archive `.wf-state.json` to `wf/needs/<name>/.wf-state.archived.json`, then complete.
-- `CLOSURE:PR_TRIAGE` — verify PR is merged via `gh pr view --json mergedAt`, then complete.
-- `CLOSURE:HO_MERGE` — execute `gh pr merge --merge` (or `--squash`) after verifying PR approval, then complete.
+**Param discipline (F-010 / INV-OR-02)** : OR **n'invente JAMAIS** un nom de param (les `branch_created=true`, `team_spawned_externally=true` ont causé des blocages — le hook + la validation `STEP_PARAMS` rejettent tout nom inconnu). **Avant tout `--complete --params`, re-lire `expected_params` du `--query`.**
 
-**Reassigned to OR only when `config.dark_factory == "on"`** (HO checkpoints — OR self-approves on behalf of HO):
-- `REQUIREMENTS:CHECKPOINT_REQ` — read PRD.md, validate it covers the need, complete `--params decision=approve` (or `decision=retry` if incoherent).
-- `FUNCTIONAL_SPECS:CHECKPOINT_FUNC` — verify specs.md + acceptance.md cover EX/INV/TF, then `decision=approve`.
-- `TECHNICAL_DESIGN:CHECKPOINT_DESIGN` — verify design.md covers architecture/model/ADR/EX→component, then `decision=approve`.
-- `PLANNING:CHECKPOINT_TASKS` — verify tasks.md lists tasks + DV assignment + critical path, then `decision=approve`.
-- `IMPLEMENTATION:CHECKPOINT_IMPL` — verify all tasks DONE/PASS/APPROVED, build green, then `decision=approve`.
-- `VALIDATION:HO_VALIDATE` — read acceptance-report.md; if all TF pass, `--params ho_approved=true`.
-- `VALIDATION:CHECKPOINT_VALID` — if previous step was approved, `decision=approve`.
-
-In all cases, OR ALWAYS verifies the artefact exists and is non-trivial (filesystem check) BEFORE completing — no hallucinated approval. If verification fails, `decision=retry` (or `ho_approved=false`) instead.
-
-### ⚠ Référence — params `--complete` acceptés par step (F-010)
-
-Source de vérité : `STEP_PARAMS[]` dans `scripts/wf-orchestrate.sh`. OR **n'invente JAMAIS** un nom de param (les `branch_created=true`, `team_spawned_externally=true` ont causé des blocages — le hook + la validation `STEP_PARAMS` rejettent tout nom inconnu). **Avant tout `--complete --params`, re-lire `expected_params` du `--query`** (INV-OR-02). Seuls les steps ci-dessous acceptent des params ; **tous les autres se complètent sans `--params`**.
-
-| Step | Param(s) accepté(s) |
-|------|---------------------|
-| `BOOTSTRAP:COLLECT_CARD_NUM` | `card_num` |
-| `BOOTSTRAP:COLLECT_BRANCH_TYPE` | `branch_type` |
-| `BOOTSTRAP:CREATE_BRANCH_Q` | `branch` |
-| `BOOTSTRAP:SPAWN_TEAM` | `team_name` |
-| `REQUIREMENTS:CHECKPOINT_REQ` | `decision` |
-| `FUNCTIONAL_SPECS:CHECKPOINT_FUNC` | `decision` |
-| `TECHNICAL_DESIGN:CHECKPOINT_DESIGN` | `decision` |
-| `REVIEW:CHECK_EXIT` | `converged`, `stall` |
-| `REVIEW:DISPATCH` | `has_functional`, `has_technical` |
-| `PLANNING:CHECKPOINT_TASKS` | `decision` |
-| `IMPLEMENTATION:CHECKPOINT_IMPL` | `decision` |
-| `CODE_REVIEW:CHECK_CR_EXIT` | `converged`, `stall` |
-| `VALIDATION:QA_ACCEPTANCE_TEST` | `validation_ok` |
-| `VALIDATION:HO_VALIDATE` | `ho_approved` |
-| `VALIDATION:CHECKPOINT_VALID` | `decision` |
-| `CLOSURE:PR_CREATE` | `pr_url` (informationnel) |
-| `CLOSURE:HO_MERGE` | `decision` |
-| `CLOSURE:PR_TRIAGE` | `decision` |
+**Verification discipline** : in all cases, OR ALWAYS verifies the artefact exists and is non-trivial (filesystem check) BEFORE completing — no hallucinated approval. If verification fails, `decision=retry` (or `ho_approved=false`) instead.
 
 Note (F-023) : `--params` est tolérant au positionnel (`--complete STEP converged=true` marche), mais la forme canonique reste `--complete <STEP> --params <key>=<val>`.
 
@@ -644,30 +602,21 @@ Tout step où `--query` retourne `agent=or` se traite **dans le même tour OR**,
 - **INV-OR-03 / EX-OR-06** : après chaque `--complete` sur un step `agent=or`, OR re-query **immédiatement** (retour à l'étape 3 du Main loop). Aucun délai, aucun `SendMessage` intermédiaire.
 - **EX-OR-05** : aucune instruction d'attente externe (`wait for SendMessage`, `pause until`, `attendre`) ne figure dans cette branche. L'auto-exécution est synchrone dans le même tour OR.
 
-### Steps agent=or connus (référence non close)
+### Steps agent=or — pas de liste mémorisée
 
-Liste exhaustive issue de `scripts/wf-step-agents.sh` au moment de ce fix. La règle s'applique à tout step futur `agent=or` — cette liste est une référence opérationnelle, pas une restriction.
+La règle s'applique à **tout** step que `--query` retourne avec `agent=or` — la liste vit dans `scripts/wf-step-agents.sh` et n'est pas recopiée ici (ARCH-06).
 
-1. `FUNCTIONAL_SPECS:VALIDATE_SPECS` — ⚠ **auto-avancé par le script** (F-014/F-015). Step mécanique purement état : `wf-orchestrate.sh` le collapse dans le `--complete` du step précédent (cf. `STEP_OR_AUTO_ADVANCE` dans `wf-step-agents.sh`). OR ne le voit jamais via `--query` et n'a rien à compléter — la garde de couverture EX/INV/TF est assurée par `CHECKPOINT_FUNC` juste après. Ne pas attendre/poker ce step.
-2. `REVIEW:CHECK_EXIT`
-3. `REVIEW:ANTI_LOOP`
-4. `REVIEW:DISPATCH`
-5. `REVIEW:UPDATE_TRACKING`
-6. `IMPLEMENTATION:DV_IMPLEMENT`
-7. `CODE_REVIEW:CHECK_CR_EXIT`
-8. `CODE_REVIEW:UPDATE_TRACKING_CR`
-9. `CLOSURE:LOG_AUDIT`
+Note comportementale : certains steps `agent=or` purement mécaniques (allowlist `STEP_OR_AUTO_ADVANCE`, ex. `FUNCTIONAL_SPECS:VALIDATE_SPECS`) sont **auto-avancés par le script** (F-014/F-015) — collapsés dans le `--complete` du step précédent. OR ne les voit jamais via `--query` et n'a rien à compléter. Ne pas attendre/poker un step que `--query` ne montre pas.
 
 ### Worked example 1 — `REVIEW:CHECK_EXIT`
 
 OR reçoit un `brief_complete` de RV. OR re-query → `step=CHECK_EXIT, agent=or`. OR lit `hint` + `expected_params`, puis lit `wf/needs/<name>/review.md` pour y trouver le `verdict`.
 
-| Condition | Action OR |
+| Condition | Action OR (params = `expected_params` du `--query` : `converged`, `stall`) |
 |-----------|-----------|
-| `verdict == CONVERGE` (lu dans `review.md`) | `--complete REVIEW:CHECK_EXIT --params exit_decision=converged` |
-| `--query` retourne `check_max_runs=true` | `--complete REVIEW:CHECK_EXIT --params exit_decision=max_runs` |
-| Issues identiques au cycle précédent, pas de progrès (stall détecté) | `--complete REVIEW:CHECK_EXIT --params exit_decision=stall` |
-| Sinon (ITERATE normal, max non atteint) | `--complete REVIEW:CHECK_EXIT` (ou `--params exit_decision=continue`) |
+| `verdict == CONVERGE` (lu dans `review.md`) | `--complete REVIEW:CHECK_EXIT --params converged=true` *(le script dérive aussi la convergence du `review_verdict` posé par RV — ARCH-03-A)* |
+| Issues identiques au cycle précédent, pas de progrès (stall détecté) | `--complete REVIEW:CHECK_EXIT --params stall=true` |
+| Sinon (ITERATE normal) | `--complete REVIEW:CHECK_EXIT` sans params — le script gère lui-même `max_runs` (auto-escalation) |
 
 Après le `--complete`, OR re-query immédiatement — pas d'attente, pas de `SendMessage`.
 
@@ -676,9 +625,9 @@ Après le `--complete`, OR re-query immédiatement — pas d'attente, pas de `Se
 > Si `verdict == CONVERGE` lu dans `review.md` (step `REVIEW:CHECK_EXIT`) ou si aucun finding BLOCKER n'est présent dans le rapport RV (step `CODE_REVIEW:CHECK_CR_EXIT`), OR **ne doit pas** :
 > - Re-spawner RV via `spawn_request`
 > - Envoyer un `SendMessage` à RV pour une nouvelle itération
-> - Passer `exit_decision=continue` alors que CONVERGE est confirmé
+> - Compléter sans flag (= continue) alors que CONVERGE est confirmé
 >
-> OR doit immédiatement compléter avec `exit_decision=converged` et re-query. Toute relance de review sur verdict CONVERGE est une violation de routage.
+> OR doit immédiatement compléter avec `--params converged=true` et re-query. Toute relance de review sur verdict CONVERGE est une violation de routage.
 >
 > Cette règle s'applique aux deux steps concernés : `REVIEW:CHECK_EXIT` et `CODE_REVIEW:CHECK_CR_EXIT`.
 
@@ -686,11 +635,11 @@ Après le `--complete`, OR re-query immédiatement — pas d'attente, pas de `Se
 
 OR reçoit un `brief_complete` de RV (rapport code review). OR re-query → `step=CHECK_CR_EXIT, agent=or`. OR lit `hint` + `expected_params`, puis analyse le rapport RV pour détecter les findings BLOCKER.
 
-| Condition | Action OR |
+| Condition | Action OR (params = `expected_params` du `--query` : `converged`, `stall`) |
 |-----------|-----------|
-| Aucun finding BLOCKER dans le rapport RV | `--complete CODE_REVIEW:CHECK_CR_EXIT --params exit_decision=converged` |
-| Findings BLOCKER/MAJOR à corriger | `--complete CODE_REVIEW:CHECK_CR_EXIT` (continue) |
-| Mêmes BLOCKERs répétés sans progrès (stall détecté) | `--complete CODE_REVIEW:CHECK_CR_EXIT --params exit_decision=stall` |
+| Aucun finding BLOCKER dans le rapport RV | `--complete CODE_REVIEW:CHECK_CR_EXIT --params converged=true` |
+| Findings BLOCKER/MAJOR à corriger | `--complete CODE_REVIEW:CHECK_CR_EXIT` sans params (continue) |
+| Mêmes BLOCKERs répétés sans progrès (stall détecté) | `--complete CODE_REVIEW:CHECK_CR_EXIT --params stall=true` |
 
 Après le `--complete`, OR re-query immédiatement — pas d'attente, pas de `SendMessage`.
 
@@ -702,7 +651,7 @@ Après le `--complete`, OR re-query immédiatement — pas d'attente, pas de `Se
 | **INV-OR-02** (params depuis `expected_params`) | Les noms de params passés à `--complete` viennent **exclusivement** du champ `expected_params` du JSON `--query`. Jamais inventés. |
 | **EX-OR-05** (no external wait) | Aucune instruction d'attente externe dans cette branche. OR ne fait jamais `wait for SendMessage` sur un step `agent=or`. |
 | **INV-OR-03 / EX-OR-06** (re-query immédiat) | Après chaque `--complete` sur un step `agent=or`, re-query immédiat. Pas de pause, pas de message vers un pair. |
-| **INV-002** (pas de relance CONVERGE) | Si verdict=CONVERGE (`REVIEW:CHECK_EXIT`) ou aucun BLOCKER (`CODE_REVIEW:CHECK_CR_EXIT`), compléter immédiatement avec `exit_decision=converged`. Interdiction de re-spawner RV ou d'envoyer un SendMessage RV. |
+| **INV-002** (pas de relance CONVERGE) | Si verdict=CONVERGE (`REVIEW:CHECK_EXIT`) ou aucun BLOCKER (`CODE_REVIEW:CHECK_CR_EXIT`), compléter immédiatement avec `--params converged=true`. Interdiction de re-spawner RV ou d'envoyer un SendMessage RV. |
 
 ---
 
@@ -725,28 +674,14 @@ Après le `--complete`, OR re-query immédiatement — pas d'attente, pas de `Se
 > - Déduire l'agent depuis le préfixe du nom de step (`PO_*` → po, `TL_*` → tl)
 > - Ignorer le champ `agent` et router selon une table statique mémorisée
 
-| Phase | Agent primaire | Livrable | Artéfact(s) interdit(s) à OR | Parallelism |
-|---|---|---|---|---|
-| BOOTSTRAP | OR (internal actions) | `.wf-state.json`, `or.log` | (aucun .md métier en jeu) | — |
-| REQUIREMENTS | PO | `PRD.md` | `PRD.md` | Sequential |
-| FUNCTIONAL_SPECS | **PO** | `specs.md` + `acceptance.md` | `specs.md`, `acceptance.md` | Sequential |
-| TECHNICAL_DESIGN | TL (+ DS si `has_ui:true`) | `design.md` (+ `ui.md`) | `design.md`, `ui.md` | Sequential TL→DS |
-| REVIEW | RV | `review.md` | `review.md` | RV seq, revisions parallel |
-| PLANNING | TL | `tasks.md` | `tasks.md` | Sequential |
-| IMPLEMENTATION | DV | code source + maj `tasks.md` | (aucun ; DV maj tasks.md) | Parallel/Sequential |
-| VALIDATION | QA | `tracking.md` | `tracking.md`, `acceptance.md` | Sequential |
-| CLOTURE | OR + PM | archive + commit | (aucun ; OR rédige `or.log` final) | Sequential |
+**No static phase→agent table is maintained here** (it drifted twice — cf. F-029, F-033). Routing inputs, per step, all come from `--query`: `agent` (who), `hint` (what), `artifacts` (with what). The artefact→owner mapping (who writes which `.md`) lives in **one** place: `agents/_shared/constitution.md §Mapping artefacts → owners` — read it there, never re-derive it from step names.
 
-**[!] FUNCTIONAL_SPECS — agent primaire = PO, pas TL.**
-Les specs fonctionnelles (`specs.md`, `acceptance.md`) sont rédigées par PO, propriétaire des artéfacts produit jusqu'à la fin de FUNCTIONAL_SPECS. TL n'intervient qu'à partir de TECHNICAL_DESIGN. Un `spawn_request role=tl` en phase FUNCTIONAL_SPECS est une **violation de routage** (cf. EX-003, INV-003).
+**[!] Spawn routing follows the same rule** : a `spawn_request` targets the role given by the `agent` field of the step being dispatched — e.g. specs/acceptance steps resolve to **PO**, never TL (a `spawn_request role=tl` during FUNCTIONAL_SPECS is a routing violation — cf. EX-003, INV-003, F-029).
 
-### Special cases
+### Special cases (not derivable from `--query`)
 - **TECHNICAL_DESIGN**: read the `has_ui` frontmatter of `PRD.md` before deciding whether to spawn DS.
 - **IMPLEMENTATION**: TL manages the DV pool internally. OR collects heartbeats only. Do not interfere.
-- **VALIDATION**: after the QA report, escalate `CHECKPOINT_*` to PM for manual HO validation.
-- **CLOTURE — PR_CREATE delegated to PM**: the `CLOSURE:PR_CREATE` step is delegated to PM (`STEP_AGENT = pm`). OR does not create the PR itself. OR completes only the CLOTURE steps where `agent == "or"`.
 - **VALIDATION — Mandatory QA spawn**: QA MUST be spawned (`spawn_request`) BEFORE dispatching `VALIDATION:QA_ACCEPTANCE_TEST`. If QA is not active when entering the VALIDATION phase → emit `spawn_request` QA immediately. Do not advance to `QA_ACCEPTANCE_TEST` without QA `spawn_confirmed`.
-- **`PO_VALIDATE` step — dispatch vers `qa`, pas `po`** : le step `VALIDATION:PO_VALIDATE` a `agent=qa` dans `--query`. OR doit router vers `qa`. Dispatcher vers `po` sur ce step est une violation de routage.
 
 ---
 
@@ -895,7 +830,7 @@ Triggered when PM sends a brief with `action: bootstrap_need`.
 3. Initialize the OR log: `touch wf/needs/<name>/or.log` + first entry (if not yet present).
 4. In `subagent` mode, the team fixe (PO, TL, RV, QA, plus DS si `has_ui:true`) is already pre-spawned by PM. OR n'émet PAS de `spawn_request` pour ces rôles. In `team` mode, OR émet `spawn_request` à PM uniquement si un rôle manque dans `.team-registry.json`. DS: **lazy** — spawned only if `has_ui:true` in TECHNICAL_DESIGN.
 5. Do **not** send direct briefs to spawned agents — `initial_brief` is transmitted by PM. OR does not contact the teammate directly post-spawn.
-6. Advance state: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete BOOTSTRAP:INIT`. Log and notify PM.
+6. Advance state via the standard loop: `--query`, then `--complete` the current step exactly as instructed by its `hint`/`expected_params` (never a step name from memory — an invented bootstrap step name used to live here and did not exist in the machine). Log and notify PM.
 
 ---
 

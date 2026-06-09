@@ -971,15 +971,15 @@ switch(phase) {
   case 'CLOSURE':
     if (step === 'LOG_AUDIT') params.hint = 'OR: analyze post-need logs. 1) Parse or.log (grep ERROR/WARN/SKIP/WATCHDOG). 2) Parse tracking.md (review cycles exceeding max_runs). 3) Write a "## Anomalies detected" section in retro.md (structured list, or "No anomaly detected." if nothing found). INV-003: this step always advances even if no anomaly. Input artifacts: or.log, tracking.md. Output artifact: anomalies section in retro.md.';
     if (step === 'BILAN') params.hint = 'PM: generate retro.md. 1) Read ${CLAUDE_PLUGIN_ROOT}/wf/templates/${WF_LANGUAGE:-en}/retro.md as template. 2) Parse or.log (phases, timestamps, ERROR/WARN/SKIP anomalies). 3) Read tracking.md (review cycles, DEC-xxx, OBS-xxx). 4) Compute per-phase duration from history[] in .wf-state.json. 5) Write retro.md in wf/needs/<name>/. Output artifact: retro.md.';
-    if (step === 'ARCHIVE') params.hint = 'PM: NOOP — call --complete CLOSURE:ARCHIVE with no parameter. The script itself performs the atomic mv wf/needs/<name>/ → wf/archives/<name>/. Do not move the directory manually (causes NO_STATE error).';
+    if (step === 'ARCHIVE') params.hint = `${agentLabel}: NOOP — call --complete CLOSURE:ARCHIVE with no parameter. The script itself performs the atomic mv wf/needs/<name>/ → wf/archives/<name>/. Do not move the directory manually (causes NO_STATE error).`;
     if (step === 'CLEANUP_WORKTREES') {
       const sid = state.session_id || 'default';
       const sidShort = sid.length > 16 ? sid.slice(0, 8) : sid;
       params.session_id = sid;
-      params.hint = `PM: remove the DV worktrees of session ${sidShort} (git worktree remove --force) and their branches (git branch -D). Flag orphan worktrees to HO via AskUserQuestion before any deletion (ADR-012). Output artifact: no residual worktree for this session.`;
+      params.hint = `${agentLabel}: remove the DV worktrees of session ${sidShort} (git worktree remove --force) and their branches (git branch -D). Flag orphan worktrees to HO (via PM escalation if not pm) before any deletion (ADR-012). Output artifact: no residual worktree for this session.`;
     }
     if (step === 'COMMIT') params.hint = 'PM: stage the relevant files (git add — avoid node_modules, dist, .venv). Draft the commit message. Validate via AskUserQuestion. Then git commit. No Co-Authored-By.';
-    if (step === 'PUSH') params.hint = 'PM: push the branch to the remote: git push -u origin <branch>.';
+    if (step === 'PUSH') params.hint = `${agentLabel}: push the branch to the remote: git push -u origin <branch>.`;
     if (step === 'PR_CREATE') params.hint = 'PM: detect the base branch (git rev-parse --verify refs/remotes/origin/main, else master). Create the PR: gh pr create --base <base> --title "<title>" --body "<summary+test results>". Complete with --params pr_url=<url>.';
     if (step === 'HO_MERGE') params.hint = darkFactory
       ? 'OR (dark_factory) : self-merge the PR without HO approval (no HO in the loop). gh pr merge <url> --merge --delete-branch. If merge fails (conflict, CI fail, branch protection), complete with --params decision=rejected (loops to PR_TRIAGE). Otherwise complete with no parameter (advances to BILAN).'
@@ -987,9 +987,9 @@ switch(phase) {
     if (step === 'CLEANUP') {
       const sid = state.session_id || 'default';
       params.session_id = sid;
-      params.hint = `PM: 1) read ~/.claude/teams/<team_name>/config.json to list all members. 2) Send shutdown_request to each. 3) Wait for confirmations. 4) TeamDelete. 5) Remove session markers: rm -f ~/.claude/plans/*.md (current session), rm -f $HOME/.claude/wf-session-active.${sid}`;
+      params.hint = `${agentLabel}: 1) read ~/.claude/teams/<team_name>/config.json to list all members. 2) Send shutdown_request to each (TeamDelete itself is PM-owned — request it from PM). 3) Wait for confirmations. 4) Remove session markers: rm -f ~/.claude/plans/*.md (current session), rm -f $HOME/.claude/wf-session-active.${sid}`;
     }
-    if (step === 'PR_TRIAGE') params.hint = 'PM: read PR comments via gh api. Classify: decision=minor (code fixes only) or decision=major (specs/arch changes). Complete with --params decision=<minor|major>.';
+    if (step === 'PR_TRIAGE') params.hint = `${agentLabel}: read PR comments via gh api. Classify: decision=minor (code fixes only) or decision=major (specs/arch changes). Complete with --params decision=<minor|major>.`;
     break;
 }
 
