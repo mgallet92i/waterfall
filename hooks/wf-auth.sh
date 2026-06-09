@@ -351,9 +351,16 @@ _wf_bash_guard() {
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 # 1. jq check (ADR-004).
+# Fail-OPEN if jq is absent: this hook fires on EVERY Bash/Write/Edit/NotebookEdit
+# of the session (the PreToolUse matcher is tool-name based, cf. header — not
+# command-content based). Without jq the hook cannot parse the payload, so a
+# fail-closed (exit 2) would deadlock the ENTIRE session — including sessions
+# with no active waterfall workflow at all, and self-locks any attempt to install
+# jq or edit this very file. Degrading to pass-through is the only safe default:
+# the guard simply does not run when its hard dependency is missing.
 if ! command -v jq >/dev/null 2>&1; then
-  echo "wf-auth: jq required. Blocked." >&2
-  exit 2
+  echo "wf-auth: jq absent — guard désactivé (pass-through). Installe jq pour réactiver l'enforcement." >&2
+  exit 0
 fi
 
 # 2. Read stdin payload.

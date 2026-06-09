@@ -5,6 +5,12 @@ All notable changes to the `waterfall` plugin are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-06-06
+
+### Fixed
+
+- **`wf-auth.sh` fail-open si `jq` absent** : le hook `PreToolUse` se déclenche sur **chaque** `Bash`/`Write`/`Edit`/`NotebookEdit` de la session (matcher par nom d'outil). En l'absence de `jq`, le check de dépendance faisait un `exit 2` (fail-closed) qui **bloquait toute la session** — y compris hors de tout workflow waterfall, et s'auto-verrouillait (impossible d'installer `jq` ou d'éditer le hook pour s'en sortir). Le check dégrade désormais en pass-through (`exit 0`) avec un warning sur stderr : le guard ne s'exécute pas quand sa dépendance manque, plutôt que de prendre le Bash en otage.
+
 ## [1.3.0] - 2026-06-02
 
 Lot consolidé depuis `v1.2.2` (la version `1.2.3` posée dans `plugin.json` n'a jamais été taggée/releasée — son contenu est intégré ici).
