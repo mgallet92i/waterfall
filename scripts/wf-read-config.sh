@@ -91,7 +91,7 @@ fi
 
 for role in pm or po tl rv qa dv ds; do
   varname="WF_MODEL_${role^^}"
-  _in "${!varname}" opus sonnet haiku || errors+=("models.$role='${!varname}' (expected:opus|sonnet|haiku)")
+  _in "${!varname}" opus sonnet haiku fable || errors+=("models.$role='${!varname}' (expected:opus|sonnet|haiku|fable)")
 done
 
 [[ "$WF_REVIEW_ARTIFACTS" =~ ^[0-9]+$ ]] && (( WF_REVIEW_ARTIFACTS >= 1 )) || errors+=("review_loops.artifacts='$WF_REVIEW_ARTIFACTS' (expected: integer >= 1)")

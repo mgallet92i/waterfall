@@ -1,13 +1,13 @@
 {
   "models": {
-    "pm": "opus",
-    "or": "opus",
-    "po": "opus",
-    "tl": "opus",
-    "rv": "opus",
-    "qa": "opus",
-    "dv": "opus",
-    "ds": "opus"
+    "pm": "fable",
+    "or": "fable",
+    "po": "fable",
+    "tl": "fable",
+    "rv": "fable",
+    "qa": "fable",
+    "dv": "fable",
+    "ds": "fable"
   },
   "review_loops": {
     "artifacts": 2,
