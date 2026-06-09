@@ -535,6 +535,8 @@ Le plugin étant installé depuis un clone (ex. `C:\projets\waterfall`) mais con
 **Impact** : OR ne peut pas lire le verdict dans le fichier attendu ; le short-circuit « no review.md » peut se déclencher à tort. **N'affecte PAS** le fix [ARCH-03-A] (qui propage le verdict via `--params`/state, pas via le fichier) — découvert pendant son implémentation.
 **Recommandation** : trancher UN nom unique (`review.md` recommandé — déjà câblé partout sauf `wf-rv.md`) et corriger `agents/wf-rv.md`. Idem pour CODE_REVIEW. Instance directe d'ARCH-06 (drift doc/script).
 
+**Résolution (2026-06-09)** : `review.md` tranché comme nom unique. Le drift était plus large que `wf-rv.md` : corrigé dans `agents/wf-rv.md` (15 réfs `rv.md` + 2 `code-review.md`), `agents/wf-ds.md`, `agents/wf-po.md`, `agents/wf-tl.md`, `skills/wf-resume/SKILL.md` (réfs au fichier persona `wf-rv.md` préservées). CODE_REVIEW : les findings globaux vont aussi dans `review.md` sous une section dédiée `## Code review` (le moteur n'initialise que ce fichier — `wf-orchestrate.sh:2096` — et le rapport per-task reste en SendMessage) ; note anti-écrasement ajoutée dans `wf-rv.md` §Findings format. Constitution déjà alignée (l.164). Archives `wf/archives/` laissées en l'état (historique).
+
 ---
 
 # Chantiers d'amélioration

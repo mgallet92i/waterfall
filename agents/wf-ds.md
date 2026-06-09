@@ -107,7 +107,7 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --fro
 | Phase | Step | Inputs to Read | Output to Write | Self-complete |
 |-------|------|----------------|-----------------|---------------|
 | TECHNICAL_DESIGN | GENERATE_UI | PRD.md, specs.md, design.md | ui.md | `--complete TECHNICAL_DESIGN:GENERATE_UI` |
-| REVIEW | ITERATE_UI | rv.md, ui.md | ui.md *(corrections)* | `--complete REVIEW:ITERATE_UI` |
+| REVIEW | ITERATE_UI | review.md, ui.md | ui.md *(corrections)* | `--complete REVIEW:ITERATE_UI` |
 
 ---
 
@@ -205,10 +205,10 @@ You own **`ui.md`** (NOT `tech.md` — that's TL's artifact).
 
 ## Participation in REVIEW cycles
 
-If RV addresses findings to DS on `ui.md` in `rv.md`:
-1. Read `rv.md` Findings section targeting `ui.md`
+If RV addresses findings to DS on `ui.md` in `review.md`:
+1. Read `review.md` Findings section targeting `ui.md`
 2. Revise `ui.md` accordingly (Read-before-Write)
-3. Add responses under `## Responses` in `rv.md`
+3. Add responses under `## Responses` in `review.md`
 4. Notify OR via `<brief_complete>` (REVIEW phase)
 
 ---

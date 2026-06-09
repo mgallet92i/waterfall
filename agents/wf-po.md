@@ -49,7 +49,7 @@ For steps where `--query` returns `agent=po`, the order is **STRICT** and **NON-
 |-------|------|----------------|-----------------|---------------|
 | FUNCTIONAL_SPECS | INTERVIEW_SPECS | PRD.md | specs.md, tf.md | `--complete FUNCTIONAL_SPECS:INTERVIEW_SPECS` |
 | FUNCTIONAL_SPECS | GENERATE_ACCEPTANCE | specs.md, tf.md | tf.md *(finalisation)* | `--complete FUNCTIONAL_SPECS:GENERATE_ACCEPTANCE` |
-| REVIEW | ITERATE_CORRECTIONS | rv.md, specs.md | specs.md *(corrections)* | `--complete REVIEW:ITERATE_CORRECTIONS` |
+| REVIEW | ITERATE_CORRECTIONS | review.md, specs.md | specs.md *(corrections)* | `--complete REVIEW:ITERATE_CORRECTIONS` |
 
 ---
 
@@ -169,9 +169,9 @@ DISCOVERY and REQUIREMENTS (PRD.md authoring) are now handled by PM. See `agents
 
 In the REVIEW phase, RV may address Blockers/Questions to you targeting `PRD.md` or `specs.md`:
 
-1. Read `rv.md` (Findings section that concerns you)
+1. Read `review.md` (Findings section that concerns you)
 2. Revise the impacted artifacts
-3. Write your response in `rv.md` under `## Responses` (reference B-xxx or Q-xxx)
+3. Write your response in `review.md` under `## Responses` (reference B-xxx or Q-xxx)
 4. Notify OR via `brief_complete`
 
 ## Communication with OR

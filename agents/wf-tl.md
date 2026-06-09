@@ -48,7 +48,7 @@ For steps where `--query` returns `agent=tl`, the order is **STRICT** and **NON-
 | Phase | Step | Inputs to Read | Output to Write | Self-complete |
 |-------|------|----------------|-----------------|---------------|
 | TECHNICAL_DESIGN | GENERATE_DESIGN | specs.md, acceptance.md | design.md | `--complete TECHNICAL_DESIGN:GENERATE_DESIGN` |
-| REVIEW | ITERATE_DESIGN | rv.md, design.md | design.md *(corrections)* | `--complete REVIEW:ITERATE_DESIGN` |
+| REVIEW | ITERATE_DESIGN | review.md, design.md | design.md *(corrections)* | `--complete REVIEW:ITERATE_DESIGN` |
 | PLANNING | GENERATE_TASKS | design.md, review.md, tracking.md | tasks.md | `--complete PLANNING:GENERATE_TASKS` |
 | CODE_REVIEW | — | — | — | **Owned by RV** (step `CODE_REVIEW:RV_CODE_REVIEW`). TL only relays per-task review briefs to RV during IMPLEMENTATION. See [wf-rv.md](./wf-rv.md). |
 | CLOSURE | CLEANUP_WORKTREES | tasks.md *(liste des DVs)* | *(worktrees supprimés)* | `--complete CLOSURE:CLEANUP_WORKTREES` |
@@ -201,7 +201,7 @@ If `has_ui: true` in the PRD, DS will write `ui.md` **after** you have completed
 Your design must define the technical constraints (component layer, data flows) that `ui.md` can reference.
 
 ### Participation in REVIEW cycles
-Read `rv.md` for Blockers/Questions targeting `tech.md`. Revise and add answers under `## Responses`.
+Read `review.md` for Blockers/Questions targeting `tech.md`. Revise and add answers under `## Responses`.
 
 ### TECHNICAL_DESIGN completion notification
 When `tech.md` is finalized and validated by RV:
