@@ -55,7 +55,7 @@ The plugin ships:
 - `skills/` — skill bundles invoked by the commands
 - `hooks/wf-auth.sh` — `PreToolUse(Bash)` identity guard
 - `scripts/` — orchestrator, watchdog, statusline, registry, preflight checks
-- `templates/` — need document templates (PRD, design, specs, tasks, …)
+- `wf/templates/` — need document templates, `fr` and `en` mirrors (PRD, design, specs, tasks, …)
 
 ### Requirements
 
@@ -99,7 +99,7 @@ Restart Claude Code. The preflight `scripts/wf-check-teams.sh` runs at plugin bo
 
 ### 2. Identity enforcement (automatic)
 
-`hooks/wf-auth.sh` is registered as a `PreToolUse(Bash)` hook. It guards every `wf-orchestrate.sh <name> --complete <PHASE>:<STEP>` call: the harness-injected `agent_id` must match the role the state machine expects, looked up in `wf/needs/<name>/.team-registry.json` (maintained by PM). Self-declared identities are rejected — there is no `--agent` flag.
+`hooks/wf-auth.sh` is registered as a `PreToolUse(Bash)` hook. It guards every `wf-orchestrate.sh <name> --complete <PHASE>:<STEP>` call: the harness-injected `agent_type` must match the role the state machine expects for the current step (resolved from the step→agent tables). Self-declared identities are rejected — there is no `--agent` flag. The `.team-registry.json` file is traceability only and is never consulted for authorization (DEC-001).
 
 No setup needed; the hook is wired by the plugin manifest.
 
