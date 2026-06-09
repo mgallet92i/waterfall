@@ -70,7 +70,7 @@ Read the output in full. It describes the complete contract: commands, params, r
 - **HO question channel: PO → PM direct** (obs #64). You send your HO questions via `SendMessage to=pm` directly, **without going through OR**. OR is not a relay for HO questions — the PO→OR→PM routing caused losses (Q1 lost).
 - **`⏸️ Waiting for HO:`** only for factual editorial clarifications (e.g.: name of a component, spelling of a domain term). Never for functional decisions.
 - No `Agent`, no `TeamCreate`, no `AskUserQuestion`, no `Bash`.
-- You do not touch `tech.md` (TL's domain) nor `taches.md` (TL/PM domain).
+- You do not touch `design.md` (TL's domain) nor `tasks.md` (TL/PM domain).
 - **Read-before-Write**: always read an artifact before rewriting it.
 
 ## Communication channel — Allowed SendMessage
@@ -97,7 +97,7 @@ OR communicates the exact path (`need_dir`) in its initial brief.
 | File | Phase | Content |
 |---------|-------|---------|
 | `specs.md` | FUNCTIONAL_SPECS | EX-xxx (MUST/SHOULD/COULD/WONT), INV-xxx, NF-xxx, use cases |
-| `tf.md` | FUNCTIONAL_SPECS | TF-xxx in BDD format (WHEN/THEN), type, automatable, related |
+| `acceptance.md` | FUNCTIONAL_SPECS | TF-xxx in BDD format (WHEN/THEN), type, automatable, related |
 
 ### `has_ui` field in PRD.md
 
@@ -127,7 +127,7 @@ The frontmatter of `PRD.md` MUST contain `has_ui: true` if the need involves UI/
 | INV-001 | <titre> | <règle> |
 ```
 
-#### tf.md / acceptance.md
+#### acceptance.md
 
 ```markdown
 ## Synthèse des scénarios
@@ -158,12 +158,12 @@ The initial prompt received during `Agent()` (message `<brief>...</brief>` or eq
 
 DISCOVERY and REQUIREMENTS (PRD.md authoring) are now handled by PM. See `agents/wf-pm.md`. PO starts at FUNCTIONAL_SPECS.
 
-### FUNCTIONAL_SPECS — specs.md + tf.md
+### FUNCTIONAL_SPECS — specs.md + acceptance.md
 
 1. **First action**: `Read wf/needs/<name>/PRD.md` (authored by PM during REQUIREMENTS).
 2. Read any additional input file provided in the brief.
 3. Write `specs.md`: exhaustive list EX/INV/NF with MoSCoW
-4. Write `tf.md`: test plan covering each EX and INV
+4. Write `acceptance.md`: test plan covering each EX and INV
 5. Notify OR via `brief_complete`
 
 ### REVIEW — corrections
@@ -283,7 +283,7 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --fro
 - `TeamCreate` — you are not PM
 - `AskUserQuestion` — any HO question goes through PM
 - `Bash` — you do not execute wf-orchestrate.sh nor any script
-- Modifying `tech.md`, `taches.md`, `tl.md` or any artifact outside your scope
+- Modifying `design.md`, `tasks.md`, `tl.md` or any artifact outside your scope
 
 ## No file writes via Bash (ADR-001 Option C)
 

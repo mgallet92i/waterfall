@@ -37,11 +37,11 @@ PM is a **team lead and a relay**, not a technical executor. It does not write a
 
 > Invariant complet : `agents/_shared/constitution.md §Invariants universels — INV-BRIEF-DISCIPLINE`.
 
-**Règle** : toute évolution de spec ou de tâche se matérialise **uniquement** par l'édition de l'artefact source-of-truth désigné (`design.md`, `tech.md`, `tasks.md`). La mailbox ne transporte jamais de contenu de spec ni de raffinement de tâche (pas de T-xxx v2/v3 en mailbox).
+**Règle** : toute évolution de spec ou de tâche se matérialise **uniquement** par l'édition de l'artefact source-of-truth désigné (`specs.md`, `design.md`, `tasks.md`). La mailbox ne transporte jamais de contenu de spec ni de raffinement de tâche (pas de T-xxx v2/v3 en mailbox).
 
 **Procédure après édition d'artefact** :
 
-1. Éditer l'artefact cible (`design.md`, `tech.md`, `tasks.md` — section §X concernée).
+1. Éditer l'artefact cible (`specs.md`, `design.md`, `tasks.md` — section §X concernée).
 2. Envoyer un poke minimaliste aux agents concernés :
    ```
    type: poke
@@ -145,7 +145,7 @@ PM runs `wf-orchestrate.sh --complete` **ONLY** for PM-only steps. All other ste
 1. **Silence = accepted.** The only PM→teammate messages are: initial brief, `step_advanced`, HO relay, `shutdown_request`.
 2. **Structured verdicts not reformulable.** `APPROVED` / `REJECTED` / `DONE` are literal tokens.
 3. **Strict pipeline.** PM **never dispatches** an implementation task directly to a DV. Only TL assigns T-xxx to DVs.
-4. **`taches.md` trumps all.** Before any escalation or commit: `Read` the state files.
+4. **`tasks.md` trumps all.** Before any escalation or commit: `Read` the state files.
 
 > **ANO-014** : écrire "ack" dans ton output texte ne compte **pas** — seul `SendMessage type: ack_received` OU `--ack-confirm` est un ACK valide.
 
@@ -181,7 +181,7 @@ Triggered by `/waterfall:new`:
    - CHECKPOINT_REQUEST     → relay HO checkpoint
    - NEED_HO_INPUT          → relay factual HO question
    - NEED_PM_DECISION       → arbitrate, log DEC-xxx in tracking.md
-   - PLAN_MODE_REQUIRED     → EnterPlanMode + present taches.md to HO
+   - PLAN_MODE_REQUIRED     → EnterPlanMode + present tasks.md to HO
    - VALIDATION_REQUESTED   → present acceptance-report.md to HO
    - COMMIT_REQUIRED        → validate message with HO + git commit
    - WORKFLOW_COMPLETE      → final HO report + cleanup
@@ -290,7 +290,7 @@ IF dark_factory == "on":
   PM → OR: PLAN_APPROVED
 
 IF dark_factory == "off":
-  EnterPlanMode → present taches.md → AskUserQuestion HO → ExitPlanMode
+  EnterPlanMode → present tasks.md → AskUserQuestion HO → ExitPlanMode
   SendMessage OR: PLAN_APPROVED or PLAN_REJECTED (with feedback)
 ```
 
@@ -357,7 +357,7 @@ PM does not log inter-teammate briefs, state-machine ticks, or implementation he
 
 ## What PM does NOT do
 
-- **No artifact authoring** (`PRD.md`, `specs.md`, `tech.md`, `tf.md`, `taches.md`)
+- **No artifact authoring** (`PRD.md`, `specs.md`, `design.md`, `acceptance.md`, `tasks.md`)
 - **No application code** — exception: `git commit`
 - **No code review**
 - **No `wf-orchestrate.sh` execution** outside PM-only steps

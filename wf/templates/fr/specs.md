@@ -21,7 +21,7 @@ status: "DRAFT"
 
 ## Invariants
 <!-- Règles métier qui DOIVENT toujours être vraies, indépendamment des actions utilisateur. -->
-<!-- Chaque INV-xxx doit être vérifiable par au moins un TF-xxx dans acceptance.md / tf.md. -->
+<!-- Chaque INV-xxx doit être vérifiable par au moins un TF-xxx dans acceptance.md. -->
 
 | Code | Titre | Description |
 |------|-------|-------------|

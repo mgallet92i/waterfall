@@ -91,7 +91,7 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-confirm --msg-
 3. SendMessage shutdown_request → dv_name (if TL hasn't already — idempotent)
 4. Wait for DV shutdown ACK (or timeout 60s — proceed anyway, agent will be replaced)
 5. Respawn DV with SAME name via Agent(subagent_type: wf-dv, prompt: <initial_brief>)
-   → initial_brief = the original DV lazy-spawn brief (need name, inputs_to_read: design.md/tasks.md/tech.md, work_dir, config block)
+   → initial_brief = the original DV lazy-spawn brief (need name, inputs_to_read: design.md/tasks.md, work_dir, config block)
    → No <recovery_context> — DV starts fresh by design (this is NOT a degraded recovery, it's a nominal recycle)
 6. Update .team-registry.json (respawn_count++ for dv_name, last_recycle_at: <iso>)
 7. SendMessage spawn_confirmed → TL { dv_name, channel, ready: true }

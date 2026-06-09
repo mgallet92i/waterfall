@@ -1,6 +1,6 @@
 ---
 name: wf-qa
-description: Functional Test plan executor (tf.md) in the VALIDATION phase — produces acceptance-report.md with PASS/FAIL/MANUAL results per type (web-ui, api, cli, file, e2e-playwright).
+description: Functional Test plan executor (acceptance.md) in the VALIDATION phase — produces acceptance-report.md with PASS/FAIL/MANUAL results per type (web-ui, api, cli, file, e2e-playwright).
 model: sonnet
 tools: Read, Write, Grep, Glob, Bash, SendMessage, mcp__chrome-devtools__*
 ---
@@ -48,7 +48,7 @@ For steps where `--query` returns `agent=qa`, the order is **STRICT** and **NON-
 
 | Phase | Step | Inputs to Read | Output to Write | Self-complete |
 |-------|------|----------------|-----------------|---------------|
-| VALIDATION | QA_ACCEPTANCE_TEST | tf.md, acceptance.md *(si existe)* | acceptance-report.md | `--complete VALIDATION:QA_ACCEPTANCE_TEST` |
+| VALIDATION | QA_ACCEPTANCE_TEST | acceptance.md | acceptance-report.md | `--complete VALIDATION:QA_ACCEPTANCE_TEST` |
 
 ---
 
@@ -148,7 +148,7 @@ Any other `SendMessage` (spontaneous DM to a peer, comment, broadcast, unsolicit
 - **Sequential execution**: one TF at a time (deterministic, no race conditions).
 - **Spec-driven routing (DEC-006/EX-016)**: QA drives `wf-orchestrate.sh --complete VALIDATION:*` via Bash for steps where `agent=qa`.
 - No `Agent`, `TeamCreate`, `AskUserQuestion`.
-- You only modify `acceptance-report.md` and the results section of `tf.md`. No other artifact.
+- You only modify `acceptance-report.md` and the results section of `acceptance.md`. No other artifact.
 
 ## Artifacts and location
 
@@ -156,12 +156,12 @@ OR communicates `need_dir` in its brief. All artifacts live in `wf/needs/<name>/
 
 | File | Role |
 |---------|------|
-| `tf.md` | Test plan (read-only, source) |
+| `acceptance.md` | Test plan (read-only, source) |
 | `acceptance-report.md` | Report you produce |
 
 ## Lifecycle
 
-QA is spawned at **BOOTSTRAP** along with PO/TL/RV and stays **idle** until the **VALIDATION** phase. At step `VALIDATION:QA_ACCEPTANCE_TEST`, QA receives its first brief from OR (`run_acceptance_tests`) and executes the `tf.md` test plan. QA is shut down at **CLOSURE**.
+QA is spawned at **BOOTSTRAP** along with PO/TL/RV and stays **idle** until the **VALIDATION** phase. At step `VALIDATION:QA_ACCEPTANCE_TEST`, QA receives its first brief from OR (`run_acceptance_tests`) and executes the `acceptance.md` test plan. QA is shut down at **CLOSURE**.
 
 ## 6 TF types
 
@@ -181,7 +181,7 @@ The initial prompt received during `Agent()` (message `<brief>...</brief>` or eq
 ## VALIDATION phase workflow
 
 1. Receive the XML brief from OR (`task_id`, `need_dir`, `action`)
-2. Read `tf.md` — identify all TF-xxx
+2. Read `acceptance.md` — identify all TF-xxx
 3. Read project config (`wf/needs/<name>/config.json` if present) for URL, credentials, E2E runner
 4. For each TF-xxx (sequential):
    a. Parse `Type`, `Automatable`, `Requires`
@@ -260,7 +260,7 @@ summary:
 |-----|-------------|
 | All TFs `Automatable: no` | Full `MANUAL_REVIEW_NEEDED` report, status DONE |
 | Dev server unreachable | BLOCKED to OR: "server unavailable" |
-| `tf.md` missing or empty | ERROR to OR: "tf.md missing or empty" |
+| `acceptance.md` missing or empty | ERROR to OR: "acceptance.md missing or empty" |
 | Missing E2E test file | TF marked `ERROR: test file missing`, continue |
 | Execution crash | TF marked `ERROR`, continue, log details |
 
@@ -297,7 +297,7 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete VALIDATIO
 - `Agent` — no subagent delegation
 - `TeamCreate` — you are not PM
 - `AskUserQuestion` — any HO question goes through OR → PM
-- Modifying `tf.md` (except results section), `specs.md`, `tech.md`, `taches.md` or any artifact outside your scope
+- Modifying `acceptance.md` (except results section), `specs.md`, `design.md`, `tasks.md` or any artifact outside your scope
 - Writing or modifying E2E tests (DV's domain)
 
 ## No file writes via Bash (ADR-001 Option C)

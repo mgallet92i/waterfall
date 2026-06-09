@@ -172,7 +172,7 @@ Identical to `wf-new` step 5. PM handles the workflow reactively from the resume
 
 Before resuming, OR MUST verify:
 - The on-disk artifacts match what the state file expects (e.g. if state = `FUNCTIONAL_SPECS` done, then `specs.md` must exist)
-- No task in `taches.md` is in an impossible state (e.g. DONE without TL Review = APPROVED)
+- No task in `tasks.md` is in an impossible state (e.g. DONE without TL Review = APPROVED)
 - The iteration counter in `review.md` matches the state file
 
 If disagreement detected → OR returns `NEED_PM_DECISION` with details, PM asks HO what to do (manual fix, rollback, or abort).

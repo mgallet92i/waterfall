@@ -52,6 +52,21 @@ source_steps() {
   [ -z "$hits" ]
 }
 
+@test "doc-drift: no legacy artifact names (tf.md/tech.md/taches.md) in docs" {
+  # Canonical artifact names are acceptance.md / design.md / tasks.md (templates,
+  # --init, STEP_ARTIFACTS gate, wf-auth owner mapping). The legacy FR-era names
+  # made agents read/edit phantom files outside the auth hook's owner mapping.
+  local hits
+  hits="$(grep -rlnE '(^|[^-a-zA-Z])(tf|tech|taches)\.md' \
+    $(doc_files) "$WF_REPO"/wf/templates/en/*.md "$WF_REPO"/wf/templates/fr/*.md \
+    "$WF_REPO"/docs/agents.md || true)"
+  if [ -n "$hits" ]; then
+    echo "# legacy artifact name (tf.md/tech.md/taches.md) found in:" >&3
+    printf '%s\n' "$hits" | sed 's/^/#   /' >&3
+  fi
+  [ -z "$hits" ]
+}
+
 @test "doc-drift: no 'exit_decision=' instruction in personas/skills (UNKNOWN_PARAM)" {
   # exit_decision is an INTERNAL variable of handle_complete; STEP_PARAMS accepts
   # converged/stall on CHECK_EXIT/CHECK_CR_EXIT. A doc telling an agent to pass

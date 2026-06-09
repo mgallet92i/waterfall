@@ -36,7 +36,8 @@ Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Ch
 | F-026 | * (subagent-light) | Doc ambiguë : les skills laissent croire que PM doit `--complete` `CHECKPOINT_DESIGN` entre design et tasks, alors qu'en `light + dark` tous les checkpoints pm-owned s'auto-skippent et TL passe-1 enchaîne design+tasks d'une traite (pas de deadlock) | P3 (doc) |
 | F-031 | * (watchdog) | ack-registry : schéma producteur (`{entries:[]}`, epoch) ≠ consommateur watchdog (`.[]` racine, date ISO) → détection ACTOR_IDLE par ACK morte en prod | P0 — ✅ résolu (issu de [ARCH-02]) |
 | F-032 | * (paths) | `PROJECT_ROOT` résolu de 3 façons : orchestrate cwd-walk (F-030 OK) mais watchdog/registry `script_dir/..` = clone plugin → surveillent/écrivent le mauvais arbre | P0 — ✅ résolu (issu de [ARCH-01]) |
-| F-033 | REVIEW/CR | Nommage artefact de revue incohérent : `rv.md`/`code-review.md` (personas) vs `review.md` (script/template/hints) | P2 — issu de [ARCH-06] |
+| F-033 | REVIEW/CR | Nommage artefact de revue incohérent : `rv.md`/`code-review.md` (personas) vs `review.md` (script/template/hints) | P2 — issu de [ARCH-06] — ✅ résolu (review.md unifié, 2026-06-09) |
+| F-034 | * (doc) | Noms d'artefacts legacy `tf.md`/`tech.md`/`taches.md` dans 16 fichiers doc — hook/moteur ne connaissent que les canoniques | P2 — issu de [ARCH-06] — ✅ résolu (renommage + garde CI doc-drift, 2026-06-09) |
 
 > **Revue d'architecture globale (2026-06-07)** : 10 causes racines `ARCH-01..10` consolidées en fin de fichier — voir section dédiée. Chaque `ARCH-xx` agrège plusieurs F-xxx symptômes.
 >
@@ -468,7 +469,7 @@ Recoupe F-001 (brief out-of-order, state machine non avancée) mais l'élément 
   - **`wf-pm-light/SKILL.md`** : séquences `--complete` littérales (params inclus) remplacées par une « boucle standard » query→hint→complete définie une fois ; structure Phases A–H et interactions HO conservées.
   - **Duty tables PO/TL/DV/DS rendues véridiques** : elles citaient des steps **inexistants** (`REVIEW:ITERATE_CORRECTIONS`→`PO_UPDATE`, `REVIEW:ITERATE_DESIGN`→`TL_UPDATE`, `TECHNICAL_DESIGN:GENERATE_UI`/`REVIEW:ITERATE_UI`/`IMPLEMENTATION:IMPLEMENT_TASK` → aucun step DS/DV n'existe en machine, marqués « hors state machine »).
   - **Test CI anti-réapparition** : `tests/wf-doc-drift.bats` (3 tests) — (1) tout token `PHASE:STEP` cité dans agents/skills doit exister dans `STEPS[]` (aurait attrapé `BOOTSTRAP:INIT` et les 5 steps fictifs), (2) marqueurs des tables purgées interdits, (3) `exit_decision=` interdit dans les docs.
-  - Vérifié : suite complète 144/144 + doc-drift 3/3. **Reste (hors scope ét.2)** : drift `tf.md` vs `acceptance.md` dans plusieurs personas (PO/QA/RV) — l'artefact initialisé par `--init` est `acceptance.md`, des fiches citent `tf.md` ; à trancher (même classe que F-033).
+  - Vérifié : suite complète 144/144 + doc-drift 3/3. **Reste (hors scope ét.2)** : drift `tf.md` vs `acceptance.md` dans plusieurs personas (PO/QA/RV) — l'artefact initialisé par `--init` est `acceptance.md`, des fiches citent `tf.md` ; à trancher (même classe que F-033). → **traité, voir [F-034]**.
 
 ## ARCH-07 — Dette de prose : logique en consignes LLM, code mort, collisions `INV-` **[P1]**
 
@@ -545,6 +546,14 @@ Le plugin étant installé depuis un clone (ex. `C:\projets\waterfall`) mais con
 **Recommandation** : trancher UN nom unique (`review.md` recommandé — déjà câblé partout sauf `wf-rv.md`) et corriger `agents/wf-rv.md`. Idem pour CODE_REVIEW. Instance directe d'ARCH-06 (drift doc/script).
 
 **Résolution (2026-06-09)** : `review.md` tranché comme nom unique. Le drift était plus large que `wf-rv.md` : corrigé dans `agents/wf-rv.md` (15 réfs `rv.md` + 2 `code-review.md`), `agents/wf-ds.md`, `agents/wf-po.md`, `agents/wf-tl.md`, `skills/wf-resume/SKILL.md` (réfs au fichier persona `wf-rv.md` préservées). CODE_REVIEW : les findings globaux vont aussi dans `review.md` sous une section dédiée `## Code review` (le moteur n'initialise que ce fichier — `wf-orchestrate.sh:2096` — et le rapport per-task reste en SendMessage) ; note anti-écrasement ajoutée dans `wf-rv.md` §Findings format. Constitution déjà alignée (l.164). Archives `wf/archives/` laissées en l'état (historique).
+
+---
+
+## F-034 — Noms d'artefacts legacy `tf.md`/`tech.md`/`taches.md` dans les personas **[P2]** [issu de ARCH-06] — ✅ résolu
+
+**Phase** : transverse (doc personas/skills/templates)
+**Constat** (découvert pendant [ARCH-06 ét.2], 2026-06-09) : ~94 occurrences des anciens noms d'artefacts dans 16 fichiers doc — `tf.md` (canonique : `acceptance.md`), `tech.md` (`design.md`), `taches.md` (`tasks.md`). Or le moteur (`--init`, templates, gate `STEP_ARTIFACTS`) et le hook `wf-auth.sh` (owner mapping l.89-90) ne connaissent QUE les noms canoniques. Pire que cosmétique : un DV suivant sa fiche (« Edit taches.md ») éditerait un **fichier fantôme** hors protection du hook et hors lecture des autres agents ; le pipeline INV-007 entier de `wf-dv.md` référençait `taches.md`.
+**Résolution (2026-06-09)** : renommage canonique dans les 16 fichiers (8 personas, constitution, 2 skills, 4 templates fr/en, `docs/agents.md`), dédoublonnage des lignes qui citaient les deux noms. Au passage, 2 attributions fausses corrigées : `PRD.md` attribué à PO dans `wf-rv.md` et `docs/agents.md` (canonique : **PM**, cf. constitution l.160), et reliquat F-033 (`rv.md`) dans `docs/agents.md`. **Garde CI** : 4e test dans `tests/wf-doc-drift.bats` — noms legacy interdits dans agents/skills/templates/docs. Vérifié : doc-drift 4/4.
 
 ---
 

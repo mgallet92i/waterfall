@@ -21,7 +21,7 @@ status: "DRAFT"
 
 ## Invariants
 <!-- Business rules that MUST always hold true, regardless of user actions. -->
-<!-- Each INV-xxx must be verifiable by at least one TF-xxx in acceptance.md / tf.md. -->
+<!-- Each INV-xxx must be verifiable by at least one TF-xxx in acceptance.md. -->
 
 | Code | Title | Description |
 |------|-------|-------------|

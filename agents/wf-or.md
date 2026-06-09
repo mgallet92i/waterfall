@@ -1051,7 +1051,7 @@ OR **never** touches `.wf-state.json` or `or.log` directly. Everything goes thro
 | `NEED_HO_INPUT` | HO info/choice needed | AskUserQuestion, relay reply |
 | `NEED_PM_DECISION` | Conflict or ambiguity | Decide, log DEC-xxx, relay |
 | `CHECKPOINT_REQUEST` | End-of-phase go/no-go | Present summary to HO, validate |
-| `PLAN_MODE_REQUIRED` | Before IMPLEMENTATION | EnterPlanMode, validate taches.md |
+| `PLAN_MODE_REQUIRED` | Before IMPLEMENTATION | EnterPlanMode, validate tasks.md |
 | `VALIDATION_REQUESTED` | QA finished | Present report to HO, manual validation |
 | `COMMIT_REQUIRED` | CLOTURE phase | Propose message, PM commits |
 | `WORKFLOW_COMPLETE` | CLOTURE finished | Final report, exit |

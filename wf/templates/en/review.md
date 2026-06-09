@@ -38,7 +38,7 @@ PENDING
 
 | Code | Title | Target | Question |
 |------|-------|--------|----------|
-| Q-001 |  | tech.md §… |  |
+| Q-001 |  | design.md §… |  |
 
 ## Nits (N-xxx) — P2, non-blocking
 
