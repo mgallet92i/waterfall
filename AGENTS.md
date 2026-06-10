@@ -25,6 +25,135 @@ dev du framework → ce fichier.
 - `backlog.md` — findings `F-xxx` + causes racines `ARCH-01..10`. **À lire avant de toucher au cœur** ; c'est l'historique des pièges déjà payés.
 - `tests/` — bats : wf-auth (63), state machine (`wf-orchestrate-*.bats`, helper isolé `wf-orchestrate-helper.bash`), anti-drift doc (`wf-doc-drift.bats`).
 
+## Workflow — la state machine, phase par phase
+
+**10 phases** : BOOTSTRAP → REQUIREMENTS → FUNCTIONAL_SPECS → TECHNICAL_DESIGN → REVIEW (boucle) → PLANNING → IMPLEMENTATION → CODE_REVIEW (boucle) → VALIDATION → CLOSURE.
+
+Schémas dérivés de `compute_next_step` (`scripts/wf-orchestrate.sh`) — mode `team` nominal, owner canonique entre parenthèses (`dark_factory=on` réassigne les checkpoints HO à `or`). Pointillés = court-circuits `subagent-light`. Les noms de steps sont vérifiés contre `STEPS[]` par `tests/wf-doc-drift.bats` ; les transitions ne sont garanties que par la lecture du script — en cas de doute, le script a raison. Non représentés (lisibilité) : `pause`/`abort` sur chaque checkpoint (→ TERMINAL PAUSED/ABORTED), les auto-skips light par rôle absent.
+
+### Vue d'ensemble
+
+```mermaid
+flowchart LR
+  BOOTSTRAP --> REQUIREMENTS --> FUNCTIONAL_SPECS --> TECHNICAL_DESIGN --> REVIEW --> PLANNING --> IMPLEMENTATION --> CODE_REVIEW --> VALIDATION --> CLOSURE --> DONE((DONE))
+  REVIEW -- "ITERATE (cap artifacts)" --> REVIEW
+  CODE_REVIEW -- "REJECTED (cap code)" --> CODE_REVIEW
+  TECHNICAL_DESIGN -. light .-> PLANNING
+  IMPLEMENTATION -. light .-> VALIDATION
+  CLOSURE -- "PR rejetée minor" --> IMPLEMENTATION
+  CLOSURE -- "PR rejetée major" --> REVIEW
+```
+
+### BOOTSTRAP — nommage, branche, team
+
+```mermaid
+flowchart LR
+  DETERMINE_NAME["DETERMINE_NAME (pm)"] --> RUN_BOOTSTRAP["RUN_BOOTSTRAP (pm)"] --> STORE_PATH["STORE_PATH (pm)"]
+  STORE_PATH --> COLLECT_CARD_NUM["COLLECT_CARD_NUM (or)"] --> COLLECT_BRANCH_TYPE["COLLECT_BRANCH_TYPE (or)"]
+  COLLECT_BRANCH_TYPE --> CREATE_BRANCH_Q["CREATE_BRANCH_Q (or)"] --> SPAWN_TEAM["SPAWN_TEAM (or)"] --> NEXT([REQUIREMENTS])
+```
+
+### REQUIREMENTS — PRD
+
+```mermaid
+flowchart LR
+  COLLECT_PRD["COLLECT_PRD (pm)"] --> GENERATE_PRD["GENERATE_PRD (pm)"] --> CHECKPOINT_REQ{"CHECKPOINT_REQ (pm)"}
+  CHECKPOINT_REQ -- retry --> COLLECT_PRD
+  CHECKPOINT_REQ -- approve --> NEXT([FUNCTIONAL_SPECS])
+```
+
+### FUNCTIONAL_SPECS — specs + acceptance (PO)
+
+```mermaid
+flowchart LR
+  INTERVIEW_SPECS["INTERVIEW_SPECS (po)"] --> GENERATE_SPECS["GENERATE_SPECS (po)"] --> GENERATE_ACCEPTANCE["GENERATE_ACCEPTANCE (po)"]
+  GENERATE_ACCEPTANCE --> VALIDATE_SPECS["VALIDATE_SPECS (or, auto-avancé)"] --> CHECKPOINT_FUNC{"CHECKPOINT_FUNC (pm)"}
+  CHECKPOINT_FUNC -- retry --> INTERVIEW_SPECS
+  CHECKPOINT_FUNC -- approve --> NEXT([TECHNICAL_DESIGN])
+```
+
+### TECHNICAL_DESIGN — design (TL, + DS si has_ui)
+
+```mermaid
+flowchart LR
+  GENERATE_DESIGN["GENERATE_DESIGN (tl)"] --> CHECKPOINT_DESIGN{"CHECKPOINT_DESIGN (pm)"}
+  CHECKPOINT_DESIGN -- retry --> GENERATE_DESIGN
+  CHECKPOINT_DESIGN -- approve --> NEXT([REVIEW])
+  CHECKPOINT_DESIGN -. light .-> SHORT([PLANNING])
+```
+
+### REVIEW — boucle de revue d'artefacts (cap `review_loops.artifacts`)
+
+RV pose verdict + routage à `RV_REVIEW` (persistés en state) ; `CHECK_EXIT` et `DISPATCH` en dérivent leurs décisions (ARCH-03-A/C).
+
+```mermaid
+flowchart LR
+  RV_REVIEW["RV_REVIEW (rv) — verdict + routage"] --> CHECK_EXIT{"CHECK_EXIT (or)"}
+  CHECK_EXIT -- "converged (verdict CONVERGE)" --> NEXT([PLANNING])
+  CHECK_EXIT -- "stall / max_runs" --> ESC([TERMINAL ESCALATE])
+  CHECK_EXIT -- continue --> ANTI_LOOP["ANTI_LOOP (or)"] --> DISPATCH{"DISPATCH (or) — routage RV persisté"}
+  DISPATCH -- has_functional --> PO_UPDATE["PO_UPDATE (po)"]
+  DISPATCH -- has_technical seul --> TL_UPDATE["TL_UPDATE (tl)"]
+  DISPATCH -- aucun --> UPDATE_TRACKING["UPDATE_TRACKING (or)"]
+  PO_UPDATE -- has_technical --> TL_UPDATE
+  PO_UPDATE -- sinon --> UPDATE_TRACKING
+  TL_UPDATE --> UPDATE_TRACKING
+  UPDATE_TRACKING -- "run++" --> RV_REVIEW
+```
+
+### PLANNING — tâches + worktrees (TL)
+
+```mermaid
+flowchart LR
+  GENERATE_TASKS["GENERATE_TASKS (tl)"] --> ASSIGN_WORKTREES["ASSIGN_WORKTREES (tl)"] --> CHECKPOINT_TASKS{"CHECKPOINT_TASKS (pm)"}
+  CHECKPOINT_TASKS -- approve --> NEXT([IMPLEMENTATION])
+```
+
+### IMPLEMENTATION — pool DV piloté par TL
+
+```mermaid
+flowchart LR
+  DV_IMPLEMENT["DV_IMPLEMENT (or, pool DV piloté par tl)"] --> TL_SUPERVISE["TL_SUPERVISE (tl)"] --> CHECKPOINT_IMPL{"CHECKPOINT_IMPL (pm)"}
+  CHECKPOINT_IMPL -- retry --> DV_IMPLEMENT
+  CHECKPOINT_IMPL -- approve --> MERGE_WORKTREES["MERGE_WORKTREES (or)"]
+  MERGE_WORKTREES --> NEXT([CODE_REVIEW])
+  MERGE_WORKTREES -. light .-> SHORT([VALIDATION])
+```
+
+### CODE_REVIEW — boucle de revue de code (cap `review_loops.code`)
+
+RV pose son verdict `APPROVED|REJECTED` à `RV_CODE_REVIEW` (persisté) ; `CHECK_CR_EXIT` en dérive la convergence (ARCH-03-B).
+
+```mermaid
+flowchart LR
+  RV_CODE_REVIEW["RV_CODE_REVIEW (rv) — verdict APPROVED/REJECTED"] --> CHECK_CR_EXIT{"CHECK_CR_EXIT (or)"}
+  CHECK_CR_EXIT -- "converged (verdict APPROVED)" --> NEXT([VALIDATION])
+  CHECK_CR_EXIT -- "stall / max_runs" --> ESC([TERMINAL ESCALATE])
+  CHECK_CR_EXIT -- continue --> DV_FIX["DV_FIX (dv)"] --> UPDATE_TRACKING_CR["UPDATE_TRACKING_CR (or)"]
+  UPDATE_TRACKING_CR -- "run++" --> RV_CODE_REVIEW
+```
+
+### VALIDATION — recette PO/QA/HO
+
+```mermaid
+flowchart LR
+  PO_VALIDATE["PO_VALIDATE (po)"] --> QA_ACCEPTANCE_TEST["QA_ACCEPTANCE_TEST (qa)"] --> HO_VALIDATE{"HO_VALIDATE (pm)"}
+  HO_VALIDATE --> CHECKPOINT_VALID{"CHECKPOINT_VALID (pm)"}
+  CHECKPOINT_VALID -- retry --> PO_VALIDATE
+  CHECKPOINT_VALID -- approve --> NEXT([CLOSURE])
+```
+
+### CLOSURE — commit, PR, bilan, archive
+
+```mermaid
+flowchart LR
+  CLEANUP_WORKTREES["CLEANUP_WORKTREES (tl)"] --> COMMIT["COMMIT (pm)"] --> PUSH["PUSH (or)"] --> PR_CREATE["PR_CREATE (pm)"] --> HO_MERGE{"HO_MERGE (or)"}
+  HO_MERGE -- merged --> BILAN["BILAN (pm)"] --> LOG_AUDIT["LOG_AUDIT (or)"] --> CLEANUP["CLEANUP (or)"] --> ARCHIVE["ARCHIVE (or)"] --> DONE([TERMINAL DONE])
+  HO_MERGE -- rejected --> PR_TRIAGE{"PR_TRIAGE (or)"}
+  PR_TRIAGE -- minor --> BACKI([IMPLEMENTATION])
+  PR_TRIAGE -- major --> BACKR([REVIEW])
+```
+
 ## Modes
 
 3 `agent_mode` (`team` / `subagent` / `subagent-light`) × `dark_factory` on/off — config `.wf-config.json` racine du projet consommateur. En light, les steps des rôles absents sont auto-skippés (`_wf_auto_skip_light`) et REVIEW/CODE_REVIEW sont court-circuités. La combinatoire est le point fragile du moteur (ARCH-05) : toute modif de skip/short-circuit doit passer la matrice de tests `wf-orchestrate-skip.bats`.

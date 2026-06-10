@@ -67,6 +67,23 @@ source_steps() {
   [ -z "$hits" ]
 }
 
+@test "doc-drift: every step node in AGENTS.md mermaid diagrams exists in STEPS[]" {
+  # The per-phase workflow diagrams in AGENTS.md define step nodes as TOKEN["..."]
+  # or TOKEN{"..."}. Each such TOKEN must be a real step name from STEPS[] —
+  # this is what keeps the hand-drawn diagram honest (ARCH-06 class).
+  local steps tokens orphans
+  steps="$(source_steps | cut -d: -f2 | sort -u)"
+  tokens="$(grep -ohE '^ *[A-Z][A-Z_]+\[|^ *[A-Z][A-Z_]+\{' "$WF_REPO/AGENTS.md" \
+    | tr -d ' [{' | sort -u || true)"
+  [ -n "$tokens" ]  # sanity: the diagrams exist
+  orphans="$(comm -23 <(printf '%s\n' "$tokens") <(printf '%s\n' "$steps"))"
+  if [ -n "$orphans" ]; then
+    echo "# step node in AGENTS.md diagrams but absent from STEPS[]:" >&3
+    printf '%s\n' "$orphans" | sed 's/^/#   /' >&3
+  fi
+  [ -z "$orphans" ]
+}
+
 @test "doc-drift: no 'exit_decision=' instruction in personas/skills (UNKNOWN_PARAM)" {
   # exit_decision is an INTERNAL variable of handle_complete; STEP_PARAMS accepts
   # converged/stall on CHECK_EXIT/CHECK_CR_EXIT. A doc telling an agent to pass
