@@ -47,8 +47,8 @@ For steps where `--query` returns `agent=rv`, the order is **STRICT** and **NON-
 
 | Phase | Step | Inputs to Read | Output to Write | Self-complete |
 |-------|------|----------------|-----------------|---------------|
-| REVIEW | RV_REVIEW | PRD.md, specs.md, design.md, tasks.md, acceptance.md *(ui.md si has_ui)* | review.md | `--complete REVIEW:RV_REVIEW --params verdict=CONVERGE\|ITERATE` |
-| CODE_REVIEW | RV_CODE_REVIEW | specs.md, design.md, source code (worktrees + diff) | review.md | `--complete CODE_REVIEW:RV_CODE_REVIEW` |
+| REVIEW | RV_REVIEW | PRD.md, specs.md, design.md, tasks.md, acceptance.md *(ui.md si has_ui)* | review.md | `--complete REVIEW:RV_REVIEW --params verdict=CONVERGE\|ITERATE` — avec ITERATE, ajouter `has_functional=true\|false has_technical=true\|false` (findings fonctionnels → specs/PO ; techniques → design/TL) : le routage DISPATCH en dérive |
+| CODE_REVIEW | RV_CODE_REVIEW | specs.md, design.md, source code (worktrees + diff) | review.md | `--complete CODE_REVIEW:RV_CODE_REVIEW --params verdict=APPROVED\|REJECTED` (APPROVED = 0 blocker ; CHECK_CR_EXIT en dérive la convergence) |
 
 RV is **also** invoked per-task during IMPLEMENTATION (out-of-state-machine): TL sends a `SendMessage` review brief (task_id, worktree path, modified files). RV produces a verdict APPROVED/REJECTED with findings and replies to TL — TL is the orchestrator of the DV pool, RV never talks to DVs directly.
 
@@ -298,8 +298,11 @@ RV **never** completes PM-only steps (`*:CHECKPOINT_*`, `CLOTURE:COMMIT`, `--abo
 5. Apply the 5 review criteria
 6. Produce findings (max 5) → write/rewrite review.md
 7. Determine verdict (CONVERGE or ITERATE)
-8. If ITERATE: complete the step, notify OR with findings and list of artifacts to revise
-9. If CONVERGE: complete the step, notify OR
+8. If ITERATE: complete the step with the verdict AND the routing flags
+   (`--params verdict=ITERATE has_functional=true|false has_technical=true|false` —
+   functional findings target specs.md/PO, technical findings target design.md/TL;
+   DISPATCH routes deterministically from these), then notify OR with findings
+9. If CONVERGE: complete the step (`--params verdict=CONVERGE`), notify OR
 10. Log to rv.log if present
 ```
 

@@ -118,3 +118,56 @@ teardown() { wf_proj_cleanup; }
   [ "$status" -eq 0 ]
   [ "$(wf_step mrc)" = "PLANNING:GENERATE_TASKS" ]
 }
+
+# ---------------------------------------------------------------------------
+# ARCH-03-B : CODE_REVIEW loop — RV verdict at RV_CODE_REVIEW drives CHECK_CR_EXIT
+# (mirror of ARCH-03-A on REVIEW)
+# ---------------------------------------------------------------------------
+
+@test "RV_CODE_REVIEW --params verdict=APPROVED stores code_review_verdict and advances to CHECK_CR_EXIT" {
+  wf_mk_need cra '{"phase":"CODE_REVIEW","step":"RV_CODE_REVIEW","status":"in_progress","config":{"agent_mode":"team","dark_factory":"off","review_loops":{"artifacts":2,"code":3}}}'
+  run wf_run cra --complete CODE_REVIEW:RV_CODE_REVIEW --params verdict=APPROVED
+  echo "# status=$status out=$output" >&3
+  [ "$status" -eq 0 ]
+  [ "$(wf_step cra)" = "CODE_REVIEW:CHECK_CR_EXIT" ]
+  [ "$(wf_field cra code_review_verdict)" = "APPROVED" ]
+}
+
+@test "RV_CODE_REVIEW verdict does NOT leak into review_verdict (separate loop fields)" {
+  wf_mk_need crl '{"phase":"CODE_REVIEW","step":"RV_CODE_REVIEW","status":"in_progress","config":{"agent_mode":"team","dark_factory":"off","review_loops":{"artifacts":2,"code":3}}}'
+  run wf_run crl --complete CODE_REVIEW:RV_CODE_REVIEW --params verdict=APPROVED
+  [ "$status" -eq 0 ]
+  [ -z "$(wf_field crl review_verdict)" ]
+}
+
+@test "CHECK_CR_EXIT with stored verdict=APPROVED and NO params converges to VALIDATION:PO_VALIDATE" {
+  wf_mk_need crc '{"phase":"CODE_REVIEW","step":"CHECK_CR_EXIT","status":"in_progress","code_review_verdict":"APPROVED","current_run_cr":1,"config":{"agent_mode":"team","dark_factory":"off","review_loops":{"artifacts":2,"code":3}}}'
+  run wf_run crc --complete CODE_REVIEW:CHECK_CR_EXIT
+  echo "# status=$status out=$output" >&3
+  [ "$status" -eq 0 ]
+  [ "$(wf_step crc)" = "VALIDATION:PO_VALIDATE" ]
+}
+
+@test "CHECK_CR_EXIT with stored verdict=REJECTED and NO params continues the loop to CODE_REVIEW:DV_FIX" {
+  wf_mk_need crr '{"phase":"CODE_REVIEW","step":"CHECK_CR_EXIT","status":"in_progress","code_review_verdict":"REJECTED","current_run_cr":0,"config":{"agent_mode":"team","dark_factory":"off","review_loops":{"artifacts":2,"code":3}}}'
+  run wf_run crr --complete CODE_REVIEW:CHECK_CR_EXIT
+  echo "# status=$status out=$output" >&3
+  [ "$status" -eq 0 ]
+  [ "$(wf_step crr)" = "CODE_REVIEW:DV_FIX" ]
+}
+
+@test "CHECK_CR_EXIT retro-compat: --params converged=true converges to VALIDATION:PO_VALIDATE" {
+  wf_mk_need crf '{"phase":"CODE_REVIEW","step":"CHECK_CR_EXIT","status":"in_progress","current_run_cr":1,"config":{"agent_mode":"team","dark_factory":"off","review_loops":{"artifacts":2,"code":3}}}'
+  run wf_run crf --complete CODE_REVIEW:CHECK_CR_EXIT --params converged=true
+  echo "# status=$status out=$output" >&3
+  [ "$status" -eq 0 ]
+  [ "$(wf_step crf)" = "VALIDATION:PO_VALIDATE" ]
+}
+
+@test "verdict is rejected as UNKNOWN_PARAM on a step that does not accept it (DV_FIX)" {
+  wf_mk_need crx '{"phase":"CODE_REVIEW","step":"DV_FIX","status":"in_progress","config":{"agent_mode":"team","dark_factory":"off","review_loops":{"artifacts":2,"code":3}}}'
+  run wf_run crx --complete CODE_REVIEW:DV_FIX --params verdict=APPROVED
+  echo "# status=$status out=$output" >&3
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"UNKNOWN_PARAM"* ]]
+}

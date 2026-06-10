@@ -34,7 +34,8 @@ CFG='"config":{"agent_mode":"team","dark_factory":"off","review_loops":{"artifac
   echo "$output" | jq -e '.phase=="REVIEW" and .step=="RV_REVIEW"' >/dev/null
   echo "$output" | jq -e '.agent=="rv"' >/dev/null
   echo "$output" | jq -e '.action=="review"' >/dev/null
-  echo "$output" | jq -e '.expected_params == ["verdict"]' >/dev/null
+  # ARCH-03-C: RV also poses the routing flags at RV_REVIEW
+  echo "$output" | jq -e '.expected_params == ["verdict","has_functional","has_technical"]' >/dev/null
 }
 
 @test "query: TECHNICAL_DESIGN:GENERATE_DESIGN → agent=tl, action=generate_artifact" {

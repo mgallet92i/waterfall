@@ -625,9 +625,9 @@ Après le `--complete`, OR re-query immédiatement — pas d'attente, pas de `Se
 > Si `verdict == CONVERGE` lu dans `review.md` (step `REVIEW:CHECK_EXIT`) ou si aucun finding BLOCKER n'est présent dans le rapport RV (step `CODE_REVIEW:CHECK_CR_EXIT`), OR **ne doit pas** :
 > - Re-spawner RV via `spawn_request`
 > - Envoyer un `SendMessage` à RV pour une nouvelle itération
-> - Compléter sans flag (= continue) alors que CONVERGE est confirmé
+> - Retarder le `--complete` du step de sortie
 >
-> OR doit immédiatement compléter avec `--params converged=true` et re-query. Toute relance de review sur verdict CONVERGE est une violation de routage.
+> OR doit immédiatement compléter le step de sortie et re-query (le script dérive la convergence du verdict RV persisté — ARCH-03-A/B ; `--params converged=true` reste accepté). Toute relance de review sur verdict CONVERGE/APPROVED est une violation de routage.
 >
 > Cette règle s'applique aux deux steps concernés : `REVIEW:CHECK_EXIT` et `CODE_REVIEW:CHECK_CR_EXIT`.
 
@@ -637,8 +637,8 @@ OR reçoit un `brief_complete` de RV (rapport code review). OR re-query → `ste
 
 | Condition | Action OR (params = `expected_params` du `--query` : `converged`, `stall`) |
 |-----------|-----------|
-| Aucun finding BLOCKER dans le rapport RV | `--complete CODE_REVIEW:CHECK_CR_EXIT --params converged=true` |
-| Findings BLOCKER/MAJOR à corriger | `--complete CODE_REVIEW:CHECK_CR_EXIT` sans params (continue) |
+| Verdict RV = APPROVED (posé à `RV_CODE_REVIEW`, persisté en state) | `--complete CODE_REVIEW:CHECK_CR_EXIT` sans params — le script dérive la convergence du verdict (ARCH-03-B) ; `--params converged=true` marche aussi |
+| Findings BLOCKER/MAJOR à corriger (verdict REJECTED) | `--complete CODE_REVIEW:CHECK_CR_EXIT` sans params (continue) |
 | Mêmes BLOCKERs répétés sans progrès (stall détecté) | `--complete CODE_REVIEW:CHECK_CR_EXIT --params stall=true` |
 
 Après le `--complete`, OR re-query immédiatement — pas d'attente, pas de `SendMessage`.
@@ -651,7 +651,7 @@ Après le `--complete`, OR re-query immédiatement — pas d'attente, pas de `Se
 | **INV-OR-02** (params depuis `expected_params`) | Les noms de params passés à `--complete` viennent **exclusivement** du champ `expected_params` du JSON `--query`. Jamais inventés. |
 | **EX-OR-05** (no external wait) | Aucune instruction d'attente externe dans cette branche. OR ne fait jamais `wait for SendMessage` sur un step `agent=or`. |
 | **INV-OR-03 / EX-OR-06** (re-query immédiat) | Après chaque `--complete` sur un step `agent=or`, re-query immédiat. Pas de pause, pas de message vers un pair. |
-| **INV-002** (pas de relance CONVERGE) | Si verdict=CONVERGE (`REVIEW:CHECK_EXIT`) ou aucun BLOCKER (`CODE_REVIEW:CHECK_CR_EXIT`), compléter immédiatement avec `--params converged=true`. Interdiction de re-spawner RV ou d'envoyer un SendMessage RV. |
+| **INV-002** (pas de relance CONVERGE) | Si verdict RV = CONVERGE (`REVIEW:CHECK_EXIT`) ou APPROVED (`CODE_REVIEW:CHECK_CR_EXIT`), compléter immédiatement le step de sortie (le script dérive la convergence du verdict persisté). Interdiction de re-spawner RV ou d'envoyer un SendMessage RV. |
 
 ---
 

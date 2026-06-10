@@ -172,7 +172,7 @@ declare -A STEP_PARAMS=(
   ["GENERATE_DESIGN"]=""
   ["CHECKPOINT_DESIGN"]="decision"
   # REVIEW
-  ["RV_REVIEW"]="verdict"
+  ["RV_REVIEW"]="verdict has_functional has_technical"
   ["CHECK_EXIT"]="converged stall"
   ["ANTI_LOOP"]=""
   ["DISPATCH"]="has_functional has_technical"
@@ -189,7 +189,7 @@ declare -A STEP_PARAMS=(
   ["CHECKPOINT_IMPL"]="decision"
   ["MERGE_WORKTREES"]=""
   # CODE_REVIEW
-  ["RV_CODE_REVIEW"]=""
+  ["RV_CODE_REVIEW"]="verdict"
   ["CHECK_CR_EXIT"]="converged stall"
   ["DV_FIX"]=""
   ["UPDATE_TRACKING_CR"]=""
@@ -227,6 +227,17 @@ declare -A STEP_ARTIFACTS=(
 # ─────────────────────────────────────────────────────────────────────────────
 
 log() { echo "[wf-orchestrate] $*" >&2; }
+
+# True if the given param name was explicitly passed to --complete (reads the
+# received_params array local to handle_complete via dynamic scoping). Lets us
+# distinguish "not passed" from an explicit false (ARCH-03-C routing fallback).
+_wf_param_was_received() {
+  local k="$1" p
+  for p in ${received_params[@]+"${received_params[@]}"}; do
+    [[ "$p" == "$k" ]] && return 0
+  done
+  return 1
+}
 
 # get_session_id(state_json) -> string
 # Returns the session_id stored in state, or "default" if absent.
@@ -899,7 +910,7 @@ switch(phase) {
     params.current_run = runReview;
     params.max_runs = maxReview;
     params.artifacts = ['PRD.md', 'specs.md', 'design.md', 'acceptance.md'];
-    if (step === 'RV_REVIEW') params.hint = 'RV : SendMessage to RV with list of artifacts to review (PRD.md, specs.md, design.md, acceptance.md). RV writes review.md with findings and verdict (CONVERGE/ITERATE). Wait for RV report.';
+    if (step === 'RV_REVIEW') params.hint = 'RV: review the artifacts (PRD.md, specs.md, design.md, tasks.md, acceptance.md, ui.md if present), write review.md with findings and verdict. Self-complete with --params verdict=CONVERGE|ITERATE; with ITERATE, also pass has_functional=true|false has_technical=true|false (functional findings → specs/PO, technical findings → design/TL) — DISPATCH routes deterministically from these.';
     if (step === 'CHECK_EXIT') {
       params.hint = 'OR : Read review.md verdict. 3 paths: (1) CONVERGE → `--complete REVIEW:CHECK_EXIT --params converged=true` → advances to PLANNING:GENERATE_TASKS. (2) ITERATE and max_runs not reached → `--complete REVIEW:CHECK_EXIT` (default, no params) → continues loop to REVIEW:ANTI_LOOP. (3) Stalled (same issues repeating, no progress) → `--complete REVIEW:CHECK_EXIT --params stall=true` → TERMINAL:ESCALATE. The flag is mandatory: a bare `converged=true` without `--params` was historically dropped (F-023). Note: if current_run_review >= max_runs, the loop auto-escalates on this step regardless of verdict.';
       params.check_convergence = true;
@@ -910,7 +921,7 @@ switch(phase) {
       params.previous_run = runReview;
     }
     if (step === 'DISPATCH') {
-      params.hint = 'OR : Read review.md findings. Route corrections: complete with has_functional=true if PO must update specs, has_technical=true if TL must update design. Both false → skip to UPDATE_TRACKING.';
+      params.hint = 'OR : complete without params — the routing posed by RV at RV_REVIEW (has_functional/has_technical, persisted in state) applies automatically. Explicit --params has_functional=true/has_technical=true override it (e.g. if RV omitted the routing). Both false → skip to UPDATE_TRACKING.';
     }
     if (step === 'PO_UPDATE') params.hint = 'PO: update specs.md and/or acceptance.md in response to functional findings from review.md identified by OR. Input artifacts: review.md, specs.md. Output artifacts: updated specs.md, acceptance.md. Notify OR via SendMessage (step_complete) when done.';
     if (step === 'TL_UPDATE') params.hint = 'TL: update design.md in response to technical findings from review.md identified by OR. Input artifact: review.md (technical findings section). Output artifact: updated design.md. Notify OR via SendMessage (step_complete) when done.';
@@ -943,9 +954,9 @@ switch(phase) {
     params.current_run = runCr;
     params.max_runs = maxCr;
     params.artifacts = ['tasks.md'];
-    if (step === 'RV_CODE_REVIEW') params.hint = 'RV: perform a global implementation review against specs.md and design.md using /code-review and /security-review skills. Apply the multi-run methodology: max 5 findings per run, prioritize P0 blockers first. Run Semgrep if available (helper: wf-semgrep.sh). Produce a findings report (BLOCKER/MAJOR/MINOR). Input artifacts: specs.md, design.md, modified code. Notify OR via SendMessage (brief_complete) with the findings report when done.';
+    if (step === 'RV_CODE_REVIEW') params.hint = 'RV: perform a global implementation review against specs.md and design.md using /code-review and /security-review skills. Apply the multi-run methodology: max 5 findings per run, prioritize P0 blockers first. Run Semgrep if available (helper: wf-semgrep.sh). Produce a findings report (BLOCKER/MAJOR/MINOR). Self-complete with --params verdict=APPROVED (0 blockers) or verdict=REJECTED (blockers to fix) — CHECK_CR_EXIT derives convergence from this verdict. Input artifacts: specs.md, design.md, modified code. Notify OR via SendMessage (brief_complete) with the findings report when done.';
     if (step === 'CHECK_CR_EXIT') {
-      params.hint = 'OR : Evaluate RV code review: if no BLOQUANT findings → `--complete CODE_REVIEW:CHECK_CR_EXIT --params converged=true` → advances to VALIDATION:PO_VALIDATE. If fixes needed → `--complete CODE_REVIEW:CHECK_CR_EXIT` (default, no params) continues loop. If stalled → `--complete CODE_REVIEW:CHECK_CR_EXIT --params stall=true`. The --params flag is mandatory: a bare positional was historically dropped (F-023).';
+      params.hint = 'OR : 3 paths. (1) RV verdict APPROVED (stored at RV_CODE_REVIEW) → `--complete CODE_REVIEW:CHECK_CR_EXIT` with no params already converges to VALIDATION:PO_VALIDATE (the script derives it; `--params converged=true` also works). (2) Fixes needed → `--complete CODE_REVIEW:CHECK_CR_EXIT` (no params, verdict REJECTED) continues loop to DV_FIX. (3) Stalled → `--complete CODE_REVIEW:CHECK_CR_EXIT --params stall=true`. The --params flag is mandatory when passing a flag: a bare positional was historically dropped (F-023).';
       params.check_convergence = true;
       params.check_max_runs = runCr >= maxCr;
     }
@@ -1115,9 +1126,29 @@ handle_complete() {
     esac
   done
 
-  # ARCH-03-A: propagate RV's verdict (non-empty only when completing RV_REVIEW) to the
-  # advance writer, so CHECK_EXIT can derive convergence even if OR omits the flag (F-023).
-  export _WF_ADV_REVIEW_VERDICT="${verdict:-}"
+  # ARCH-03-A/B: propagate RV's verdict to the advance writer, so CHECK_EXIT /
+  # CHECK_CR_EXIT can derive convergence even if OR omits the flag (F-023).
+  # The param is only accepted at RV_REVIEW (CONVERGE|ITERATE) and RV_CODE_REVIEW
+  # (APPROVED|REJECTED) — STEP_PARAMS validation rejects it elsewhere. Branch per
+  # step so each loop persists its own state field.
+  if [[ "$comp_step" == "RV_CODE_REVIEW" ]]; then
+    export _WF_ADV_CR_VERDICT="${verdict:-}"
+    export _WF_ADV_REVIEW_VERDICT=""
+  else
+    export _WF_ADV_REVIEW_VERDICT="${verdict:-}"
+    export _WF_ADV_CR_VERDICT=""
+  fi
+
+  # ARCH-03-C: persist the REVIEW routing flags when provided at the source.
+  # RV poses has_functional/has_technical at RV_REVIEW (it wrote the findings);
+  # DISPATCH may override explicitly. Persisting them is what makes the
+  # PO_UPDATE → TL_UPDATE transition reachable (nothing carried has_technical
+  # across invocations before — the branch was dead code).
+  export _WF_ADV_ROUTE_FUNC="" _WF_ADV_ROUTE_TECH=""
+  if [[ "$comp_step" == "RV_REVIEW" || "$comp_step" == "DISPATCH" ]]; then
+    _wf_param_was_received has_functional && export _WF_ADV_ROUTE_FUNC="$has_functional"
+    _wf_param_was_received has_technical && export _WF_ADV_ROUTE_TECH="$has_technical"
+  fi
 
   # Param validation against STEP_PARAMS[] — INV-002
   # Reject unknown params; enforce required params per step.
@@ -1288,8 +1319,12 @@ handle_complete() {
     local cur_cr
     cur_cr=$(get_field "$state_json" "current_run_cr")
     cur_cr="${cur_cr:-0}"
+    local cr_verdict
+    cr_verdict=$(get_field "$state_json" "code_review_verdict")
 
-    if [[ "$converged" == "true" ]]; then
+    # ARCH-03-B: an APPROVED verdict from RV (stored at RV_CODE_REVIEW) converges
+    # the loop exactly like OR's converged flag — mirror of ARCH-03-A on REVIEW.
+    if [[ "$converged" == "true" || "$cr_verdict" == "APPROVED" ]]; then
       exit_decision="converged"
     elif [[ "$stall" == "true" ]]; then
       exit_decision="stall"
@@ -1298,7 +1333,30 @@ handle_complete() {
     else
       exit_decision="${exit_decision:-continue}"
     fi
-    log "CODE_REVIEW CHECK_CR_EXIT: cur_cr=$cur_cr max=$max_cr exit_decision=$exit_decision"
+    log "CODE_REVIEW CHECK_CR_EXIT: cur_cr=$cur_cr max=$max_cr verdict=${cr_verdict:-none} exit_decision=$exit_decision"
+  fi
+
+  # ARCH-03-C: deterministic REVIEW routing.
+  # DISPATCH — when OR passes no explicit flag, fall back to the routing posed by
+  # RV at RV_REVIEW (persisted in state). Explicit flags keep precedence.
+  if [[ "$comp_step" == "DISPATCH" ]] && [[ "$current_phase" == "REVIEW" ]]; then
+    if ! _wf_param_was_received has_functional && ! _wf_param_was_received has_technical; then
+      has_functional=$(get_field "$state_json" "review_route_functional")
+      has_functional="${has_functional:-false}"
+      has_technical=$(get_field "$state_json" "review_route_technical")
+      has_technical="${has_technical:-false}"
+      # Persist the effective routing so PO_UPDATE can read it (see below)
+      export _WF_ADV_ROUTE_FUNC="$has_functional" _WF_ADV_ROUTE_TECH="$has_technical"
+    fi
+    log "REVIEW DISPATCH: functional=$has_functional technical=$has_technical"
+  fi
+
+  # PO_UPDATE — the PO_UPDATE→TL_UPDATE transition needs has_technical, but PO
+  # completes this step in a separate invocation: read the persisted routing.
+  if [[ "$comp_step" == "PO_UPDATE" ]] && [[ "$current_phase" == "REVIEW" ]]; then
+    has_technical=$(get_field "$state_json" "review_route_technical")
+    has_technical="${has_technical:-false}"
+    log "REVIEW PO_UPDATE: has_technical from state = $has_technical"
   fi
 
   # Artifact guards — INV-003 / ARCH-04 (shared check via _wf_check_step_artifact).
@@ -1671,6 +1729,9 @@ const extraBranch = process.env._WF_ADV_BRANCH || null;
 const extraTeam = process.env._WF_ADV_TEAM || null;
 const extraReason = process.env._WF_ADV_REASON || null;
 const reviewVerdict = process.env._WF_ADV_REVIEW_VERDICT || '';
+const crVerdict = process.env._WF_ADV_CR_VERDICT || '';
+const routeFunc = process.env._WF_ADV_ROUTE_FUNC || '';
+const routeTech = process.env._WF_ADV_ROUTE_TECH || '';
 
 let state;
 try {
@@ -1712,6 +1773,12 @@ if (incrCr) {
 // ARCH-03-A: persist RV's verdict (set only when completing RV_REVIEW) so CHECK_EXIT
 // can derive convergence deterministically even if OR omits the converged flag (F-023).
 if (reviewVerdict) state.review_verdict = reviewVerdict;
+// ARCH-03-B: same for the CODE_REVIEW loop (set only at RV_CODE_REVIEW).
+if (crVerdict) state.code_review_verdict = crVerdict;
+// ARCH-03-C: persist REVIEW routing (set at RV_REVIEW by RV, or at DISPATCH) so
+// DISPATCH and PO_UPDATE route deterministically across invocations.
+if (routeFunc) state.review_route_functional = routeFunc;
+if (routeTech) state.review_route_technical = routeTech;
 if (extraCardNum) state.card_num = extraCardNum;
 if (extraBranchType) state.branch_type = extraBranchType;
 if (extraBranch) state.branch = extraBranch;
