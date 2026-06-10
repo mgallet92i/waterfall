@@ -5,6 +5,38 @@ All notable changes to the `waterfall` plugin are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-06-10
+
+Campagne de durcissement issue de la revue d'architecture globale (causes racines `ARCH-01..10` du backlog). Fil rouge : tout ce qui peut être décidé par le script l'est par le script — les personas deviennent *hint-driven* et le chemin d'écriture des artefacts devient gouverné et décidable.
+
+### Added
+
+- **Canal scripté `--append <retro|tracking> --msg "..."`** (`wf-orchestrate.sh`, ARCH-08) : canal d'écriture **gated par le step courant** (`retro.md` uniquement à `CLOSURE:LOG_AUDIT` ; `tracking.md` à `REVIEW:ANTI_LOOP`/`UPDATE_TRACKING`/`CODE_REVIEW:UPDATE_TRACKING_CR`). Seul chemin d'écriture pour les agents sans outil `Write` (OR). Remplace l'exception Bash `or_retro_log_audit_exception` et rend exécutables 3 hints qui ne l'étaient pas (`UPDATE_TRACKING*`, marquage `[FROZEN]` d'`ANTI_LOOP` → redirigé vers `tracking.md`).
+- **Verdict RV consommé sur les deux boucles (ARCH-03-B)** : `RV_CODE_REVIEW` accepte `--params verdict=APPROVED|REJECTED`, persisté en state (`code_review_verdict`) ; `CHECK_CR_EXIT` en dérive la convergence (miroir d'ARCH-03-A sur REVIEW). Flag `converged` d'OR conservé (rétro-compat).
+- **Routage REVIEW déterministe (ARCH-03-C)** : RV pose `has_functional`/`has_technical` à `RV_REVIEW` (c'est l'auteur des findings) ; persistés en state, `DISPATCH` les applique sans params (flags explicites prioritaires).
+- **Garde CI anti-drift doc/script** : `tests/wf-doc-drift.bats` (5 tests) — tokens `PHASE:STEP` des personas/skills vérifiés contre `STEPS[]`, tables canoniques re-encodées interdites, noms d'artefacts legacy interdits, nœuds des schémas `AGENTS.md` vérifiés.
+- **`AGENTS.md` + `CLAUDE.md` racine** : guide du dev du framework (philosophie, carte du repo, règles) + schémas mermaid du workflow découpés par phase (10 phases, owners, branchements).
+- **Modèle `fable`** accepté par la validation de config (`wf-read-config.sh`).
+- Suite de tests : 144 → **177** (state machine, dispatch, append, doc-drift).
+
+### Changed
+
+- **Personas hint-driven (ARCH-06 ét.2)** : purge des tables recopiées du script (`STEP_PARAMS`, listes step→owner, matrice de dispatch, séquences littérales de `wf-pm-light`) — le contrat runtime est `--query` (`agent`/`hint`/`expected_params`). Les tables purgées **mentaient** : params rejetés (`exit_decision=`), step inexistant (`BOOTSTRAP:INIT`), 5 steps fictifs dans les duty tables (`ITERATE_*`, `GENERATE_UI`, `IMPLEMENT_TASK`).
+- **Écritures d'artefacts gouvernées (ARCH-08)** : la garde `Write`/`Edit`/`NotebookEdit` enforce une **matrice artefact→writers pour tous les rôles** (elle ne contraignait qu'OR — PO pouvait écrire `design.md` via Write sans blocage). Matrice relevée des flows réels : `tasks.md`=tl+dv (pipeline INV-007), `review.md`=rv+po/tl/ds (`## Responses`), `acceptance.md`=po+qa, `acceptance-report.md`=qa. PM pass-through (lead). **Toute écriture Bash ciblant un artefact métier est refusée pour tous les rôles, sans exception** (la matrice par rôle regex-parsée et ses 2 exceptions état-dépendantes sont supprimées).
+- Hints `CLOSURE` à label dynamique (`${agentLabel}` — 5 hints disaient « PM: » sur des steps `or`/`tl`).
+
+### Fixed
+
+- **F-033** : artefact de revue unifié sur `review.md` (`rv.md`/`code-review.md` driftés dans 5 fichiers) ; findings CODE_REVIEW globaux en section dédiée.
+- **F-034** : noms d'artefacts legacy `tf.md`/`tech.md`/`taches.md` → canoniques (`acceptance.md`/`design.md`/`tasks.md`) dans 16 fichiers — le hook et le moteur ne connaissent que les canoniques (un DV suivant sa fiche éditait un fichier fantôme hors protection).
+- **Transition `PO_UPDATE → TL_UPDATE` ressuscitée** : code mort depuis l'origine (rien ne portait `has_technical` entre deux invocations) — avec findings fonctionnels ET techniques, TL n'était jamais re-dispatché.
+- `PRD.md` ré-attribué à PM (était attribué à PO dans `wf-rv.md` et `docs/agents.md`) ; section *Identity enforcement* du README alignée sur DEC-001.
+
+### Migration
+
+- **`/reload-plugins` requis** après upgrade : personas et constitution ont changé de contrat (hint-driven, canal `--append`).
+- Les agents qui écrivaient leur propre artefact via Bash (heredoc, `>`, `tee`) seront bloqués — c'est voulu : utiliser `Write`/`Edit` (ownership enforced) ou `--append`.
+
 ## [1.3.1] - 2026-06-06
 
 ### Fixed
