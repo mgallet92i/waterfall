@@ -96,27 +96,132 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
-# ─── TF-INV-04 — OR Write wf/needs/foo/retro.md sans sentinelle → exit 0 ─────
-@test "TF-INV-04: OR Write inside wf/needs/ → exit 0 (need path always allowed)" {
+# ─── TF-INV-04 — OR Write retro.md → exit 2 (ARCH-08: writers matrix) ────────
+# retro.md is pm-owned; OR's anomalies section goes through the gated script
+# channel (wf-orchestrate --append retro, step-gated at LOG_AUDIT) — not Write.
+@test "TF-INV-04: OR Write wf/needs/foo/retro.md → exit 2 (artifact in writers matrix)" {
   payload='{"tool_name":"Write","tool_input":{"file_path":"wf/needs/foo/retro.md","content":"x"},"agent_type":"or"}'
+  run bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 2 ]
+}
+
+# ─── TF-INV-04b — OR Write non-artifact file inside wf/needs/ → exit 0 ───────
+@test "TF-INV-04b: OR Write wf/needs/foo/scratch.md → exit 0 (non-artifact need path allowed)" {
+  payload='{"tool_name":"Write","tool_input":{"file_path":"wf/needs/foo/scratch.md","content":"x"},"agent_type":"or"}'
   run bash "$HOOK" <<< "$payload"
   [ "$status" -eq 0 ]
 }
 
-# ─── TF-INV-05 — DV Write src/feature.js → exit 0 (non-OR pass-through) ──────
-@test "TF-INV-05: DV Write outside need → exit 0 (non-OR agent pass-through)" {
+# ─── TF-INV-05 — DV Write src/feature.js → exit 0 (workspace writes free) ────
+@test "TF-INV-05: DV Write outside need → exit 0 (workspace writes free)" {
   payload='{"tool_name":"Write","tool_input":{"file_path":"src/feature.js","content":"x"},"agent_type":"dv1"}'
   run bash "$HOOK" <<< "$payload"
   [ "$status" -eq 0 ]
 }
 
-# ─── TF-WIN-01 — OR Write inside wf/needs/ avec backslashes Windows → exit 0 ─
-# Bug: sur Windows (Git Bash) les chemins absolus peuvent contenir des `\`.
-# Le strip de PROJECT_ROOT échouait, donc le test `^wf/needs/` ratait et le
-# write légitime était bloqué. Fix: normaliser `\` → `/` avant comparaison.
-@test "TF-WIN-01: OR Write wf\\needs\\foo\\retro.md (backslashes) → exit 0" {
-  abs_path="${TMPDIR//\//\\}\\wf\\needs\\foo\\retro.md"
+# ─── TF-WIN-01 — backslash normalization (Windows/Git Bash) ──────────────────
+# Bug historique : le strip de PROJECT_ROOT échouait sur les `\`, donc le test
+# `^wf/needs/` ratait. On vérifie la normalisation sur un non-artefact (allow).
+@test "TF-WIN-01: OR Write wf\\needs\\foo\\scratch.md (backslashes) → exit 0" {
+  abs_path="${TMPDIR//\//\\}\\wf\\needs\\foo\\scratch.md"
   payload=$(jq -nc --arg p "$abs_path" '{tool_name:"Write",tool_input:{file_path:$p,content:"x"},agent_type:"or"}')
+  run bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 0 ]
+}
+
+# ─── ARCH-08 — writers matrix on Write/Edit (all roles) ──────────────────────
+# The structured-file_path guard now enforces ownership for every teammate
+# (it used to constrain OR only — PO could Write design.md unchallenged).
+
+@test "MX-1: PO Write specs.md → exit 0 (owner)" {
+  payload='{"tool_name":"Write","tool_input":{"file_path":"wf/needs/foo/specs.md","content":"x"},"agent_type":"po"}'
+  run bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 0 ]
+}
+
+@test "MX-2: PO Write design.md → exit 2 (not a writer — the old Write-tool hole is closed)" {
+  payload='{"tool_name":"Write","tool_input":{"file_path":"wf/needs/foo/design.md","content":"x"},"agent_type":"po"}'
+  run bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 2 ]
+}
+
+@test "MX-3: TL Edit design.md → exit 0 (owner)" {
+  payload='{"tool_name":"Edit","tool_input":{"file_path":"wf/needs/foo/design.md"},"agent_type":"tl"}'
+  run bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 0 ]
+}
+
+@test "MX-4: DV Edit tasks.md → exit 0 (INV-007 pipeline status updates)" {
+  payload='{"tool_name":"Edit","tool_input":{"file_path":"wf/needs/foo/tasks.md"},"agent_type":"dv1"}'
+  run bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 0 ]
+}
+
+@test "MX-5: DV Write specs.md → exit 2 (not a writer)" {
+  payload='{"tool_name":"Write","tool_input":{"file_path":"wf/needs/foo/specs.md","content":"x"},"agent_type":"dv2-1"}'
+  run bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 2 ]
+}
+
+@test "MX-6: QA Write acceptance-report.md → exit 0 (owner, INV-QA-ARTEFACT)" {
+  payload='{"tool_name":"Write","tool_input":{"file_path":"wf/needs/foo/acceptance-report.md","content":"x"},"agent_type":"qa"}'
+  run bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 0 ]
+}
+
+@test "MX-7: QA Edit acceptance.md → exit 0 (results section)" {
+  payload='{"tool_name":"Edit","tool_input":{"file_path":"wf/needs/foo/acceptance.md"},"agent_type":"qa"}'
+  run bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 0 ]
+}
+
+@test "MX-8: QA Write design.md → exit 2 (not a writer)" {
+  payload='{"tool_name":"Write","tool_input":{"file_path":"wf/needs/foo/design.md","content":"x"},"agent_type":"qa"}'
+  run bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 2 ]
+}
+
+@test "MX-9: RV Write review.md → exit 0 (owner)" {
+  payload='{"tool_name":"Write","tool_input":{"file_path":"wf/needs/foo/review.md","content":"x"},"agent_type":"rv"}'
+  run bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 0 ]
+}
+
+@test "MX-10: PO Edit review.md → exit 0 (## Responses section)" {
+  payload='{"tool_name":"Edit","tool_input":{"file_path":"wf/needs/foo/review.md"},"agent_type":"po"}'
+  run bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 0 ]
+}
+
+@test "MX-11: DS Write ui.md → exit 0 (owner) + Edit review.md → exit 0 (Responses)" {
+  payload='{"tool_name":"Write","tool_input":{"file_path":"wf/needs/foo/ui.md","content":"x"},"agent_type":"ds"}'
+  run bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 0 ]
+  payload='{"tool_name":"Edit","tool_input":{"file_path":"wf/needs/foo/review.md"},"agent_type":"ds"}'
+  run bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 0 ]
+}
+
+@test "MX-12: OR Edit review.md → exit 2 (OR writes no artifact, FROZEN goes to --append tracking)" {
+  payload='{"tool_name":"Edit","tool_input":{"file_path":"wf/needs/foo/review.md"},"agent_type":"or"}'
+  run bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 2 ]
+}
+
+@test "MX-13: PM (no agent_type → pm) Write specs.md → exit 0 (lead pass-through)" {
+  payload='{"tool_name":"Write","tool_input":{"file_path":"wf/needs/foo/specs.md","content":"x"}}'
+  run bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 0 ]
+}
+
+@test "MX-14: respawn alias tl-2 Write design.md → exit 0 (canonical role resolution)" {
+  payload='{"tool_name":"Write","tool_input":{"file_path":"wf/needs/foo/design.md","content":"x"},"agent_type":"tl-2"}'
+  run bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 0 ]
+}
+
+@test "MX-15: PO Write or.log (non-artifact need file) → exit 0" {
+  payload='{"tool_name":"Write","tool_input":{"file_path":"wf/needs/foo/or.log","content":"x"},"agent_type":"po"}'
   run bash "$HOOK" <<< "$payload"
   [ "$status" -eq 0 ]
 }

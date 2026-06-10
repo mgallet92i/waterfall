@@ -146,10 +146,10 @@ Les outils suivants sont soumis à des restrictions strictes selon le rôle :
 - **`TeamCreate`** — réservé à PM. PM est le seul à créer des équipes.
 - **`AskUserQuestion`** — réservé à PM. Tout accès HO passe par PM.
 - **`mcp__chrome-devtools__*`** — réservé à QA.
-- **`Write`/`Edit` hors scope** — chaque agent n'écrit que dans son périmètre de rôle (`work_dir` pour DV, `wf/needs/<name>/` pour OR, etc.). Toute écriture hors scope requiert un bypass PM.
-- **Bash write** — ne jamais utiliser `Bash` pour écrire des fichiers (`echo > file`, `cat > file`, `tee`, heredoc `<<EOF >`). Utiliser les outils natifs `Write` et `Edit`. Exception unique : `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log --msg "..."` pour or.log.
+- **`Write`/`Edit` hors scope** — chaque agent n'écrit que dans son périmètre de rôle (`work_dir` pour DV, etc.). Sur les artefacts métier de `wf/needs/<name>/`, le hook enforce une **matrice artefact→writers** (ARCH-08) : seuls les writers déclarés passent (ex. `tasks.md` = tl+dv, `review.md` = rv+po/tl/ds pour les `## Responses`, `acceptance.md` = po+qa). Toute écriture hors matrice requiert un bypass PM.
+- **Bash write** — ne jamais utiliser `Bash` pour écrire des fichiers (`echo > file`, `cat > file`, `tee`, heredoc `<<EOF >`). Utiliser les outils natifs `Write` et `Edit`. Toute écriture Bash ciblant un artefact métier est **bloquée pour TOUS les rôles, sans exception** (ARCH-08). Canaux scriptés sanctionnés : `--log --msg "..."` (or.log) et `--append retro|tracking --msg "..."` (gated par le step courant — seul chemin d'écriture pour les agents sans outil Write, ex. OR).
 
-**Hook mécanique** : le PreToolUse hook `hooks/wf-auth.sh` bloque tout `Write`/`Edit`/`NotebookEdit` hors périmètre autorisé. Pas de contournement possible — toute tentative retourne exit 2.
+**Hook mécanique** : le PreToolUse hook `hooks/wf-auth.sh` bloque tout `Write`/`Edit`/`NotebookEdit` hors matrice et toute écriture Bash d'artefact. Pas de contournement possible — toute tentative retourne exit 2.
 
 ---
 

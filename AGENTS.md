@@ -16,7 +16,7 @@ dev du framework → ce fichier.
 
 - `scripts/wf-orchestrate.sh` — state machine (~3600 l., bash + node/jq inline). `--help` = contrat complet (phases/steps générés depuis `STEPS[]`).
 - `scripts/wf-step-agents.sh` — tables step→agent + overrides light/dark (qui possède quel step).
-- `hooks/wf-auth.sh` — hook PreToolUse(Bash) : enforce l'identité sur `--complete` et les écritures. Lit `agent_type` du payload harness ; `.team-registry.json` = traçabilité pure, jamais consulté pour l'auth (DEC-001).
+- `hooks/wf-auth.sh` — hook PreToolUse : identité sur `--complete` (regex command-line) + **matrice artefact→writers sur Write/Edit** (file_path structuré, tous rôles) + flat-deny des écritures Bash d'artefacts (ARCH-08, zéro exception — canaux scriptés : `--log`, `--append`). Lit `agent_type` du payload harness ; `.team-registry.json` = traçabilité pure, jamais consulté pour l'auth (DEC-001).
 - `scripts/lib/wf-paths.sh` — resolveur `PROJECT_ROOT` canonique, sourcé par orchestrate/watchdog/registry (F-032). Ne jamais résoudre via `script_dir/..`.
 - `scripts/wf-watchdog.sh`, `wf-registry.sh`, `wf-read-config.sh` (validation `.wf-config.json`), `wf-check-*.sh` (preflights).
 - `agents/*.md` — personas des 8 rôles ; `agents/_shared/constitution.md` — invariants universels.

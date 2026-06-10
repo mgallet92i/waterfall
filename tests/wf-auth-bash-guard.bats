@@ -1,7 +1,13 @@
 #!/usr/bin/env bats
-# Tests for wf-auth.sh Bash write-intent guard (T-002 — EX-006, EX-003, INV-001).
+# Tests for wf-auth.sh Bash write-intent guard — ARCH-08 flat-deny version.
 #
-# Covers TF-007, TF-011, TF-012, TF-013, TF-014.
+# History: the original guard enforced a per-role ownership matrix on regex-parsed
+# Bash command lines, with state-dependent exceptions (or@LOG_AUDIT, pm-light
+# specs). ARCH-08 flattened it: ANY write-intent (>, >>, tee, sed -i, dd of=,
+# heredoc) targeting a business artifact under wf/needs/ is exit 2 for EVERY
+# role, no exception. Ownership now lives in _wf_codewrite_guard (structured
+# file_path) and the gated script channels (--log, --append).
+#
 # Invocation: bats tests/wf-auth-bash-guard.bats
 
 HOOK="hooks/wf-auth.sh"
@@ -18,163 +24,119 @@ teardown() {
   rm -rf "$TMPDIR"
 }
 
-# ─── TF-011 — OR `printf > artefact` blocked ─────────────────────────────────
+# ─── Write operators all detected (per-operator coverage, role=or) ───────────
 
-@test "TF-011: OR redirect > on PRD.md → exit 2" {
+@test "OP-1: redirect > on PRD.md → exit 2" {
   payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"printf hello > wf/needs/foo/PRD.md"},agent_type:"or"}')
   run bash "$HOOK" <<< "$payload"
   [ "$status" -eq 2 ]
 }
 
-@test "TF-011-bis: OR redirect >> on specs.md → exit 2" {
+@test "OP-2: redirect >> on specs.md → exit 2" {
   payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x >> wf/needs/foo/specs.md"},agent_type:"or"}')
   run bash "$HOOK" <<< "$payload"
   [ "$status" -eq 2 ]
 }
 
-# ─── TF-012 — OR tee / sed -i / heredoc blocked ──────────────────────────────
-
-@test "TF-012a: OR tee on specs.md → exit 2" {
+@test "OP-3: tee on specs.md → exit 2" {
   payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo y | tee wf/needs/foo/specs.md"},agent_type:"or"}')
   run bash "$HOOK" <<< "$payload"
   [ "$status" -eq 2 ]
 }
 
-@test "TF-012b: OR tee -a on tasks.md → exit 2" {
+@test "OP-4: tee -a on tasks.md → exit 2" {
   payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo y | tee -a wf/needs/foo/tasks.md"},agent_type:"or"}')
   run bash "$HOOK" <<< "$payload"
   [ "$status" -eq 2 ]
 }
 
-@test "TF-012c: OR sed -i on specs.md → exit 2" {
+@test "OP-5: sed -i on specs.md → exit 2" {
   payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"sed -i s/x/y/ wf/needs/foo/specs.md"},agent_type:"or"}')
   run bash "$HOOK" <<< "$payload"
   [ "$status" -eq 2 ]
 }
 
-@test "TF-012d: OR heredoc > design.md → exit 2" {
+@test "OP-6: heredoc > design.md → exit 2" {
   payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"cat <<EOF > wf/needs/foo/design.md\nx\nEOF"},agent_type:"or"}')
   run bash "$HOOK" <<< "$payload"
   [ "$status" -eq 2 ]
 }
 
-# ─── TF-013 — Legitimate authors NOT regressed ──────────────────────────────
+# ─── ARCH-08 flat deny: even the OWNER of the artifact is blocked via Bash ───
 
-@test "TF-013a: PO Bash write on specs.md → exit 0" {
+@test "FLAT-1: PO Bash write on its own specs.md → exit 2 (use Write/Edit)" {
   payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x > wf/needs/foo/specs.md"},agent_type:"po"}')
   run bash "$HOOK" <<< "$payload"
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 2 ]
 }
 
-@test "TF-013b: PO Bash write on acceptance.md → exit 0" {
-  payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x > wf/needs/foo/acceptance.md"},agent_type:"po"}')
-  run bash "$HOOK" <<< "$payload"
-  [ "$status" -eq 0 ]
-}
-
-@test "TF-013c: TL Bash write on design.md → exit 0" {
+@test "FLAT-2: TL Bash write on its own design.md → exit 2" {
   payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x > wf/needs/foo/design.md"},agent_type:"tl"}')
   run bash "$HOOK" <<< "$payload"
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 2 ]
 }
 
-@test "TF-013d: TL Bash write on tasks.md → exit 0" {
-  payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x > wf/needs/foo/tasks.md"},agent_type:"tl"}')
-  run bash "$HOOK" <<< "$payload"
-  [ "$status" -eq 0 ]
-}
-
-@test "TF-013e: RV Bash write on review.md → exit 0" {
+@test "FLAT-3: RV Bash write on its own review.md → exit 2" {
   payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x > wf/needs/foo/review.md"},agent_type:"rv"}')
   run bash "$HOOK" <<< "$payload"
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 2 ]
 }
 
-@test "TF-013f: DS Bash write on ui.md → exit 0" {
+@test "FLAT-4: DS Bash write on its own ui.md → exit 2" {
   payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x > wf/needs/foo/ui.md"},agent_type:"ds"}')
   run bash "$HOOK" <<< "$payload"
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 2 ]
 }
 
-@test "TF-013g: PM Bash write on PRD.md → exit 0" {
+@test "FLAT-5: PM Bash write on its own PRD.md → exit 2 (lead included)" {
   payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x > wf/needs/foo/PRD.md"},agent_type:"pm"}')
   run bash "$HOOK" <<< "$payload"
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 2 ]
 }
 
-@test "TF-013h: PM Bash write on tracking.md → exit 0" {
-  payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x > wf/needs/foo/tracking.md"},agent_type:"pm"}')
-  run bash "$HOOK" <<< "$payload"
-  [ "$status" -eq 0 ]
-}
-
-@test "TF-013i: PM Bash write on retro.md (EX-003 whitelist) → exit 0" {
-  payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x > wf/needs/foo/retro.md"},agent_type:"pm"}')
-  run bash "$HOOK" <<< "$payload"
-  [ "$status" -eq 0 ]
-}
-
-# ─── TF-013 negative: legitimate author on NON-owned artifact → blocked ──────
-
-@test "TF-013j: PO Bash write on design.md (not owner) → exit 2" {
-  payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x > wf/needs/foo/design.md"},agent_type:"po"}')
+@test "FLAT-6: QA Bash write on acceptance-report.md → exit 2 (new artifact in list)" {
+  payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x > wf/needs/foo/acceptance-report.md"},agent_type:"qa"}')
   run bash "$HOOK" <<< "$payload"
   [ "$status" -eq 2 ]
 }
 
-@test "TF-013k: TL Bash write on specs.md (not owner) → exit 2" {
-  payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x > wf/needs/foo/specs.md"},agent_type:"tl"}')
+@test "FLAT-7: DV Bash write on tasks.md → exit 2 (status updates go through Edit)" {
+  payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x >> wf/needs/foo/tasks.md"},agent_type:"dv1"}')
   run bash "$HOOK" <<< "$payload"
   [ "$status" -eq 2 ]
 }
 
-@test "TF-013l: PM Bash write on specs.md (not owner) → exit 2" {
+# ─── Migrated exceptions: the old Bash carve-outs are GONE ───────────────────
+
+@test "EXGONE-1: OR write retro.md at step LOG_AUDIT → exit 2 (exception migrated to --append)" {
+  echo '{"step":"LOG_AUDIT"}' > "$TMPDIR/wf/needs/foo/.wf-state.json"
+  payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo anomalies >> wf/needs/foo/retro.md"},agent_type:"or"}')
+  run bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 2 ]
+}
+
+@test "EXGONE-2: PM bash write specs.md in subagent-light → exit 2 (PM uses Write tool)" {
+  echo '{"config":{"agent_mode":"subagent-light"}}' > "$TMPDIR/wf/needs/foo/.wf-state.json"
   payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x > wf/needs/foo/specs.md"},agent_type:"pm"}')
   run bash "$HOOK" <<< "$payload"
   [ "$status" -eq 2 ]
 }
 
-# ─── TF-014 — Plugin alias normalization ─────────────────────────────────────
+# ─── Alias normalization still applies (block regardless of alias form) ──────
 
-@test "TF-014a: agent_type=waterfall:wf-or write PRD.md → exit 2 (normalized to or)" {
-  payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x > wf/needs/foo/PRD.md"},agent_type:"waterfall:wf-or"}')
-  run bash "$HOOK" <<< "$payload"
-  [ "$status" -eq 2 ]
-}
-
-@test "TF-014b: agent_type=waterfall:wf-pm write retro.md → exit 0 (normalized to pm)" {
-  payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x > wf/needs/foo/retro.md"},agent_type:"waterfall:wf-pm"}')
-  run bash "$HOOK" <<< "$payload"
-  [ "$status" -eq 0 ]
-}
-
-@test "TF-014c: agent_type=waterfall:wf-po write specs.md → exit 0 (normalized to po)" {
+@test "ALIAS-1: agent_type=waterfall:wf-po write specs.md → exit 2 (normalized, flat deny)" {
   payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x > wf/needs/foo/specs.md"},agent_type:"waterfall:wf-po"}')
   run bash "$HOOK" <<< "$payload"
-  [ "$status" -eq 0 ]
-}
-
-# Respawn aliases (or-2, or1, tl-3) — handled at point of use via case patterns.
-
-@test "TF-014d: agent_type=or-2 write specs.md → exit 2" {
-  payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x > wf/needs/foo/specs.md"},agent_type:"or-2"}')
-  run bash "$HOOK" <<< "$payload"
   [ "$status" -eq 2 ]
 }
 
-@test "TF-014e: agent_type=or1 write PRD.md → exit 2" {
-  payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x > wf/needs/foo/PRD.md"},agent_type:"or1"}')
-  run bash "$HOOK" <<< "$payload"
-  [ "$status" -eq 2 ]
-}
-
-@test "TF-014f: agent_type=tl-3 write design.md → exit 0 (respawn alias TL)" {
+@test "ALIAS-2: agent_type=tl-3 write design.md → exit 2 (respawn alias, flat deny)" {
   payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x > wf/needs/foo/design.md"},agent_type:"tl-3"}')
   run bash "$HOOK" <<< "$payload"
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 2 ]
 }
 
-@test "TF-014g: agent_type=orange (false-friend) write PRD.md → exit 2 (unknown_agent_bash)" {
+@test "ALIAS-3: agent_type=orange (unknown) write PRD.md → exit 2" {
   payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x > wf/needs/foo/PRD.md"},agent_type:"orange"}')
   run bash "$HOOK" <<< "$payload"
   [ "$status" -eq 2 ]
@@ -194,7 +156,7 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
-@test "PASS-3: OR Bash with redirect to non-artifact → exit 0" {
+@test "PASS-3: OR Bash with redirect to non-artifact (or.log) → exit 0" {
   payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo x > wf/needs/foo/or.log"},agent_type:"or"}')
   run bash "$HOOK" <<< "$payload"
   [ "$status" -eq 0 ]
@@ -206,41 +168,30 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
-# ─── TF-007 — PM --complete CLOSURE:BILAN not rejected by hook ───────────────
-# (Unit-level: simulate a Bash payload with --complete CLOSURE:BILAN as PM.
-# Real validation requires PROJECT_ROOT pointing at the repo so wf-step-agents.sh
-# can be sourced.)
+@test "PASS-5: OR --append retro via wf-orchestrate → exit 0 (sanctioned channel, no write-op)" {
+  payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"bash scripts/wf-orchestrate.sh foo --append retro --msg \"## Anomalies\""},agent_type:"or"}')
+  run bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 0 ]
+}
 
-@test "TF-007: PM --complete CLOSURE:BILAN → exit 0 (Bash guard does not interfere)" {
+@test "PASS-6: --msg quoting a redirect to an artifact is data, not intent (F-018 mirror)" {
+  payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"bash scripts/wf-orchestrate.sh foo --log --msg \"agent tried: echo x > wf/needs/foo/specs.md\""},agent_type:"or"}')
+  run bash "$HOOK" <<< "$payload"
+  [ "$status" -eq 0 ]
+}
+
+# ─── --complete identity branch untouched (Bash guard does not interfere) ────
+
+@test "COMPLETE-1: PM --complete CLOSURE:BILAN → exit 0 (Bash guard does not interfere)" {
   payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"bash scripts/wf-orchestrate.sh my-need --complete CLOSURE:BILAN"},agent_type:"pm"}')
   run env PROJECT_ROOT="/c/projets/waterfall" CLAUDE_PROJECT_DIR="/c/projets/waterfall" \
     bash "$HOOK" <<< "$payload"
   [ "$status" -eq 0 ]
 }
 
-@test "TF-007-bis: PM --complete with plugin alias waterfall:wf-pm → exit 0" {
+@test "COMPLETE-2: PM --complete with plugin alias waterfall:wf-pm → exit 0" {
   payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"bash scripts/wf-orchestrate.sh my-need --complete CLOSURE:BILAN"},agent_type:"waterfall:wf-pm"}')
   run env PROJECT_ROOT="/c/projets/waterfall" CLAUDE_PROJECT_DIR="/c/projets/waterfall" \
     bash "$HOOK" <<< "$payload"
   [ "$status" -eq 0 ]
-}
-
-# ─── Exception 3 (fact-8988fa8e) — OR writes retro.md at CLOSURE:LOG_AUDIT ──
-
-@test "EX3-a: OR write retro.md when state.step=LOG_AUDIT → exit 0" {
-  tmp="$BATS_TEST_TMPDIR/proj"
-  mkdir -p "$tmp/wf/needs/foo"
-  echo '{"step":"LOG_AUDIT"}' > "$tmp/wf/needs/foo/.wf-state.json"
-  payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo anomalies >> wf/needs/foo/retro.md"},agent_type:"or"}')
-  run env PROJECT_ROOT="$tmp" CLAUDE_PROJECT_DIR="$tmp" bash "$HOOK" <<< "$payload"
-  [ "$status" -eq 0 ]
-}
-
-@test "EX3-b: OR write retro.md when state.step=BILAN → exit 2 (exception narrow)" {
-  tmp="$BATS_TEST_TMPDIR/proj2"
-  mkdir -p "$tmp/wf/needs/foo"
-  echo '{"step":"BILAN"}' > "$tmp/wf/needs/foo/.wf-state.json"
-  payload=$(jq -nc '{tool_name:"Bash",tool_input:{command:"echo anomalies >> wf/needs/foo/retro.md"},agent_type:"or"}')
-  run env PROJECT_ROOT="$tmp" CLAUDE_PROJECT_DIR="$tmp" bash "$HOOK" <<< "$payload"
-  [ "$status" -eq 2 ]
 }

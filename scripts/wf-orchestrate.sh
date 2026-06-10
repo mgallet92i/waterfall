@@ -917,7 +917,7 @@ switch(phase) {
       params.check_max_runs = runReview >= maxReview;
     }
     if (step === 'ANTI_LOOP') {
-      params.hint = 'OR : Compare review.md findings with previous cycle. If same issues repeat without progress, mark them [FROZEN] in review.md via Edit. Complete to continue to DISPATCH. The loop will hit max_runs and auto-escalate if no progress.';
+      params.hint = 'OR : Compare review.md findings with previous cycle. If same issues repeat without progress, record them as [FROZEN] in tracking.md via `--append tracking --msg "[FROZEN] ..."` (OR cannot edit review.md — rv-owned). Complete to continue to DISPATCH. The loop will hit max_runs and auto-escalate if no progress.';
       params.previous_run = runReview;
     }
     if (step === 'DISPATCH') {
@@ -925,7 +925,7 @@ switch(phase) {
     }
     if (step === 'PO_UPDATE') params.hint = 'PO: update specs.md and/or acceptance.md in response to functional findings from review.md identified by OR. Input artifacts: review.md, specs.md. Output artifacts: updated specs.md, acceptance.md. Notify OR via SendMessage (step_complete) when done.';
     if (step === 'TL_UPDATE') params.hint = 'TL: update design.md in response to technical findings from review.md identified by OR. Input artifact: review.md (technical findings section). Output artifact: updated design.md. Notify OR via SendMessage (step_complete) when done.';
-    if (step === 'UPDATE_TRACKING') params.hint = 'OR: update wf/needs/<name>/tracking.md with review cycle results: run number, verdict, findings handled. Complete to loop back to RV_REVIEW.';
+    if (step === 'UPDATE_TRACKING') params.hint = 'OR: record the review cycle results (run number, verdict, findings handled) via `--append tracking --msg "..."` (OR has no Write tool and Bash redirection to artifacts is denied — the --append channel is the sanctioned path). Complete to loop back to RV_REVIEW.';
     break;
   case 'PLANNING':
     if (step === 'GENERATE_TASKS') {
@@ -964,7 +964,7 @@ switch(phase) {
       params.hint = 'DV: apply the fixes identified by RV in the findings report received from OR. Input artifact: RV report (via SendMessage). Notify OR via SendMessage (step_complete) when fixes are applied.';
       params.current_run_cr = runCr;
     }
-    if (step === 'UPDATE_TRACKING_CR') params.hint = 'OR: update wf/needs/<name>/tracking.md with code review cycle results: run number, number of findings, fixes applied. Complete to loop back to RV_CODE_REVIEW.';
+    if (step === 'UPDATE_TRACKING_CR') params.hint = 'OR: record the code review cycle results (run number, number of findings, fixes applied) via `--append tracking --msg "..."` (sanctioned channel — Bash redirection to artifacts is denied). Complete to loop back to RV_CODE_REVIEW.';
     break;
   case 'VALIDATION':
     if (step === 'PO_VALIDATE') params.hint = 'PO: validate the implementation against the EX-xxx criteria from specs.md. Check each acceptance criterion. Input artifact: specs.md. Notify OR via SendMessage (step_complete) with the validation result.';
@@ -980,7 +980,7 @@ switch(phase) {
       : 'PM : If HO approved → complete (advances to CLOSURE:ARCHIVE). If HO rejected → complete with decision=retry (loops to PO_VALIDATE). Also supports decision=pause or decision=abort.';
     break;
   case 'CLOSURE':
-    if (step === 'LOG_AUDIT') params.hint = 'OR: analyze post-need logs. 1) Parse or.log (grep ERROR/WARN/SKIP/WATCHDOG). 2) Parse tracking.md (review cycles exceeding max_runs). 3) Write a "## Anomalies detected" section in retro.md (structured list, or "No anomaly detected." if nothing found). INV-003: this step always advances even if no anomaly. Input artifacts: or.log, tracking.md. Output artifact: anomalies section in retro.md.';
+    if (step === 'LOG_AUDIT') params.hint = 'OR: analyze post-need logs. 1) Parse or.log (grep ERROR/WARN/SKIP/WATCHDOG). 2) Parse tracking.md (review cycles exceeding max_runs). 3) Append a "## Anomalies detected" section to retro.md via `--append retro --msg "..."` (structured list, or "No anomaly detected." if nothing found — the --append channel is the sanctioned path, Bash redirection is denied). INV-003: this step always advances even if no anomaly. Input artifacts: or.log, tracking.md. Output artifact: anomalies section in retro.md.';
     if (step === 'BILAN') params.hint = 'PM: generate retro.md. 1) Read ${CLAUDE_PLUGIN_ROOT}/wf/templates/${WF_LANGUAGE:-en}/retro.md as template. 2) Parse or.log (phases, timestamps, ERROR/WARN/SKIP anomalies). 3) Read tracking.md (review cycles, DEC-xxx, OBS-xxx). 4) Compute per-phase duration from history[] in .wf-state.json. 5) Write retro.md in wf/needs/<name>/. Output artifact: retro.md.';
     if (step === 'ARCHIVE') params.hint = `${agentLabel}: NOOP — call --complete CLOSURE:ARCHIVE with no parameter. The script itself performs the atomic mv wf/needs/<name>/ → wf/archives/<name>/. Do not move the directory manually (causes NO_STATE error).`;
     if (step === 'CLEANUP_WORKTREES') {
@@ -2402,6 +2402,62 @@ handle_log() {
   printf '{"ok":true}\n'
 }
 
+# ─── --append (ARCH-08) — gated write channel to pm-owned artifacts ──────────
+# Lets a tool-less agent (OR has no Write/Edit by design) contribute its
+# sections WITHOUT Bash redirection (flat-denied by wf-auth). The write is
+# gated by the CURRENT STEP, not by trust in the caller: each target is
+# appendable only while the state machine sits on a step whose hint requires
+# that very write. Replaces the per-role Bash exceptions of wf-auth
+# (or_retro_log_audit_exception) and makes the UPDATE_TRACKING* hints
+# actually followable (OR had no sanctioned way to write tracking.md).
+declare -A APPEND_TARGET_FILE=(
+  ["retro"]="retro.md"
+  ["tracking"]="tracking.md"
+)
+declare -A APPEND_TARGET_STEPS=(
+  ["retro"]="LOG_AUDIT"
+  ["tracking"]="ANTI_LOOP UPDATE_TRACKING UPDATE_TRACKING_CR"
+)
+
+handle_append() {
+  local name="$1"; shift
+  local target="" msg=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --msg)          msg="${2:-}"; shift 2 ;;
+      retro|tracking) target="$1"; shift ;;
+      *)              shift ;;
+    esac
+  done
+
+  if [[ -z "$target" ]]; then
+    emit_error "Usage: --append <retro|tracking> --msg '<content>'" "USAGE"
+  fi
+  if [[ -z "$msg" ]]; then
+    emit_error "Missing --msg argument" "USAGE"
+  fi
+
+  local state_file="$PROJECT_ROOT/wf/needs/$name/.wf-state.json"
+  if [[ ! -f "$state_file" ]]; then
+    emit_error "State file not found for need '$name'" "STATE_NOT_FOUND"
+  fi
+  local cur_step
+  cur_step=$(jq -r '.step // ""' "$state_file" 2>/dev/null)
+
+  local allowed=0 s
+  for s in ${APPEND_TARGET_STEPS[$target]}; do
+    [[ "$cur_step" == "$s" ]] && allowed=1 && break
+  done
+  if [[ "$allowed" -ne 1 ]]; then
+    emit_error "--append $target is only allowed at step(s): ${APPEND_TARGET_STEPS[$target]} (current step: ${cur_step:-none})" "APPEND_STEP_MISMATCH"
+  fi
+
+  local artifact="$PROJECT_ROOT/wf/needs/$name/${APPEND_TARGET_FILE[$target]}"
+  printf '\n%s\n' "$msg" >> "$artifact"
+  printf '{"ok":true,"appended_to":"%s","step":"%s"}\n' "${APPEND_TARGET_FILE[$target]}" "$cur_step"
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Section 6c3 : ACK REGISTRY (T-02 / T-03 / T-04)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -3289,6 +3345,7 @@ const contract = {
     { command: "<name> --abort",    args: '--reason "<text>"',                description: "Force-abort a need (sets status=aborted, cleans markers/worktrees). PM-only.", example: 'bash scripts/wf-orchestrate.sh my-need --abort --reason "HO cancelled"' },
     { command: "<name> --status",   args: "",                                  description: "Return current state enriched with progress_pct as JSON (useful for external tooling).", example: "bash scripts/wf-orchestrate.sh my-need --status" },
     { command: "<name> --log --msg '<text>'",      args: "",                   description: "Append a timestamped line to wf/needs/<name>/or.log. OR should call this on every significant action (obs #79).", example: "bash scripts/wf-orchestrate.sh my-need --log --msg 'spawn_request sent for PO'" },
+    { command: "<name> --append <retro|tracking> --msg '<content>'", args: "", description: "Gated write channel (ARCH-08): append a block to retro.md (only at CLOSURE:LOG_AUDIT) or tracking.md (only at REVIEW:ANTI_LOOP / REVIEW:UPDATE_TRACKING / CODE_REVIEW:UPDATE_TRACKING_CR). Bash redirection to business artifacts is denied by wf-auth for all agents — this is the sanctioned path for tool-less agents (OR).", example: "bash scripts/wf-orchestrate.sh my-need --append tracking --msg '## Cycle 2 — 3 findings, 2 fixed'" },
     { command: "--list",            args: "",                                  description: "List all needs as JSON array [{name,status,phase,step}].", example: "bash scripts/wf-orchestrate.sh --list" },
     { command: "<name> --validate", args: "",                                  description: "Check that expected artifacts for the current step exist and have been modified (git diff).", example: "bash scripts/wf-orchestrate.sh my-need --validate" },
     { command: "<name> --reactivate", args: "",                                 description: "Recreate session marker for a need in in_progress status. Used by /waterfall:resume.", example: "bash scripts/wf-orchestrate.sh my-need --reactivate" },
@@ -3616,6 +3673,10 @@ case "$MODE" in
   --log)
     shift
     handle_log "$NAME" "$@"
+    ;;
+  --append)
+    shift
+    handle_append "$NAME" "$@"
     ;;
   --validate)
     shift

@@ -1306,7 +1306,7 @@ The other agents (PO, TL, RV, QA, DV) log their observations directly in their r
 >
 > **Actions visibles autorisées** (les 3 seules) :
 > 1. **ACK** : logger `[LOG_AUDIT_START]` dans `or.log`
-> 2. **Action visible** : lire `or.log` et `tracking.md` (Read tool), écrire la section anomalies dans `retro.md` (Bash)
+> 2. **Action visible** : lire `or.log` et `tracking.md` (Read tool), puis ajouter la section anomalies via `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --append retro --msg "## Anomalies détectées ..."` (canal scripté gated au step LOG_AUDIT — toute écriture Bash directe sur retro.md est bloquée par wf-auth, ARCH-08)
 > 3. **`--complete`** : `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete CLOSURE:LOG_AUDIT`
 >
 > **Règle de priorité** : si OR était en état idle avant de recevoir ce brief, le brief LOG_AUDIT annule l'idle immédiatement. L'idle ne reprend pas entre les étapes de ce step.
@@ -1314,7 +1314,7 @@ The other agents (PO, TL, RV, QA, DV) log their observations directly in their r
 After `CLOSURE:BILAN`, OR runs `LOG_AUDIT`:
 1. Parse `or.log` — extract `[ERROR]`, `[WARN]`, `[SKIP]`, `[WATCHDOG]` lines
 2. Parse `tracking.md` — identify review cycles that exceeded `max_runs`
-3. Write a `## Anomalies détectées` (FR) / `## Anomalies detected` (EN) section in `retro.md` (structured list or "No anomaly detected.")
+3. Append the `## Anomalies détectées` (FR) / `## Anomalies detected` (EN) section to `retro.md` via `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --append retro --msg "..."` (structured list or "No anomaly detected.")
 4. Complete: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete CLOSURE:LOG_AUDIT`
 
 **INV-003**: this step always advances, even if no anomaly. Do not skip.
@@ -1323,9 +1323,12 @@ After `CLOSURE:BILAN`, OR runs `LOG_AUDIT`:
 
 ## Bash write prohibition
 
-OR does not have `Write` in its tools — any artifact mutation goes through `wf-orchestrate.sh` or a specialized agent. **Never use `Bash` to write files** (`echo > file`, `cat > file`, `tee`, heredoc `<<EOF >`, etc.).
+OR does not have `Write` in its tools — any artifact mutation goes through `wf-orchestrate.sh` or a specialized agent. **Never use `Bash` to write files** (`echo > file`, `cat > file`, `tee`, heredoc `<<EOF >`, etc.). Since ARCH-08, wf-auth **flat-denies** any Bash write targeting a business artifact, for every role, with zero exception — the old Bash carve-outs are gone.
 
-- **Exception 1**: `echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) ..." >> wf/needs/<name>/or.log` or via `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log --msg "..."` (RC-01).
-- **Exception 2 (deprecated, INV-BILAN-PM)**: `CLOSURE:BILAN` is now a PM step. OR no longer generates `retro.md`. OR sends `PLEASE_COMPLETE_STEP` to PM. The fast-path `## Fast-path` section (when `fast_path.enabled == true` in `.wf-state.json`) is written by PM at this step (cf. agents/wf-pm.md and skills/wf-pm/SKILL.md). INV-FP-004 unchanged on the section content; ownership flips to PM.
-- **Exception 3**: `CLOSURE:LOG_AUDIT` — OR adds the `## Anomalies détectées` (FR) / `## Anomalies detected` (EN) section in `retro.md` via `Bash` (read of `or.log` + `tracking.md`, write of the anomalies section).
+OR's sanctioned script channels (the ONLY ways OR contributes text to files):
+- **`--log --msg "..."`** → `or.log` (RC-01). The legacy direct `echo ... >> or.log` also passes (or.log is not a business artifact).
+- **`--append tracking --msg "..."`** → `tracking.md`, gated to steps `REVIEW:ANTI_LOOP` / `REVIEW:UPDATE_TRACKING` / `CODE_REVIEW:UPDATE_TRACKING_CR` (cycle results, `[FROZEN]` markers).
+- **`--append retro --msg "..."`** → `retro.md`, gated to step `CLOSURE:LOG_AUDIT` (anomalies section — replaces the old Bash exception fact-8988fa8e).
+
+Note (INV-BILAN-PM, unchanged): `CLOSURE:BILAN` is a PM step. OR does not generate `retro.md` — PM writes it at BILAN; OR only appends the anomalies section at LOG_AUDIT via `--append retro`.
 - **Unforeseen case**: escalate to PM via SendMessage before any other write.

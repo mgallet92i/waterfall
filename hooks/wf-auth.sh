@@ -90,8 +90,44 @@ _wf_artifact_owner() {
     design.md|tasks.md)          echo "tl" ;;
     ui.md)                       echo "ds" ;;
     review.md)                   echo "rv" ;;
+    acceptance-report.md)        echo "qa" ;;
     *)                           echo "unknown" ;;
   esac
+}
+
+# ─── Artifact writers matrix (ARCH-08) ───────────────────────────────────────
+# Roles allowed to Write/Edit a business artifact (space-separated). Wider than
+# the owner map on purpose — derived from the real in-vivo flows:
+#   tasks.md  += dv  (INV-007 pipeline: DV transitions task statuses)
+#   review.md += po tl ds (## Responses sections answered by the reviewed authors)
+#   acceptance.md += qa (results section filled during VALIDATION)
+# OR appears nowhere: its sanctioned writes go through the gated script channel
+# (wf-orchestrate --log → or.log, --append retro|tracking → step-gated).
+# PM is not consulted here — the lead passes through before the matrix.
+_wf_artifact_writers() {
+  case "$1" in
+    PRD.md)               echo "pm" ;;
+    tracking.md)          echo "pm" ;;
+    retro.md)             echo "pm" ;;
+    specs.md)             echo "po" ;;
+    acceptance.md)        echo "po qa" ;;
+    design.md)            echo "tl" ;;
+    tasks.md)             echo "tl dv" ;;
+    ui.md)                echo "ds" ;;
+    review.md)            echo "rv po tl ds" ;;
+    acceptance-report.md) echo "qa" ;;
+    *)                    echo "" ;;
+  esac
+}
+
+# _wf_canonical_role — collapse respawn aliases to the canonical role.
+# tl-2 → tl, dv1 → dv, dv4-1 → dv, or2 → or. Anything else → "unknown".
+_wf_canonical_role() {
+  if [[ "$1" =~ ^(pm|po|tl|rv|qa|ds|dv|or)([0-9]+)?(-[0-9]+)?$ ]]; then
+    echo "${BASH_REMATCH[1]}"
+  else
+    echo "unknown"
+  fi
 }
 
 # _wf_redirect_hint — pedagogical suffix appended to OR block messages.
@@ -130,38 +166,40 @@ _wf_cw_log() {
     >> "$log_file" 2>/dev/null || true
 }
 
-# _wf_codewrite_guard — intercepts Write/Edit/NotebookEdit for OR agents.
+# _wf_codewrite_guard — ownership enforcement on Write/Edit/NotebookEdit (ARCH-08).
+# Business artifacts under wf/needs/<name>/ are writable only by their writers
+# (matrix _wf_artifact_writers) — enforcement on the STRUCTURED file_path of the
+# payload, never on command-line parsing. PM (team lead) passes through entirely
+# (recovery privilege, light-mode authoring). OR keeps its strict legacy regime
+# outside artifacts (need-dir only + one-shot sentinel).
 # Exits 0 (allow) or 2 (block) — never returns to caller.
 _wf_codewrite_guard() {
   local payload="$1"
-  local agent_type tool_name target_path sentinel
+  local agent_type tool_name target_path sentinel role
   local need_name="${WF_NEED_NAME:-}"
 
   tool_name=$(echo "$payload" | jq -r '.tool_name // ""')
   agent_type=$(echo "$payload" | jq -r '.agent_type // ""')
   agent_type="$(_wf_normalize_agent_type "$agent_type")"
   [[ -z "$agent_type" || "$agent_type" == "null" ]] && agent_type="pm"
+  role="$(_wf_canonical_role "$agent_type")"
 
-  # Step 1 — pass-through for known non-OR agents (INV-005).
-  case " dv tl po rv qa ds pm dv1 dv2 dv3 dv4 dv5 dv6 dv7 dv8 dv9 " in
-    *" $agent_type "*) exit 0 ;;
-  esac
-  # Respawn aliases for non-OR agents (e.g. tl-2, po-3, dv1-2, dv4-1).
-  if [[ "$agent_type" =~ ^(dv|tl|po|rv|qa|ds|pm)([1-9][0-9]?)?(-[0-9]+)?$ ]]; then
-    exit 0
-  fi
-
-  # Step 2 — OR identity check (Q-002: covers "or", "or1", "or2", "or-1", "or-2" respawn forms).
-  if [[ ! ( "$agent_type" == "or" || "$agent_type" =~ ^or(-[0-9]+|[0-9]+)$ ) ]]; then
+  # Step 1 — fail-closed on unknown identities (INV-005).
+  if [[ "$role" == "unknown" ]]; then
     echo "wf-auth: unknown agent_type=$agent_type on $tool_name. Blocked." >&2
     _wf_cw_log "$need_name" "block" "$tool_name" "" "$agent_type" "unknown_agent"
     exit 2
   fi
 
+  # Step 2 — PM pass-through (team lead privilege; covers EX-014 pm-light specs).
+  if [[ "$role" == "pm" ]]; then
+    exit 0
+  fi
+
   # Step 3 — extract target path (Write/Edit → file_path ; NotebookEdit → notebook_path).
   target_path=$(echo "$payload" | jq -r '.tool_input.file_path // .tool_input.notebook_path // ""')
   if [[ -z "$target_path" ]]; then
-    echo "wf-auth: OR codewrite guard — empty target_path. Blocked." >&2
+    echo "wf-auth: codewrite guard — empty target_path. Blocked." >&2
     _wf_cw_log "$need_name" "block" "$tool_name" "" "$agent_type" "empty_path"
     exit 2
   fi
@@ -177,53 +215,65 @@ _wf_codewrite_guard() {
   local project_root_norm="${PROJECT_ROOT//\\//}"
   target_path="${target_path#$project_root_norm/}"
 
-  # Step 5 — consume sentinel bypass if present (INV-002: rm BEFORE exit).
-  # Sentinel has priority over the artifact filter (step 6) — explicit HO override.
-  sentinel="$PROJECT_ROOT/.or-codewrite-bypass"
-  if [[ -f "$sentinel" ]]; then
-    rm -f "$sentinel"
-    _wf_cw_log "$need_name" "allow-bypass" "$tool_name" "$target_path" "$agent_type" "bypass_consumed"
-    exit 0
+  # Step 5 — OR one-shot sentinel bypass (INV-002: rm BEFORE exit).
+  # Sentinel has priority over the writers matrix (step 6) — explicit HO override.
+  if [[ "$role" == "or" ]]; then
+    sentinel="$PROJECT_ROOT/.or-codewrite-bypass"
+    if [[ -f "$sentinel" ]]; then
+      rm -f "$sentinel"
+      _wf_cw_log "$need_name" "allow-bypass" "$tool_name" "$target_path" "$agent_type" "bypass_consumed"
+      exit 0
+    fi
   fi
 
-  # Step 6 — block OR writes to named business artifacts within wf/needs/<name>/.
+  # Step 6 — writers matrix on business artifacts within wf/needs/<name>/ (ARCH-08).
   if [[ "$target_path" =~ ^wf/needs/[^/]+/ ]]; then
-    local artifact_basename
+    local artifact_basename writers
     artifact_basename="$(basename "$target_path")"
-    case "$artifact_basename" in
-      PRD.md|specs.md|design.md|ui.md|tasks.md|review.md|acceptance.md)
-        echo "wf-auth: OR cannot write artifact $artifact_basename. $(_wf_redirect_hint "$artifact_basename")" >&2
-        _wf_cw_log "$need_name" "block" "$tool_name" "$target_path" "$agent_type" "forbidden_artifact"
-        exit 2
-        ;;
-    esac
-    # Other files under need_dir are allowed (or.log, .wf-state.json, watchdog.*, wf-auth.log, etc.)
+    writers="$(_wf_artifact_writers "$artifact_basename")"
+    if [[ -n "$writers" ]]; then
+      case " $writers " in
+        *" $role "*)
+          _wf_cw_log "$need_name" "allow" "$tool_name" "$target_path" "$agent_type" "artifact_writer"
+          exit 0
+          ;;
+      esac
+      echo "wf-auth: $role cannot write artifact $artifact_basename. $(_wf_redirect_hint "$artifact_basename")" >&2
+      _wf_cw_log "$need_name" "block" "$tool_name" "$target_path" "$agent_type" "non_owned_write"
+      exit 2
+    fi
+    # Non-artifact files under need_dir are allowed (or.log, .wf-state.json, watchdog.*, wf-auth.log, reports…)
     _wf_cw_log "$need_name" "allow" "$tool_name" "$target_path" "$agent_type" "need_path"
     exit 0
   fi
 
-  # Step 7 — default block.
-  echo "wf-auth: OR write blocked on applicative path: $target_path" >&2
-  _wf_cw_log "$need_name" "block" "$tool_name" "$target_path" "$agent_type" "or_codewrite_no_bypass"
-  exit 2
+  # Step 7 — outside wf/needs/: OR keeps the legacy default-block; the other
+  # roles work freely in their workspace (code, tests, worktrees).
+  if [[ "$role" == "or" ]]; then
+    echo "wf-auth: OR write blocked on applicative path: $target_path" >&2
+    _wf_cw_log "$need_name" "block" "$tool_name" "$target_path" "$agent_type" "or_codewrite_no_bypass"
+    exit 2
+  fi
+  exit 0
 }
 
-# ─── Bash write-intent guard (EX-006 / B2) ───────────────────────────────────
+# ─── Bash write-intent guard (EX-006 / B2 / ARCH-08) ─────────────────────────
 #
 # Intercepts Bash commands that would write to a business artifact under
-# wf/needs/<name>/ (PRD/specs/acceptance/design/ui/tasks/review/tracking/retro)
-# via redirections `>` `>>`, `tee [-a]`, `sed -i`, `dd of=`, or heredocs
-# `<<EOF > artifact`.
+# wf/needs/<name>/ via redirections `>` `>>`, `tee [-a]`, `sed -i`, `dd of=`,
+# or heredocs `<<EOF > artifact` — and denies them FLAT, for every role.
 #
-# Mapping authoritative (INV-001) — only the listed agent may write its artifact:
-#   pm → PRD.md, tracking.md, retro.md
-#   po → specs.md, acceptance.md
-#   tl → design.md, tasks.md
-#   ds → ui.md
-#   rv → review.md
-#   or → blocked on ALL artifacts (B2 / OR auto-author elimination)
+# ARCH-08 rationale: deriving a per-role semantic authorization from a regex
+# scan of arbitrary shell strings is undecidable — the old per-role matrix and
+# its state-dependent exceptions (or@LOG_AUDIT, pm-light specs) accumulated
+# parsing bugs (F-018 class). Business artifacts are now written ONLY via:
+#   - the Write/Edit tools (structured file_path — ownership enforced by
+#     _wf_codewrite_guard), or
+#   - the gated script channels (`--log` → or.log, `--append retro|tracking`
+#     → step-gated, for tool-less agents like OR).
+# Bash redirection to an artifact is always a workaround, never sanctioned.
 #
-# False negatives accepted at v1 (cf. design §6.1): `eval "$(echo … > x)"`,
+# False negatives accepted (cf. design §6.1): `eval "$(echo … > x)"`,
 # `printf '%s' x 1>artifact`, etc. Targets the naive bypass class observed
 # in vivo, not adversarial obfuscation.
 _wf_bash_guard() {
@@ -236,9 +286,13 @@ _wf_bash_guard() {
   [[ -z "$agent_type" || "$agent_type" == "null" ]] && agent_type="pm"
   cmd=$(echo "$payload" | jq -r '.tool_input.command // ""')
 
+  # F-018 mirror: neutralise --msg values before the write-intent scan — a
+  # `--log`/`--append` message quoting `> wf/needs/x/specs.md` is data, not intent.
+  cmd=$(printf '%s' "$cmd" | sed -E 's/--msg[[:space:]]+"[^"]*"//g; s/--msg[[:space:]]+'\''[^'\'']*'\''//g')
+
   # Pattern: write-intent operator followed (anywhere before pipe/sep) by an
   # artifact path under wf/needs/<n>/.
-  local artifacts_re='(PRD|specs|acceptance|design|ui|tasks|review|tracking|retro)\.md'
+  local artifacts_re='(PRD|specs|acceptance-report|acceptance|design|ui|tasks|review|tracking|retro)\.md'
   local path_re="wf/needs/[^[:space:]]+/${artifacts_re}"
   local writeop_re="(>>?|tee( +-a)?|sed +-i|dd +of=)[^|;&]*${path_re}"
 
@@ -247,105 +301,12 @@ _wf_bash_guard() {
     exit 0
   fi
 
-  # Extract first matching artifact basename for log clarity.
   local matched_artifact
   matched_artifact=$(echo "$cmd" | grep -oE "$path_re" | head -1)
 
-  # Canonical role match — branches generalised via case patterns to cover
-  # respawn aliases (or-2, tl-3, po1, …) without needing pre-normalisation.
-  case "$agent_type" in
-    pm|pm-[0-9]*|pm[0-9]*)
-      if echo "$cmd" | grep -qE "wf/needs/[^[:space:]]+/(PRD|tracking|retro)\.md"; then
-        _wf_cw_log "$need_name" "allow" "Bash" "$matched_artifact" "$agent_type" "pm_owned_bash_write"
-        exit 0
-      fi
-      # EX-014: in subagent-light mode, PM is the sole author of specs.md (INV-002).
-      if echo "$cmd" | grep -qE "wf/needs/[^[:space:]]+/specs\.md"; then
-        local _sbl_need
-        _sbl_need=$(echo "$cmd" | grep -oE "wf/needs/([^/[:space:]]+)/" | head -1 | cut -d'/' -f3)
-        local _sbl_state="$PROJECT_ROOT/wf/needs/$_sbl_need/.wf-state.json"
-        if [[ -f "$_sbl_state" ]]; then
-          local _sbl_mode
-          _sbl_mode=$(jq -r '.config.agent_mode // ""' "$_sbl_state" 2>/dev/null)
-          if [[ "$_sbl_mode" == "subagent-light" ]]; then
-            _wf_cw_log "$_sbl_need" "allow" "Bash" "$matched_artifact" "$agent_type" "pm_specs_subagent_light"
-            exit 0
-          fi
-        fi
-      fi
-      echo "wf-auth: PM cannot write non-owned artifact $matched_artifact. $(_wf_redirect_hint "$(basename "$matched_artifact")")" >&2
-      _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "non_owned_bash_write"
-      exit 2
-      ;;
-    po|po-[0-9]*|po[0-9]*)
-      if echo "$cmd" | grep -qE "wf/needs/[^[:space:]]+/(specs|acceptance)\.md"; then
-        _wf_cw_log "$need_name" "allow" "Bash" "$matched_artifact" "$agent_type" "po_owned_bash_write"
-        exit 0
-      fi
-      echo "wf-auth: PO cannot write non-owned artifact $matched_artifact. $(_wf_redirect_hint "$(basename "$matched_artifact")")" >&2
-      _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "non_owned_bash_write"
-      exit 2
-      ;;
-    tl|tl-[0-9]*|tl[0-9]*)
-      if echo "$cmd" | grep -qE "wf/needs/[^[:space:]]+/(design|tasks)\.md"; then
-        _wf_cw_log "$need_name" "allow" "Bash" "$matched_artifact" "$agent_type" "tl_owned_bash_write"
-        exit 0
-      fi
-      echo "wf-auth: TL cannot write non-owned artifact $matched_artifact. $(_wf_redirect_hint "$(basename "$matched_artifact")")" >&2
-      _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "non_owned_bash_write"
-      exit 2
-      ;;
-    ds|ds-[0-9]*|ds[0-9]*)
-      if echo "$cmd" | grep -qE "wf/needs/[^[:space:]]+/ui\.md"; then
-        _wf_cw_log "$need_name" "allow" "Bash" "$matched_artifact" "$agent_type" "ds_owned_bash_write"
-        exit 0
-      fi
-      echo "wf-auth: DS cannot write non-owned artifact $matched_artifact. $(_wf_redirect_hint "$(basename "$matched_artifact")")" >&2
-      _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "non_owned_bash_write"
-      exit 2
-      ;;
-    rv|rv-[0-9]*|rv[0-9]*)
-      if echo "$cmd" | grep -qE "wf/needs/[^[:space:]]+/review\.md"; then
-        _wf_cw_log "$need_name" "allow" "Bash" "$matched_artifact" "$agent_type" "rv_owned_bash_write"
-        exit 0
-      fi
-      echo "wf-auth: RV cannot write non-owned artifact $matched_artifact. $(_wf_redirect_hint "$(basename "$matched_artifact")")" >&2
-      _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "non_owned_bash_write"
-      exit 2
-      ;;
-    qa|qa-[0-9]*|qa[0-9]*|dv|dv[0-9]*|dv-[0-9]*)
-      # QA and DV are not authors of any business artifact (INV-001).
-      echo "wf-auth: $agent_type cannot write non-owned artifact $matched_artifact (QA/DV are not authors of any artifact). $(_wf_redirect_hint "$(basename "$matched_artifact")")" >&2
-      _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "non_owned_bash_write"
-      exit 2
-      ;;
-    or|or-[0-9]*|or[0-9]*)
-      # Exception 3 (agents/wf-or.md §Bash write prohibition) : OR may append the
-      # `## Anomalies détectées` / `## Anomalies detected` section to retro.md
-      # via Bash exclusively at CLOSURE:LOG_AUDIT (fact-8988fa8e).
-      if echo "$cmd" | grep -qE "wf/needs/[^[:space:]]+/retro\.md"; then
-        local _lar_need _lar_state _lar_step
-        _lar_need=$(echo "$cmd" | grep -oE "wf/needs/([^/[:space:]]+)/" | head -1 | cut -d'/' -f3)
-        _lar_state="$PROJECT_ROOT/wf/needs/$_lar_need/.wf-state.json"
-        if [[ -f "$_lar_state" ]]; then
-          _lar_step=$(jq -r '.step // ""' "$_lar_state" 2>/dev/null)
-          if [[ "$_lar_step" == "LOG_AUDIT" ]]; then
-            _wf_cw_log "$_lar_need" "allow" "Bash" "$matched_artifact" "$agent_type" "or_retro_log_audit_exception"
-            exit 0
-          fi
-        fi
-      fi
-      # OR never writes business artifacts (B2 / EX-006 core invariant).
-      echo "wf-auth: OR cannot write artifact $matched_artifact via Bash (B2 / EX-006). $(_wf_redirect_hint "$(basename "$matched_artifact")")" >&2
-      _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "or_bash_bypass"
-      exit 2
-      ;;
-    *)
-      echo "wf-auth: unknown agent_type=$agent_type cannot write $matched_artifact. $(_wf_redirect_hint "$(basename "$matched_artifact")")" >&2
-      _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "unknown_agent_bash"
-      exit 2
-      ;;
-  esac
+  echo "wf-auth: Bash write to business artifact $(basename "$matched_artifact") is denied for ALL agents (ARCH-08). Use the Write/Edit tools (ownership enforced there) or the gated script channel (wf-orchestrate --append). $(_wf_redirect_hint "$(basename "$matched_artifact")")" >&2
+  _wf_cw_log "$need_name" "block" "Bash" "$matched_artifact" "$agent_type" "bash_artifact_flat_deny"
+  exit 2
 }
 
 # ─── Main ────────────────────────────────────────────────────────────────────
