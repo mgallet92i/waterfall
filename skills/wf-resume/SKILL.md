@@ -123,6 +123,14 @@ Read `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query` to kn
 
 1. Load the `wf-pm` skill via `Skill({name: "wf-pm"})`. **The main conversation thus adopts PM responsibilities** — PM is never spawned as a separate agent (aligned with `wf-new` step 3). The team-lead created by `TeamCreate` IS the main.
 2. PM (= main) executes TeamCreate according to `agent_mode`:
+
+   > **F-035 — Gate `TeamCreate` (hard-fail, niveau LLM).** En mode `team`, AVANT
+   > l'appel `TeamCreate`, vérifier que le tool `TeamCreate` est exposé (p.ex.
+   > `ToolSearch` `select:TeamCreate`). S'il est ABSENT → **STOP**. Ne pas émuler de
+   > team via `Agent(run_in_background)` (cause F-035/F-036). Message HO : `TeamCreate`
+   > absent — bascule `agent_mode` sur `subagent` dans `.wf-config.json` puis relance
+   > `/waterfall:resume`. Le flag env est nécessaire mais pas suffisant.
+
    ```bash
    if [[ "$WF_AGENT_MODE" == "team" ]]; then
      TeamCreate wf-<name>
@@ -183,6 +191,6 @@ If disagreement detected → OR returns `NEED_PM_DECISION` with details, PM asks
 - **Mandatory consistency check** — prevents resuming on a corrupted state
 - **Silent recovery preferred** — only disturb HO if the state is genuinely corrupted
 - **One question at a time** to HO (need selection, worktree cleanup)
-- **Agent Teams model only** — no legacy subagent model. Use `TeamCreate` + `SendMessage` exclusively.
+- **Mode selon `agent_mode`** — `team` exige le tool `TeamCreate` (gate F-035, hard-fail si absent) et utilise `SendMessage` ; `subagent`/`subagent-light` spawnent via `Agent` sans `TeamCreate`. Pas d'émulation team via agents background nommés (F-035/F-036).
 
 > **IMPORTANT — SendMessage plain text obligatoire** : le paramètre `message` de `SendMessage` n'accepte que `string`. Utiliser le format plain text `clé: valeur` — jamais d'objet `{...}`, jamais `JSON.stringify()`.

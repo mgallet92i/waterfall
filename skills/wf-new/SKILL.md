@@ -83,9 +83,25 @@ ELSE:
 
 ### Step 4 — TeamCreate (conditional on agent_mode)
 
+> **F-035 — Gate `TeamCreate` (hard-fail, JAMAIS de fallback silencieux).**
+> Un script bash ne peut pas introspecter les tools du harness : ce contrôle est
+> **niveau LLM**. En mode `team`, **AVANT** tout appel `TeamCreate`, vérifier que
+> le tool `TeamCreate` est réellement exposé dans la boîte à outils courante
+> (p.ex. `ToolSearch` `select:TeamCreate`). S'il est **ABSENT** → **STOP immédiat**.
+> Ne JAMAIS émuler une team avec des `Agent(run_in_background)` nommés (cause
+> racine F-035 + stall F-036). Afficher au HO et arrêter le bootstrap :
+>
+> > `TeamCreate` absent de ce build Claude Code : le mode `team` est inexécutable.
+> > Bascule `agent_mode` sur `subagent` dans `.wf-config.json` (mode équivalent
+> > sans `TeamCreate` — PM=main, teammates spawnés via le tool `Agent`,
+> > exécution synchrone) puis relance `/waterfall:new`.
+>
+> Le flag `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (Step 1) est **nécessaire mais
+> pas suffisant** : il n'implique pas la présence du tool. Seul ce gate la garantit.
+
 ```bash
 if [[ "$WF_AGENT_MODE" == "team" ]]; then
-  # Default mode
+  # Default mode — précondition : gate F-035 ci-dessus passé (TeamCreate exposé)
   TeamCreate wf-<name>
 elif [[ "$WF_AGENT_MODE" == "subagent-light" ]]; then
   # subagent-light: no TeamCreate, no team, no inter-agent watchdog

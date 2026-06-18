@@ -18,6 +18,11 @@ if [[ "${CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS:-}" != "1" ]]; then
   exit 1
 fi
 
-# Optional: emit a one-line confirmation when the flag is set
-echo "OK: CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1, agent teams feature available."
+# F-035: this script only gates the ENV FLAG. It CANNOT introspect the harness
+# toolset, so it cannot guarantee the `TeamCreate` tool is actually exposed (some
+# Claude Code builds set the flag but do not expose the tool). The real
+# tool-presence gate is LLM-level, performed by wf-new/wf-resume in `team` mode
+# (ToolSearch select:TeamCreate) before any TeamCreate call. Flag = necessary,
+# not sufficient.
+echo "OK: CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 (flag present). NOTE: presence of the TeamCreate tool itself is verified by the skill in team mode (F-035)."
 exit 0

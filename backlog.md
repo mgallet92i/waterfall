@@ -38,6 +38,10 @@ Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Ch
 | F-032 | * (paths) | `PROJECT_ROOT` résolu de 3 façons : orchestrate cwd-walk (F-030 OK) mais watchdog/registry `script_dir/..` = clone plugin → surveillent/écrivent le mauvais arbre | P0 — ✅ résolu (issu de [ARCH-01]) |
 | F-033 | REVIEW/CR | Nommage artefact de revue incohérent : `rv.md`/`code-review.md` (personas) vs `review.md` (script/template/hints) | P2 — issu de [ARCH-06] — ✅ résolu (review.md unifié, 2026-06-09) |
 | F-034 | * (doc) | Noms d'artefacts legacy `tf.md`/`tech.md`/`taches.md` dans 16 fichiers doc — hook/moteur ne connaissent que les canoniques | P2 — issu de [ARCH-06] — ✅ résolu (renommage + garde CI doc-drift, 2026-06-09) |
+| F-035 | BOOTSTRAP / * (harness) | Harness Claude Code **sans tool `TeamCreate`** → mode `team` (Flow Z) inexécutable tel quel ; PM doit substituer des `Agent(run_in_background)` nommés | P0 — ✅ résolu (gate hard-fail niveau LLM dans wf-new/wf-resume, 2026-06-18) |
+| F-036 | * (team/harness) | Background-agents run-to-completion puis idle : **stall mid-phase (~2h30)** sans auto-resume ; watchdog cron inopérant sur ce modèle | P1 — ✅ résolu (dissous par F-035 : path background-team-emulation interdit ; subagent synchrone) |
+| F-037 | * (team) | Teammates notifient `main`/PM au lieu d'OR → relais `MISROUTED_TO_PM` manuel à **chaque** step (overhead PM) | P2 |
+| F-038 | * (UX/HO) | Aucune visibilité HO sur l'activité des subagents background — ne voit que les relais PM | P3 |
 
 > **Revue d'architecture globale (2026-06-07)** : 10 causes racines `ARCH-01..10` consolidées en fin de fichier — voir section dédiée. Chaque `ARCH-xx` agrège plusieurs F-xxx symptômes.
 >
@@ -569,6 +573,46 @@ Le plugin étant installé depuis un clone (ex. `C:\projets\waterfall`) mais con
 **Phase** : transverse (doc personas/skills/templates)
 **Constat** (découvert pendant [ARCH-06 ét.2], 2026-06-09) : ~94 occurrences des anciens noms d'artefacts dans 16 fichiers doc — `tf.md` (canonique : `acceptance.md`), `tech.md` (`design.md`), `taches.md` (`tasks.md`). Or le moteur (`--init`, templates, gate `STEP_ARTIFACTS`) et le hook `wf-auth.sh` (owner mapping l.89-90) ne connaissent QUE les noms canoniques. Pire que cosmétique : un DV suivant sa fiche (« Edit taches.md ») éditerait un **fichier fantôme** hors protection du hook et hors lecture des autres agents ; le pipeline INV-007 entier de `wf-dv.md` référençait `taches.md`.
 **Résolution (2026-06-09)** : renommage canonique dans les 16 fichiers (8 personas, constitution, 2 skills, 4 templates fr/en, `docs/agents.md`), dédoublonnage des lignes qui citaient les deux noms. Au passage, 2 attributions fausses corrigées : `PRD.md` attribué à PO dans `wf-rv.md` et `docs/agents.md` (canonique : **PM**, cf. constitution l.160), et reliquat F-033 (`rv.md`) dans `docs/agents.md`. **Garde CI** : 4e test dans `tests/wf-doc-drift.bats` — noms legacy interdits dans agents/skills/templates/docs. Vérifié : doc-drift 4/4.
+
+---
+
+# Run live `costrat-deck` (2026-06-18, repo SWIPE_REPORT_GEN, mode `team` + `dark_factory=on`)
+
+> Findings issus d'un run réel en mode **team** sur un build Claude Code **dépourvu du tool `TeamCreate`**. Le PM était la **conversation principale** (pas un teammate), les "teammates" = `Agent(run_in_background)` nommés, coordonnés par `SendMessage`. Étude+conception+plan menés à bien (PRD/specs/design/acceptance/tasks + 1 boucle REVIEW→CONVERGE), puis stall en IMPLEMENTATION.
+
+## F-035 — Harness sans tool `TeamCreate` : mode `team` (Flow Z) inexécutable tel quel **[P0]**
+
+**Phase** : BOOTSTRAP (Step 4 wf-new).
+**Constat** : sur ce build Claude Code, **aucun tool `TeamCreate`** n'est exposé (vérifié via `ToolSearch` — seuls `Agent`, `SendMessage`, `Task*` existent). Le `wf-check-teams.sh` passe (flag `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` présent) mais le tool attendu par Flow Z est absent. La "team" se forme en réalité en spawnant des **Agents nommés en background** (`Agent(name, run_in_background:true)`), adressables ensuite via `SendMessage(to:<name>)` ; les agents répondent à `main`.
+**Impact** : Flow Z Step 4/5 (TeamCreate + pré-spawn batch persistant) inapplicable. PM a dû : (a) traiter `TeamCreate` comme no-op, (b) se comporter comme le bootstrap **subagent** (pré-compléter `BOOTSTRAP:DETERMINE_NAME`/`RUN_BOOTSTRAP` car PM=main, pas teammate → OR ne peut pas `SendMessage` un "PM teammate"), (c) spawner OR puis chaque rôle en lazy sur `spawn_request`.
+**Recommandation** : (1) `wf-check-teams.sh` doit **détecter la présence réelle du tool `TeamCreate`**, pas seulement le flag env. (2) Documenter dans `wf-new`/`wf-pm` un **mode de compatibilité "named-agents"** : team logique sans `TeamCreate`, PM=main, teammates = `Agent(run_in_background)` nommés. (3) Idéalement, auto-fallback `team`→`named-agents` quand le tool manque, plutôt que de faire diverger le PM à la main.
+
+**Résolution (2026-06-18)** — **hard-fail explicite, pas de fallback ni de mode named-agents** (décision HO). Contre la reco (1) : un script bash **ne peut pas** introspecter les tools du harness — le gate est donc **niveau LLM**, pas dans `wf-check-teams.sh`. Implémenté :
+- **Gate `TeamCreate`** ajouté dans `skills/wf-new/SKILL.md` (Step 4) et `skills/wf-resume/SKILL.md` (Step 5) : en mode `team`, AVANT tout `TeamCreate`, vérifier que le tool est exposé (`ToolSearch select:TeamCreate`) ; absent → **STOP**, message HO actionnable (« bascule `agent_mode` sur `subagent` dans `.wf-config.json` »). Émulation team-via-`Agent(run_in_background)` **interdite** (échec bruyant > défaut silencieux, cf. AGENTS.md).
+- Reco (2)/(3) **écartées** : le mode `subagent` existant **est déjà** le « named-agents » (pas de `TeamCreate`, PM=main, spawn via `Agent`, synchrone) — inutile d'ajouter un 3e mode (combinatoire ARCH-05). Le fix oriente vers lui.
+- `wf-check-teams.sh` : message clarifié (flag env = **nécessaire mais pas suffisant** ; présence du tool gatée par la skill). Garde OR séparé en `subagent` (F-037 traité dans un lot ultérieur).
+
+## F-036 — Background-agents : run-to-completion puis dormance, stall mid-phase sans auto-resume **[P1]**
+
+**Phase** : IMPLEMENTATION (`DV_IMPLEMENT`).
+**Constat** : le modèle "teammate persistant idle" de Flow Z ne mappe pas le lifecycle des Agents background de ce harness, qui **exécutent leur prompt puis se terminent/idlent** (réveillés uniquement par un `SendMessage`). Sur la tâche T-05 (module backend NestJS), l'activité disque s'est arrêtée à 15:06 puis **plus rien pendant ~2h30** (dernier fichier touché 15:06, TL annonçant "je lance les tests" à 17:40), sans `--complete`, sans escalade, sans avancer vers DONE. Le watchdog cron (Step 5.ter) — censé repoker les idle — n'a pas de prise utile sur des agents terminés (et avait été jugé bruit net-négatif, donc non armé). Recoupe F-014/F-025 mais **cause-racine distincte** : cycle de vie background-agent, pas saturation contexte OR.
+**Impact** : pipeline qui semble "vivant" (idle_notifications passifs) mais n'avance plus ; HO doit relancer manuellement. Diagnostic PM a montré que le code T-05 était posé (test jest lancé séparément → exit 0 mais **0 récap "Tests:"** → résultat non concluant, à re-vérifier).
+**Recommandation** : (a) en mode named-agents, le pilote (PM/OR) doit **re-`SendMessage` proactivement** après chaque jalon attendu plutôt que d'attendre un push ; (b) ré-armer un watchdog adapté (poll d'avancement disque/état + relance ciblée) ; (c) borne de temps par step avec escalade auto au pilote.
+
+**Résolution (2026-06-18)** — **cause-racine dissoute par F-035**. Le stall « background-agent idle 2h30 » est un artefact **spécifique** à l'émulation team-via-`Agent(run_in_background)` sur un harness sans `TeamCreate`. Ce path est désormais **interdit** (gate hard-fail F-035) : on bascule en mode `subagent`, qui est **synchrone** (PM=main appelle `Agent`, attend le retour) — pas de teammate background qui s'endort, donc pas de stall ni de watchdog à armer (le watchdog est d'ailleurs déjà skippé en `subagent`, cf. `wf-new` Step 5.ter). Reco (a)/(b) sans objet (modèle background interdit). Reco (c) « borne de temps par step » = enhancement transverse non bloquant → **ENH** à ouvrir si besoin, pas armé ici (échec bruyant déjà couvert par le hard-fail).
+
+## F-037 — Teammates notifient `main`/PM au lieu d'OR → relais manuel systématique **[P2]**
+
+**Phase** : transverse (toutes phases avec teammate).
+**Constat** : faute de team native, les rôles (PO, TL, RV, DV) ont été briefés à notifier `main` (= PM). Conséquence : **chaque** `brief_complete`/`task_status`/verdict transite par PM qui doit le relayer à OR (handler `MISROUTED_TO_PM`) — à toutes les transitions. Overhead PM élevé et fragile (un relai oublié = stall).
+**Impact** : PM passe son temps à faire tampon OR↔teammates ; multiplie les tours de boucle (chaque relai = une réinvocation PM).
+**Recommandation** : en mode named-agents, **fusionner les rôles OR et PM** (PM=main pilote directement la state machine, plus besoin d'un OR séparé qui ne peut de toute façon pas être joint par les teammates autrement que via main). OR séparé n'apporte de la valeur que si les teammates peuvent l'adresser directement — impossible quand PM=main est l'unique destinataire `main`.
+
+## F-038 — Aucune visibilité HO sur l'activité des subagents background **[P3, UX]**
+
+**Phase** : transverse.
+**Constat** : le HO ("je ne vois pas l'activité des subagents dans Claude Code ???") ne perçoit que les `teammate-message` relayés dans le fil PM ; le travail réel des agents background (éditions, tests) se déroule dans des contextes séparés non streamés à la vue principale. Couplé à F-036, l'absence de signal visible a fait douter le HO que quoi que ce soit tourne.
+**Recommandation** : surface de statut consolidée (dashboard `TaskCreate`/`TaskUpdate` — utilisé ici, utile) + mini-status PM réguliers ancrés sur l'**état disque réel** (pas sur les pings agents). Documenter pour le HO que l'absence d'activité streamée est normale en mode background, et que le dashboard est la source de vérité.
 
 ---
 
