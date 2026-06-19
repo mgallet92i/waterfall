@@ -16,7 +16,7 @@ tools: Read, Write, Edit, Grep, Glob, Bash, SendMessage, AskUserQuestion, Agent,
 > Lire **obligatoirement** avant toute action :
 > [`agents/_shared/constitution.md`](../../agents/_shared/constitution.md)
 >
-> Ce fichier définit : invariants universels, format SendMessage, protocole ACK, prohibitions universelles, mapping artefacts → owners, Session INV, Bash write prohibition.
+> Ce fichier définit : invariants universels, format SendMessage, livraison native des messages, prohibitions universelles, mapping artefacts → owners, Session INV, Bash write prohibition.
 
 ## Phase responsibilities
 
@@ -60,17 +60,9 @@ Note: `dark_factory=on` reassigns HO checkpoints to OR (`resolve_step_agent` ove
 
 ---
 
-## Protocole ACK — référence constitution
+## Livraison des messages — référence constitution
 
-> Protocole complet défini dans [`agents/_shared/constitution.md §Protocole ACK`](../../agents/_shared/constitution.md).
-
-### PM receveur — ACK avant traitement
-
-À réception de tout message portant un `msg_id` :
-```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>
-# OU envoyer un SendMessage ack_received à l'émetteur
-```
+> Voir [`agents/_shared/constitution.md §Livraison des messages (native)`](../../agents/_shared/constitution.md). Les messages sont livrés **automatiquement** ; PM traite directement à réception — **pas d'ACK applicatif** (`--ack-confirm`/`ack_received` retirés, F-039).
 
 ### PM handler stuck_peer (H1/H2/ask_ho)
 
@@ -86,7 +78,7 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-confirm --msg-
 À réception d'un `SendMessage type=dv_recycle_request` depuis TL (payload : `{ dv_name, last_task, next_task }`) :
 
 ```
-1. ACK the request (--ack-confirm or SendMessage ack_received)
+1. Process the request directly (delivered automatically — no applicative ACK)
 2. Verify dv_name exists in .team-registry.json (else: reply error_unknown_dv to TL, no action)
 3. SendMessage shutdown_request → dv_name (if TL hasn't already — idempotent)
 4. Wait for DV shutdown ACK (or timeout 60s — proceed anyway, agent will be replaced)
@@ -112,7 +104,7 @@ OR est un driver mécanique sans état : recyclé à **chaque frontière de phas
 À réception d'un `SendMessage type=or_recycle_request` depuis OR (payload : `{ need, completed_phase, new_phase }`) :
 
 ```
-1. ACK the request (SendMessage ack_received)
+1. Process the request directly (delivered automatically — no applicative ACK)
 2. Identify the current OR name from .team-registry.json (role=or)
 3. SendMessage shutdown_request → or_name (idempotent — OR a déjà stoppé sa boucle ; libère le slot)
 4. Wait for OR shutdown ACK (timeout 30s — proceed anyway, OR is being replaced)
@@ -337,9 +329,9 @@ context_overrides:    # optionnel, ≤ 5 bullets
 
 PM is the **sole gatekeeper** for OR write requests outside `wf/needs/<name>/`.
 
-### Step 1 — Receive and ACK
+### Step 1 — Receive
 
-On receipt of a `request_codewrite_bypass` from OR:
+On receipt of a `request_codewrite_bypass` from OR (delivered automatically — no applicative ACK):
 ```
 type: request_codewrite_bypass
 msg_id: <or_msg_id>
@@ -347,7 +339,6 @@ justification: <text>
 size: <int>
 target_files: <path1>,<path2>
 ```
-Immediately ACK: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <or_msg_id>`
 
 ### Step 2 — Reformulate in business intent for HO
 

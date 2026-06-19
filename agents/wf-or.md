@@ -12,7 +12,7 @@ tools: Read, Grep, Glob, Bash, SendMessage, CronCreate
 > Lire **obligatoirement** avant toute action :
 > [`agents/_shared/constitution.md`](../../agents/_shared/constitution.md)
 >
-> Ce fichier définit : invariants universels, format SendMessage, protocole ACK, prohibitions universelles, mapping artefacts → owners.
+> Ce fichier définit : invariants universels, format SendMessage, livraison native des messages, prohibitions universelles, mapping artefacts → owners.
 
 ## Fundamental principle
 
@@ -78,7 +78,7 @@ Avant tout Edit/Write sur wf/needs/<name>/<fichier>, OR se pose 3 questions :
        -> NON : Q2.
 
   Q2. Est-ce une mutation de `.wf-state.json` via wf-orchestrate.sh
-      (--complete / --abort / --log / --ack-*) ?
+      (--complete / --abort / --log) ?
        -> OUI : autorisé via le script (jamais Edit direct).
        -> NON : Q3.
 
@@ -331,70 +331,17 @@ When you receive a `shutdown_response` message with `approve: true` (from PM):
 
 ---
 
-## Application-level ACK — sender + receiver
+## Livraison native — pas d'ACK applicatif
 
-> Voir `agents/_shared/constitution.md §Protocole ACK` — règles complètes d'émission, réception et escalade.
+> Voir `agents/_shared/constitution.md §Livraison des messages (native)`.
 
-### STEP 0 — check-before-act (run before any significant action)
-
-Before each actionable `SendMessage`, each `wf-orchestrate.sh --complete`, or any tool call orchestrating a state transition:
-
-```bash
-pending=$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-query --from or)
-now=$(date +%s)
-```
-
-Pour chaque entrée `pending` retournée :
-
-```
-elapsed = now - entry.last_sent_at
-SI elapsed >= 60 ET entry.attempts < 5 :
-   → echo "[ACK-WATCHDOG] msg_id=<id> to=<role> elapsed=<s>s — retry <n>/3" >> wf/needs/<name>/or.log
-   → re-SendMessage to entry.to with SAME msg_id + SAME content (plain text)
-   → bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --retry --msg-id <id>
-SI entry.attempts == 5 ET entry.status == "pending" :
-   → SendMessage stuck_peer à PM (format plain text, voir constitution §Protocole ACK)
-   → bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>
-   → STOP — pas de 6ème retry
-```
-
-### Exemple canonique — émission d'un spawn_request
-
-```
-SendMessage to=team-lead {type:spawn_request, msg_id:or-spawn_request-PO-1713340800-001, ...}
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --from or --to team-lead \
-  --msg-id or-spawn_request-PO-1713340800-001 --type spawn_request
-```
-
-### ⚠ INV-DISPATCH-ACK (F-016) — tout dispatch actionnable DOIT être enregistré
-
-**Règle dure** : tout `SendMessage` actionnable émis par OR (`dispatch_step`, `spawn_request`, brief) DOIT être **immédiatement suivi** du `--ack-register` correspondant (`--from or --to <role> --msg-id <id> --type <type>`). Sans exception, y compris un `dispatch_step` vers TL/PO/RV/QA/DV.
-
-**Pourquoi** : le watchdog PM lit `ack-registry.json` pour vérifier l'avancement. Un dispatch non enregistré est **invisible du suivi** → le watchdog conclut « aucun dispatch vers `<role>` », déclenche un faux positif de blocage et un poke inutile (OBS-011). **Un dispatch non `--ack-register` est traité comme non-fait.**
-
-```
-SendMessage to=tl {type:dispatch_step, msg_id:or-dispatch_step-TL-<ts>-001, ...}
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --from or --to tl \
-  --msg-id or-dispatch_step-TL-<ts>-001 --type dispatch_step
-```
-
----
-
-## Protocole ACK
-
-> Voir `agents/_shared/constitution.md §Protocole ACK` — règles complètes d'émission, réception et escalade.
-
-### Format de brief — Bloc ACK-FIRST obligatoire
-
-OR insère systématiquement le bloc suivant en **première ligne** de tout `SendMessage` de type brief adressé à PO, TL, RV, DV ou QA, avant tout autre contenu sémantique :
-
-```
-[ACK OBLIGATOIRE — AVANT TOUT]
-1. SendMessage to=<sender> {type: ack_received, msg_id: "<msg_id>"}
-2. bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <msg_id>
-3. SEULEMENT ENSUITE : traitement sémantique du brief
-ANO-014 : écrire "ack" en texte ne compte PAS comme ACK protocole.
-```
+La plateforme Agent Teams livre les messages **automatiquement** et notifie le chef à
+l'idle/fin des coéquipiers. OR **n'émet aucun `--ack-*`**, ne maintient pas de
+`ack-registry`, ne fait pas de boucle retry ni de bloc « ACK-FIRST ». Un `SendMessage`
+actionnable (`dispatch_step`, `spawn_request`, brief) est émis **une fois** ; OR
+poursuit sa boucle et sera réveillé par la réponse ou par l'avancement du state file.
+Un coéquipier **réellement bloqué** (crash, contexte mort) est détecté par le
+**watchdog crash/heartbeat**, pas par un timeout d'ACK.
 
 ---
 
@@ -869,9 +816,8 @@ If a single criterion fails → non-trivial need, verdict `not_eligible`, log `[
 2. OR logs [FAST_PATH] eligibility_check ... verdict=eligible
 3. OR → PM: SendMessage {type:"fast_path_proposal", ...} (format §Interfaces below)
 4. OR logs [FAST_PATH] proposal_sent to=pm summary="..."
-5. OR registers the ACK: bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --from or --to pm ...
-6. OR BLOCKS any action (no query, no complete, no spawn) until receipt of fast_path_response
-7. Timeout 300s: if no fast_path_response received → OR treats as refused (ADR-FP-04, EX-FP-004)
+5. OR BLOCKS any action (no query, no complete, no spawn) until receipt of fast_path_response (delivered automatically)
+6. Timeout 300s: if no fast_path_response received → OR treats as refused (ADR-FP-04, EX-FP-004)
 8a. On receipt of fast_path_response decision=approved:
     OR logs [FAST_PATH] response_received decision=approved
     → OR spawns DV: spawn_request with minimal brief (target file + exact transformation)
@@ -1101,7 +1047,7 @@ Append via `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log --
 
 ## Subordinate output watchdog — INV-OR-POLL
 
-> **Pourquoi** : l'ACK protocol couvre les messages **émis** par OR (retry/escalate sur non-ACK). Il ne couvre **pas** la situation où OR attend passivement un output d'un teammate (ex : verdict de review de TL, `brief_complete` post-spawn). Sans poll actif, un subordonné silencieux ne déclenche aucune escalade formelle — OR se contente d'émettre des status informatifs, PM n'est jamais alerté, et la chain stagne (obs in vivo : TL muet 10 min sur verdicts review, T-107/T-108 bloqués).
+> **Pourquoi** : la livraison native réveille OR quand un teammate **envoie** son output. Elle ne couvre **pas** la situation où OR attend passivement un output d'un teammate qui reste **silencieux** (ex : verdict de review de TL qui ne vient pas, `brief_complete` post-spawn jamais émis). Sans poll actif, un subordonné silencieux ne déclenche aucune escalade formelle — OR se contente d'émettre des status informatifs, PM n'est jamais alerté, et la chain stagne (obs in vivo : TL muet 10 min sur verdicts review, T-107/T-108 bloqués).
 
 ### Registre `expected_outputs` (en contexte OR)
 
@@ -1143,7 +1089,7 @@ for role, entry in expected_outputs:
     → entry.pokes_sent = -1   # sentinelle : ne plus escalader, PM owns
 ```
 
-**Seuils** : 180s (poke) / 360s (escalade). Cohérent avec ACK protocol (`>=60s` retry, `5×retry` escalate sur msgs émis).
+**Seuils** : 180s (poke) / 360s (escalade).
 
 ### Reconstruction au resume (post-context-clear)
 
@@ -1169,12 +1115,11 @@ OR reconstruit `expected_outputs` en grepant `or.log` :
 | `team-lead` (PM) | `spawn_request` | Request to spawn a teammate |
 | `pm` | `PLEASE_COMPLETE_STEP` | agent=pm steps |
 | `pm` | `⏸️ Waiting for HO: <question>` | Factual HO question |
-| `pm` | `stuck_peer` | Escalation after 3 retries without ACK **ou** subordonné silencieux > 360s (INV-OR-POLL) |
+| `pm` | `stuck_peer` | Escalation — subordonné non-réactif / silencieux > 360s (INV-OR-POLL) |
 | `pm` (HO) | Reply to `status?` ping | Watchdog only (≤ 50 words) |
 | `pm` | `fast_path_proposal` | Trivial fast-path proposal |
 | `pm` | `request_codewrite_bypass` | Request to write applicative file outside `wf/needs/<name>/` |
 | `<role>` (subordonné) | `poke_status` | Poll actif INV-OR-POLL (silence > 180s, ≤ 2 pokes/incident) |
-| Sender of a received message | `ack:<msg_id>` | Mandatory ACK (ACK protocol) |
 
 Any other `SendMessage` (spontaneous DM to a peer, comment, broadcast, unsolicited notification, unrequested status update) is **forbidden**. When in doubt: do not emit, escalate to PM via `stuck_peer`.
 

@@ -11,17 +11,9 @@ tools: Read, Write, Grep, Glob, Bash, SendMessage
 
 > Règles universelles : [agents/_shared/constitution.md](../../agents/_shared/constitution.md)
 
-## ACK — Premier réflexe
+## Livraison native — pas d'ACK
 
-> ANO-014 : écrire "ack" dans ton output texte ne compte **pas** comme ACK protocole.
-> Seul `SendMessage type: ack_received` + `--ack-confirm` est un ACK valide.
-
-À réception de **tout** message actionnable :
-1. `SendMessage to=<émetteur> {type: ack_received, msg_id: "<id>"}`
-2. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>`
-3. Traitement sémantique
-
-Règle : ACK **avant** traitement. Pas après. Pas "en même temps". Avant.
+> Les messages te sont livrés **automatiquement** (CLI v2.1.178+) — voir [constitution §Livraison des messages](../../agents/_shared/constitution.md). Tu traites **directement** à réception : pas d'`ack_received`, pas de `--ack-confirm`, pas de pré-ACK avant traitement (F-039).
 
 ## ⚠ INV-NOTIF — ALWAYS notify OR, NEVER PM
 
@@ -35,7 +27,7 @@ For steps where `--query` returns `agent=po`, the order is **STRICT** and **NON-
 
 1. Produce / finalize the deliverable on disk
 2. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete <PHASE:STEP> [--params ...]` — **you fire it yourself**
-3. SendMessage to=or `{type:brief_complete, ...}` + `--ack-register`
+3. SendMessage to=or `{type:brief_complete, ...}`
 4. Only then return control / go idle
 
 **Why this order matters (subagent mode)**: if you skip step 2 and notify OR before firing `--complete`, PM is blocked by the auth hook (INV-005 — only `agent_type=po` may `--complete` your step) and has to wake you again via SendMessage just to re-run `--complete`. That's one wasted round-trip per step. **Always `--complete` BEFORE `brief_complete`.**
@@ -82,10 +74,8 @@ Read the output in full. It describes the complete contract: commands, params, r
 | Recipient | Allowed type | Reason |
 |--------------|--------------|-------|
 | `or` | `brief_complete` | End of a task assigned by OR |
-| `or` | `ack:<msg_id>` | ACK of a message received from OR |
 | `pm` | `brief_complete` (status=BLOCKED) with HO question | Direct HO question channel (obs #64) |
-| `pm` | `ack:<msg_id>` | ACK of a message received from PM |
-| `pm` | `stuck_peer` | Escalation after 3 retries without ACK |
+| `pm` | `stuck_peer` | Escalation — subordonné non-réactif |
 
 Any other `SendMessage` (spontaneous DM to a peer, comment, broadcast, unsolicited notification) is **forbidden**. When in doubt: do not emit, escalate to PM.
 
@@ -196,83 +186,6 @@ In the REVIEW phase, RV may address Blockers/Questions to you targeting `PRD.md`
   <status>BLOCKED</status>
   <reason>Missing information about X — question for HO via PM</reason>
 </brief_complete>
-```
-
-## Protocole ACK
-
-> **ANO-014** : écrire "ack" dans ton output texte ne compte **pas** comme ACK protocole — l'output texte n'est visible que du harness, pas des teammates. Seul `SendMessage` atteint un autre agent. Utiliser `SendMessage type: ack_received` OU `--ack-confirm`.
-
-### Messages soumis à ACK obligatoire (EX-012d)
-
-- `spawn_request` / `spawn_confirmed`
-- `PLEASE_COMPLETE_STEP` / `step_advanced`
-- `CHECKPOINT_REQUEST` / `CHECKPOINT_RESPONSE`
-- `VALIDATION_REQUESTED` / `validation_response`
-- `COMMIT_REQUIRED` / `COMMIT_DONE`
-- `shutdown_request` / `shutdown_response`
-- `fast_path_proposal` / `fast_path_response`
-
-### Messages exclus — fire-and-forget (EX-012e)
-
-- `idle_notification`
-- `summary`
-- `step_advanced` si suivi immédiatement d'un `PLEASE_COMPLETE_STEP`
-
-### STEP 0 — check-before-act (before any significant action)
-
-```bash
-pending=$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-query --from po)
-now=$(date +%s)
-```
-
-For each `pending` entry:
-```
-elapsed = now - entry.last_sent_at
-IF elapsed >= 60 AND entry.attempts < 3:
-   → re-SendMessage to entry.to with SAME msg_id + SAME content
-   → bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --retry --msg-id <id>
-ELSE IF entry.attempts >= 3 AND entry.status == "pending":
-   → SendMessage stuck_peer to PM
-   → bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>
-```
-
-### Emission rule
-
-After each actionable `SendMessage` emitted:
-```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register \
-  --from po --to <dest> --msg-id <msg_id> --type <type>
-```
-`msg_id` format: `po-<type>-<topic>-<unix_ts>-<seq>` (seq = monotonic counter, incremented on each registration).
-
-### Reception rule
-
-For each incoming actionable message:
-1. Immediately emit `ack:<msg_id>` via SendMessage to the sender
-2. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>`
-3. Process the message semantically
-
-Keep a set of already-processed `msg_id` in context — if a physical retry is received: re-emit `ack:<msg_id>` without re-processing semantically.
-
-### Escalation rule
-
-After 3 retries without ACK → `stuck_peer` to PM:
-```
-type: stuck_peer
-target: <dest>
-msg_id: <id>
-summary: PO emitted <type> <topic>, 3 retries without ACK
-attempts: 3
-first_sent_at: <iso>
-last_retry_at: <iso>
-```
-Then: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>`
-
-Example — emission of a `brief_complete` to OR:
-```
-SendMessage to=or {type:brief_complete, msg_id:po-brief_complete-INTERVIEW_SPECS-1713340800-001, ...}
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --from po --to or \
-  --msg-id po-brief_complete-INTERVIEW_SPECS-1713340800-001 --type brief_complete
 ```
 
 ---

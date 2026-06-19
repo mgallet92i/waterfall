@@ -57,84 +57,20 @@ message: |
 SendMessage({ to: "pm", message: { type: "spawn_request", role: "po" } });
 ```
 
-Cette règle s'applique à tous les types : `spawn_request`, `brief_complete`, `step_complete`, `PLEASE_COMPLETE_STEP`, `shutdown_request`, `ack_received`, `stuck_peer`, etc.
+Cette règle s'applique à tous les types : `spawn_request`, `brief_complete`, `step_complete`, `PLEASE_COMPLETE_STEP`, `shutdown_request`, etc.
 
 ---
 
-## Protocole ACK
+## Livraison des messages (native — CLI v2.1.178+)
 
-> **ANO-014** : écrire "ack" dans ton output texte ne compte **pas** comme ACK protocole — l'output texte n'est visible que du harness, pas des teammates. Seul `SendMessage` atteint un autre agent. Utiliser `SendMessage type: ack_received` OU `--ack-confirm`.
+> Les messages entre coéquipiers et vers le chef sont **livrés automatiquement** par la
+> plateforme Agent Teams — pas d'inbox à poller, **pas d'ACK applicatif**. Quand un
+> coéquipier finit ou devient idle, il **notifie automatiquement** le chef.
 
-### Messages soumis à ACK obligatoire
-
-- `spawn_request` / `spawn_confirmed`
-- `PLEASE_COMPLETE_STEP` / `step_advanced`
-- `CHECKPOINT_REQUEST` / `CHECKPOINT_RESPONSE`
-- `VALIDATION_REQUESTED` / `validation_response`
-- `COMMIT_REQUIRED` / `COMMIT_DONE`
-- `shutdown_request` / `shutdown_response`
-- `fast_path_proposal` / `fast_path_response`
-
-### Messages exclus — fire-and-forget
-
-- `idle_notification`
-- `summary`
-- `step_advanced` si suivi immédiatement d'un `PLEASE_COMPLETE_STEP`
-
-### Émission — enregistrer après chaque SendMessage actionnable
-
-```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register \
-  --from <role> --to <dest> --msg-id <msg_id> --type <type>
-```
-
-`msg_id` format : `<role>-<type>-<topic>-<unix_ts>-<seq>` (seq = compteur monotone local).
-
-### Réception — ACK avant traitement sémantique
-
-À réception de tout message portant un `msg_id` :
-1. Émettre immédiatement `SendMessage type: ack_received, msg_id: <id>` vers l'émetteur
-2. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>`
-3. Traitement sémantique du message
-
-Conserver en contexte un ensemble des `msg_id` déjà traités — si un retry physique arrive : ré-émettre `ack:<msg_id>` sans retraitement sémantique.
-
-### Boucle retry émetteur (60s / max 3-5 selon l'agent)
-
-```
-À chaque idle/wake :
-  pending = --ack-query --from <role>
-  pour chaque entry pending :
-    si elapsed >= 60s ET attempts < 3 :
-      re-SendMessage (SAME content, SAME msg_id)
-      --ack-register --retry --msg-id <id>
-    si attempts >= 3 ET status == "pending" :
-      SendMessage to=pm : type: stuck_peer / target: <peer> / msg_id: <id>
-      --ack-escalate --msg-id <id>
-      STOP — pas de retry supplémentaire
-```
-
-### Escalade stuck_peer
-
-```
-type: stuck_peer
-target: <dest>
-msg_id: <msg_id>
-summary: <role> emitted <type> <topic>, 3 retries without ACK
-attempts: 3
-first_sent_at: <iso>
-last_retry_at: <iso>
-```
-
-Puis : `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>`
-
-### Exemple canonique — émission d'un spawn_request
-
-```
-SendMessage to=team-lead {type:spawn_request, msg_id:or-spawn_request-PO-1713340800-001, ...}
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --from or --to team-lead \
-  --msg-id or-spawn_request-PO-1713340800-001 --type spawn_request
-```
+- **Émettre = `SendMessage`**, point. Ton output texte n'atteint aucun autre agent (ANO-014) ; seul `SendMessage` le fait. Inutile de confirmer la réception : la livraison est garantie par le harness.
+- **Adressage direct** : un coéquipier s'adresse à n'importe quel autre par son nom, et au chef via `team-lead`/`main` — sans relais par un tiers.
+- **Pas de protocole ACK de livraison** : `--ack-register/confirm/query/escalate`, `ack-registry.json`, `ack_received`, bloc « ACK-FIRST », boucle retry 60s — **retirés** (F-039 : fiabilité de livraison redondante avec la livraison native, validée sonde live 2026-06-19).
+- **Agent réellement bloqué** (crash, contexte mort, subordonné muet) : détecté par le **watchdog crash/heartbeat** et l'escalade `stuck_peer` (pas par un timeout d'ACK). `stuck_peer` reste le primitif d'escalade vers PM pour un coéquipier non-réactif.
 
 ---
 
@@ -181,7 +117,7 @@ Lire l'output en entier. Il décrit le contrat complet : commandes, params, rout
 
 ## Anti-silence — vérifier l'exit code de chaque appel `wf-orchestrate.sh` (F-030)
 
-Tout appel à `wf-orchestrate.sh` (`--query`, `--complete`, `--ack-*`, `--log`, `--init`, …) **DOIT** être suivi d'une vérification de son **code de sortie** et de son **contenu** avant d'en tirer une conclusion. Un appel qui échoue ne doit **jamais** passer en silence.
+Tout appel à `wf-orchestrate.sh` (`--query`, `--complete`, `--log`, `--init`, …) **DOIT** être suivi d'une vérification de son **code de sortie** et de son **contenu** avant d'en tirer une conclusion. Un appel qui échoue ne doit **jamais** passer en silence.
 
 - **Exit ≠ 0** (ex. `{"error":"STATE_NOT_FOUND",...}`, exit 1) : NE PAS continuer comme si l'état était connu. Logger l'erreur et **remonter à PM/OR** (SendMessage), ou corriger la cause (souvent un **cwd** hors du repo projet → se replacer à la racine, ou exporter `WF_PROJECT_ROOT`). Un `STATE_NOT_FOUND` signifie que le script n'a pas trouvé le projet — surtout pas inventer un état.
 - **Exit 0 mais sortie inattendue** : si `--query` renvoie `BOOTSTRAP:DETERMINE_NAME` alors que le workflow est censé être avancé, c'est suspect (historiquement : mauvais cwd → projet fantôme). Re-vérifier le cwd / `WF_PROJECT_ROOT` avant d'agir.

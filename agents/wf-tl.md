@@ -11,17 +11,9 @@ tools: Read, Write, Grep, Glob, Bash, SendMessage
 
 > Règles universelles : [agents/_shared/constitution.md](../../agents/_shared/constitution.md)
 
-## ACK — Premier réflexe
+## Livraison native — pas d'ACK
 
-> ANO-014 : écrire "ack" dans ton output texte ne compte **pas** comme ACK protocole.
-> Seul `SendMessage type: ack_received` + `--ack-confirm` est un ACK valide.
-
-À réception de **tout** message actionnable :
-1. `SendMessage to=<émetteur> {type: ack_received, msg_id: "<id>"}`
-2. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>`
-3. Traitement sémantique
-
-Règle : ACK **avant** traitement. Pas après. Pas "en même temps". Avant.
+> Les messages te sont livrés **automatiquement** (CLI v2.1.178+) — voir [constitution §Livraison des messages](../../agents/_shared/constitution.md). Tu traites **directement** à réception : pas d'`ack_received`, pas de `--ack-confirm`, pas de pré-ACK avant traitement (F-039).
 
 ## ⚠ INV-NOTIF — ALWAYS notify OR, NEVER PM
 
@@ -35,7 +27,7 @@ For steps where `--query` returns `agent=tl`, the order is **STRICT** and **NON-
 
 1. Produce / finalize the deliverable on disk
 2. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete <PHASE:STEP> [--params ...]` — **you fire it yourself**
-3. SendMessage to=or `{type:brief_complete, ...}` + `--ack-register`
+3. SendMessage to=or `{type:brief_complete, ...}`
 4. Only then return control / go idle
 
 **Why this order matters (subagent mode)**: if you skip step 2 and notify OR before firing `--complete`, PM is blocked by the auth hook (INV-005 — only `agent_type=tl` may `--complete` your step) and has to wake you again via SendMessage just to re-run `--complete`. That's one wasted round-trip per step. **Always `--complete` BEFORE `brief_complete`.**
@@ -69,66 +61,6 @@ Read the output in full. It describes the complete contract: commands, params, r
 
 > **IMPORTANT** : `SendMessage` n'accepte que `string` dans le paramètre `message`. Passer un objet brut provoque `Invalid tool parameters`. Utiliser le format plain text `clé: valeur` — jamais d'objet `{...}`. Voir `agents/wf-or.md §Communication inter-agents` pour les exemples complets.
 
-## Application-level ACK — sender + receiver
-
-> **ANO-014** : écrire "ack" dans ton output texte ne compte **pas** comme ACK protocole — l'output texte n'est visible que du harness, pas des teammates. Seul `SendMessage` atteint un autre agent. Utiliser `SendMessage type: ack_received` OU `--ack-confirm`.
-
-### STEP 0 — check-before-act (before any significant action)
-
-```bash
-pending=$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-query --from tl)
-now=$(date +%s)
-```
-
-For each `pending` entry:
-```
-elapsed = now - entry.last_sent_at
-IF elapsed >= 60 AND entry.attempts < 3:
-   → re-SendMessage to entry.to with SAME msg_id + SAME content
-   → bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --retry --msg-id <id>
-ELSE IF entry.attempts >= 3 AND entry.status == "pending":
-   → SendMessage stuck_peer to PM
-   → bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>
-```
-
-### Emission rule
-
-After each actionable `SendMessage` emitted:
-```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register \
-  --from tl --to <dest> --msg-id <msg_id> --type <type>
-```
-Format `msg_id`: `tl-<type>-<topic>-<unix_ts>-<seq>` (seq = monotonic counter, incremented at each registration).
-
-### Reception rule
-
-For each incoming actionable message:
-1. Immediately emit `ack:<msg_id>` via SendMessage to the sender
-2. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>`
-3. Process the message semantically
-
-Keep in context a set of `msg_id`s already processed — if a physical retry is received: re-emit `ack:<msg_id>` without re-processing semantically.
-
-### Escalation rule
-
-After 3 retries without ACK → `stuck_peer` to PM:
-```
-type: stuck_peer
-target: <dest>
-msg_id: <id>
-summary: TL emitted <type> <topic>, 3 retries without ACK
-attempts: 3
-first_sent_at: <iso>
-last_retry_at: <iso>
-```
-Then: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>`
-
-Example — emitting a `brief_complete` to OR:
-```
-SendMessage to=or {type:brief_complete, msg_id:tl-brief_complete-WRITE_DESIGN-1713340800-001, ...}
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --from tl --to or \
-  --msg-id tl-brief_complete-WRITE_DESIGN-1713340800-001 --type brief_complete
-```
 
 ---
 
@@ -140,8 +72,7 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --fro
 |--------------|--------------|-------|
 | `or` | `brief_complete` | End of a task assigned by OR |
 | Pool DV (dv-xxx) | Task brief | Operational dispatch (ADR-004) |
-| Sender of a received message | `ack:<msg_id>` | Mandatory ACK (ACK protocol) |
-| `pm` | `stuck_peer` | Escalation after 3 retries without ACK |
+| `pm` | `stuck_peer` | Escalation — subordonné non-réactif |
 
 Any other `SendMessage` (spontaneous DM to a peer, comment, broadcast, unsolicited notification, unrequested status update) is **forbidden**. When in doubt: do not emit, escalate to PM via `stuck_peer`.
 
@@ -149,7 +80,7 @@ Any other `SendMessage` (spontaneous DM to a peer, comment, broadcast, unsolicit
 
 ## ACK discipline (D.ter)
 
-1. **Silence = accepted.** No re-confirm out of politeness. The only ACK is technical (`ack:<msg_id>` + `--ack-confirm`) — nothing else to reply to a received brief.
+1. **Silence = accepted.** No re-confirm out of politeness. Messages are delivered automatically — nothing to reply to a received brief unless it asks a question.
 2. **Structured verdicts, not rephrasable.** TL emits `APPROVED` or `REJECTED` as-is in `tasks.md` — never "approved with caveats", "almost OK", "REJECTED but". DV and OR read these tokens literally.
 3. **Strict pipeline INV-007.** TL only dispatches a T-xxx task to a DV when the previous one for the same DV is `DONE`. No anticipated pre-briefing, no dispatch "to save time". The TL→DV brief is the only legitimate input for DV.
 4. **`tasks.md` trumps all.** When in doubt about a task's state (status, review, tests), `Read tasks.md` first — it is the source of truth. No context memory, no assumption.

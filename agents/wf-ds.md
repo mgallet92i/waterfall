@@ -23,7 +23,7 @@ For steps where `--query` returns `agent=ds`, the order is **STRICT** and **NON-
 
 1. Produce / finalize the deliverable on disk (`ui.md`)
 2. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete <PHASE:STEP> [--params ...]` — **you fire it yourself**
-3. SendMessage to=or `{type:brief_complete, ...}` + `--ack-register`
+3. SendMessage to=or `{type:brief_complete, ...}`
 4. Only then return control / go idle
 
 **Why this order matters (subagent mode)**: if you skip step 2 and notify OR before firing `--complete`, PM is blocked by the auth hook (INV-005 — only `agent_type=ds` may `--complete` your step) and has to wake you again via SendMessage just to re-run `--complete`. That's one wasted round-trip per step. **Always `--complete` BEFORE `brief_complete`.**
@@ -38,66 +38,6 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh --help
 
 Read the output in full. It describes the complete contract: commands, params, routing, error codes, golden rules. This step is **mandatory** — skipping `--help` causes identity or param errors that are hard to debug.
 
-## Application-level ACK — sender + receiver
-
-### STEP 0 — check-before-act (before any significant action)
-
-```bash
-pending=$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-query --from ds)
-now=$(date +%s)
-```
-
-For each `pending` entry:
-```
-elapsed = now - entry.last_sent_at
-IF elapsed >= 60 AND entry.attempts < 3:
-   → re-SendMessage to entry.to with SAME msg_id + SAME content
-   → bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --retry --msg-id <id>
-ELSE IF entry.attempts >= 3 AND entry.status == "pending":
-   → SendMessage stuck_peer to PM
-   → bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>
-```
-
-### Emission rule
-
-After each actionable `SendMessage` emitted:
-```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register \
-  --from ds --to <dest> --msg-id <msg_id> --type <type>
-```
-`msg_id` format: `ds-<type>-<topic>-<unix_ts>-<seq>` (seq = monotonic counter, incremented on each registration).
-
-### Reception rule
-
-For each incoming actionable message:
-1. Immediately emit `ack:<msg_id>` via SendMessage to the sender
-2. `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-confirm --msg-id <id>`
-3. Process the message semantically
-
-Keep a set of already-processed `msg_id` in context — if a physical retry is received: re-emit `ack:<msg_id>` without re-processing semantically.
-
-### Escalation rule
-
-After 3 retries without ACK → `stuck_peer` to PM:
-```
-type: stuck_peer
-target: <dest>
-msg_id: <id>
-summary: DS emitted <type> <topic>, 3 retries without ACK
-attempts: 3
-first_sent_at: <iso>
-last_retry_at: <iso>
-```
-Then: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-escalate --msg-id <id>`
-
-Example — emission of a `brief_complete` to OR:
-```
-SendMessage to=or {type:brief_complete, msg_id:ds-brief_complete-WRITE_UI-1713340800-001, ...}
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-register --from ds --to or \
-  --msg-id ds-brief_complete-WRITE_UI-1713340800-001 --type brief_complete
-```
-
----
 
 ## Phase responsibilities
 
@@ -128,8 +68,7 @@ DS is spawned **only** if the frontmatter of `PRD.md` contains `has_ui: true`.
 | Recipient | Allowed type | Reason |
 |--------------|--------------|-------|
 | `or` | `brief_complete` | End of an assigned task (writing `ui.md` or REVIEW cycle) |
-| Sender of a received message | `ack:<msg_id>` | Mandatory ACK (ACK protocol) |
-| `pm` | `stuck_peer` | Escalation after 3 retries without ACK |
+| `pm` | `stuck_peer` | Escalation — subordonné non-réactif |
 
 Any other `SendMessage` (spontaneous DM to a peer, comment, broadcast, unsolicited notification, unrequested status update) is **forbidden**. When in doubt: do not emit, escalate to PM via `stuck_peer`.
 
