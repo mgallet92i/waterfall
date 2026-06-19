@@ -645,6 +645,13 @@ Aucune chirurgie archi : le surcoût de relais n'existe que dans le path team-é
 - Hooks `TaskCreated`/`TaskCompleted`/`TeammateIdle` : `team_name` déprécié (nom dérivé session) — vérifier que rien n'en dépend pour l'auth/traçabilité.
 - Reclasser F-035→F-038 en **résolus par F-039** une fois la migration livrée et validée sur run live.
 
+**Phase 0 — sonde live (2026-06-19, CLI v2.1.183, flag=1)** — décisions HO actées : **fusion team+subagent** en un mode `team` (subagent-light reste distinct) ; **sonde-first** avant tout retrait de filet. Faits **validés** (inspection passive + sonde active + autopsie du run `costrat-deck` = `~/.claude/teams/session-f6d540c9/`) :
+- **Spawn d'un `Agent` nommé (background) = vrai coéquipier persistant** : enregistré dans `~/.claude/teams/session-<8c>/config.json` → `members[]` (champs `agentId`, `name`, `agentType`, `model`, `prompt`, `isActive`, `backendType:in-process`) + inbox `inboxes/<name>.json`. La plateforme forme une équipe native ; **l'API marchait déjà** pendant le run planté.
+- **Nom d'équipe = `session-<8c>`** (8 premiers chars du sid). `sidShort` déjà calculé dans `wf-orchestrate.sh` (l.943/988). Les 3 lectures FS basées sur `wf-<name>` (guard ADR-004 l.1018, `--timeline` inbox l.3229, hint CLEANUP l.999) doivent dériver `session-<8c>` ou être retirées.
+- **Livraison coéquipier→chef AUTOMATIQUE** (doc tool `SendMessage` : « delivered automatically; you don't check an inbox ») : envoi sonde réussi du 1er coup (`to:team-lead`). Le message **n'atterrit dans aucun fichier inbox** côté chef (`team-lead.json` reste `[]`) → livraison en **contexte**, pas par fichier. ⇒ tout le protocole **ACK de fiabilité** (`--ack-register`/`--ack-confirm`/retry/ACK-FIRST/`INV-DISPATCH-ACK`/`ack-registry.json`) est **redondant** (cible retrait 2b). Le chef s'adresse comme `team-lead` ou `main`.
+- **Shutdown gracieux** : `shutdown_request` du chef → coéquipier, accepté ; **cleanup auto** en fin de session (wf-quit Step 2/3 d'énumération+shutdown manuel = à retirer).
+- ⚠ **RISQUE AUTH à lever avant 2b** : le hook `wf-auth` a observé `agent_type=<NOM du coéquipier>` dans le payload (sonde nommée `probe-tm` → `agent_type=probe-tm`), **pas** le `subagent_type`. Pour les agents waterfall (`name:or` + `subagent_type:waterfall:wf-or`), vérifier si le payload porte `or` ou `waterfall:wf-or` : `wf-auth` normalise aujourd'hui le préfixe `waterfall:wf-*`→rôle et doit aussi matcher le nom nu. (Le run costrat a progressé multi-phases → l'auth résolvait, mais à confirmer explicitement.)
+
 ---
 
 # Chantiers d'amélioration
