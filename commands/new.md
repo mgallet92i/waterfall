@@ -14,7 +14,7 @@ Starts a new end-to-end need (preflight, team, spawn OR).
 1. Loads the `wf-new` skill via `Skill({name: "wf-new", args: "$ARGUMENTS"})`
 2. `wf-new` runs the preflight check (`scripts/wf-check-teams.sh`)
 3. PM resolves the need name (uses `$ARGUMENTS` if valid kebab-case, otherwise asks HO)
-4. PM executes `TeamCreate wf-<name>` — **one team, one session** (INV-007)
+4. PM spawns OR via `Agent` — the **implicit team** forms at the first spawn (one team per session, enforced by the platform — CLI v2.1.178+, no `TeamCreate`)
 5. PM spawns OR as the **sole first teammate** with a bootstrap brief
 6. OR initialises `sdd/besoins/<name>/`, state file, and `or.log`
 7. OR emits `brief_complete` to PM → PM enters its reactive loop
@@ -34,7 +34,7 @@ Skill({name: "wf-new", args: "$ARGUMENTS"})
 The skill handles everything from here. Do NOT run orchestration logic directly from this command — always delegate to the skill.
 
 ## Reminders (enforced by wf-pm)
-- Only PM calls `TeamCreate` and `AskUserQuestion` — never teammates
+- Only PM spawns teammates (`Agent`) and calls `AskUserQuestion` — never teammates
 - Teammates communicate via `SendMessage` only
 - PM never writes application code — DV handles implementation (spawned by TL via OR → PM)
 - `EnterPlanMode` before IMPLEMENTATION to present `taches.md` to HO

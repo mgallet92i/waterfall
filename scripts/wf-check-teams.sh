@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # wf-check-teams.sh — Preflight check for Claude Code Agent Teams feature flag
-# Usage: called by skills/wf-new/SKILL.md and skills/wf-resume/SKILL.md before TeamCreate
+# Usage: called by skills/wf-new/SKILL.md and skills/wf-resume/SKILL.md before spawning teammates
 # Fails fast with a clear error if CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS is not set to 1.
 
 set -euo pipefail

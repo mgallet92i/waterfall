@@ -1,6 +1,6 @@
 ---
 name: wf-new
-description: Starts a new SDD need via the waterfall workflow — agent teams preflight, TeamCreate, OR spawn, bootstrap_need.
+description: Starts a new SDD need via the waterfall workflow — agent teams preflight, OR spawn, bootstrap_need.
 user-invocable: false
 allowed-tools: Read, Write, Grep, Glob, Bash(bash *, git *), AskUserQuestion, Skill
 ---
@@ -81,19 +81,23 @@ ELSE:
   → Continue to Step 4
 ```
 
-### Step 4 — TeamCreate (conditional on agent_mode)
+### Step 4 — Team formation (implicit — no TeamCreate)
+
+> **CLI v2.1.178+ : `TeamCreate` n'existe plus.** En mode `team`, l'équipe Agent
+> Teams se forme **implicitement** quand PM spawne le premier coéquipier via le
+> tool `Agent` (Step 5). Le nom d'équipe est **dérivé de la session** (`session-<8c>`),
+> géré par le harness — aucune création ni nommage explicite. L'unicité « une équipe
+> par session » est garantie par la plateforme (plus de check de collision manuel).
 
 ```bash
-if [[ "$WF_AGENT_MODE" == "team" ]]; then
-  # Default mode
-  TeamCreate wf-<name>
-elif [[ "$WF_AGENT_MODE" == "subagent-light" ]]; then
-  # subagent-light: no TeamCreate, no team, no inter-agent watchdog
+if [[ "$WF_AGENT_MODE" == "subagent-light" ]]; then
+  # subagent-light: no team — PM-light + TL solo. Proceed to Step 4.ter.
   # Inform HO: "Subagent-light mode active — 2 agents (PM+TL), 3 artefacts, 3 interactions HO"
-  : # no-op — proceed to Step 4.ter
+  : # no-op
 else
-  # Subagent mode (ADR-006): no TeamCreate, agents are spawned via Agent tool
-  # Inform HO: "Subagent mode active — SendMessage and inter-agent watchdog disabled"
+  # team / subagent: no TeamCreate. The team forms when PM spawns the first
+  # teammate via the Agent tool (Step 5). Inform HO of the active mode.
+  : # no-op
 fi
 ```
 
@@ -113,14 +117,15 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-registry.sh init <name>
 > Au moment où l'agent reçoit son brief, `.wf-state.json` existe déjà.
 
 ```bash
-# Mode team / subagent
+# Mode team / subagent — le nom d'équipe est dérivé de --session (session-<8c>),
+# plus de --team (CLI v2.1.178+ : team implicite). --session est la seule clé.
 bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> \
-  --init --team wf-<name> --session "${CLAUDE_SESSION_ID}" \
+  --init --session "${CLAUDE_SESSION_ID}" \
   --agent-mode "${WF_AGENT_MODE}" --dark-factory "${WF_DARK_FACTORY}"
 
-# Mode subagent-light — pas de team, R-002 résolu : handle_init accepte toute valeur --team
+# Mode subagent-light — pas de team
 bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> \
-  --init --team "none" --session "${CLAUDE_SESSION_ID}" \
+  --init --session "${CLAUDE_SESSION_ID}" \
   --agent-mode "subagent-light" --dark-factory "${WF_DARK_FACTORY}"
 ```
 
@@ -179,8 +184,10 @@ PM-light pilote directement sans OR intermédiaire.
 # Mode subagent-light — SKIP this step entirely. PM-light handles TL spawn in Phase D.
 
 # Mode team
-TeamCreate already done at Step 4 → spawn each role as teammate
-  in a single PM turn (5 ou 6 spawns), with model=$WF_MODEL_<role>.
+Spawn each role as a NAMED background teammate via the Agent tool in a single PM
+  turn (5 ou 6 spawns), with name=<role>, subagent_type=waterfall:wf-<role>,
+  model=$WF_MODEL_<role>, run_in_background=true. The FIRST spawn forms the implicit
+  team (session-<8c>) — no TeamCreate. Teammates are addressable via SendMessage(to:<role>).
 
 # Mode subagent
 Single PM turn with N parallel Agent() calls:
@@ -316,10 +323,10 @@ tracé à `tasks.md`.
 
 ## Rules
 
-- **Mandatory preflight** — TeamCreate will fail if the flag is absent
+- **Mandatory preflight** — Agent Teams requires `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` (teammates won't form without it)
 - **Name MUST be kebab-case** — validate strictly
 - **No collision** — check `wf/needs/<name>/` before spawn
-- **PM stays lean at bootstrap** — name resolution + TeamCreate + OR spawn, then full delegation to OR
+- **PM stays lean at bootstrap** — name resolution + OR spawn (implicit team), then full delegation to OR
 - **One question at a time** to HO during name resolution
 - **Session marker**: OR creates `$HOME/.claude/wf-session-active.<session_id>` after `--init` (session-scoped marker, required by `/waterfall:resume`). The `session_id` is `$WF_SID` resolved in step 1.bis, passed via `--session`. No `leadSessionId` or `"default"` fallback (EX-010, INV-002).
 - **Params `--team` + `--session`**: `wf-orchestrate.sh <name> --init --team wf-<name> --session "$WF_SID"` — `WF_SID` is the only source of truth for the HO sid (EX-006, ADR-001).

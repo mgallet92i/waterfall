@@ -130,7 +130,7 @@ cat <<EOF
 ## Waterfall config resolved
 
 - **source**: $CONFIG_SOURCE
-- **agent_mode**: $WF_AGENT_MODE  _(team = Agent Teams via TeamCreate/SendMessage; subagent = Agent tool without team, no inter-agent SendMessage; subagent-light = Agent tool, 2 agents PM+TL, 3 artefacts, 3 interactions HO)_
+- **agent_mode**: $WF_AGENT_MODE  _(team = Agent Teams, implicit team via Agent spawn + inter-agent SendMessage, no TeamCreate; subagent = Agent tool without team, no inter-agent SendMessage; subagent-light = Agent tool, 2 agents PM+TL, 3 artefacts, 3 interactions HO)_
 - **dark_factory**: $WF_DARK_FACTORY  _(on = max autonomy, validate checkpoints alone; off = escalate decisions to HO)_
 - **watchdog**: $WF_WATCHDOG_INTERVAL
 - **language**: $WF_LANGUAGE  _(auto-detected from \$LANG; override via env WF_LANGUAGE)_

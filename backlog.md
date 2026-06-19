@@ -652,6 +652,8 @@ Aucune chirurgie archi : le surcoût de relais n'existe que dans le path team-é
 - **Shutdown gracieux** : `shutdown_request` du chef → coéquipier, accepté ; **cleanup auto** en fin de session (wf-quit Step 2/3 d'énumération+shutdown manuel = à retirer).
 - ⚠ **RISQUE AUTH à lever avant 2b** : le hook `wf-auth` a observé `agent_type=<NOM du coéquipier>` dans le payload (sonde nommée `probe-tm` → `agent_type=probe-tm`), **pas** le `subagent_type`. Pour les agents waterfall (`name:or` + `subagent_type:waterfall:wf-or`), vérifier si le payload porte `or` ou `waterfall:wf-or` : `wf-auth` normalise aujourd'hui le préfixe `waterfall:wf-*`→rôle et doit aussi matcher le nom nu. (Le run costrat a progressé multi-phases → l'auth résolvait, mais à confirmer explicitement.)
 
+**Lot 2a — bootstrap (2026-06-19, livré)** : `team` rendu fonctionnel sur la nouvelle API, **sans fusion des modes** (la fusion suit la coordination → 2b). Retiré tous les appels/refs `TeamCreate`/`TeamDelete` du chemin bootstrap (`wf-new`, `wf-resume`, `wf-quit`, `wf-pm` skill, `commands/new|resume`, `wf-read-config`, `.wf-config.example`, `wf-check-teams`). `wf-orchestrate.sh` : nom d'équipe **dérivé `session-<8c>`** (depuis `session_id`) aux 3 lectures FS (guard ADR-004, `--timeline` inbox, hint CLEANUP) ; hint `SPAWN_TEAM` réécrit (team implicite) ; hint `CLEANUP` (cleanup auto, plus de `TeamDelete`) ; `--help` corrigé (`--init --session`, `--team` toléré-ignoré). `--init --team` neutralisé dans les skills. Tests : bash -n + doc-drift 5/5 + orchestrate query/contract/smoke/complete/skip + --help. **Reste 2b** : fusion modes + retrait ACK/watchdog-idle + personas OR/PM (lever d'abord le risque auth ci-dessus).
+
 ---
 
 # Chantiers d'amélioration

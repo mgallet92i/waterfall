@@ -875,8 +875,9 @@ switch(phase) {
     if (step === 'COLLECT_BRANCH_TYPE') params.hint = `${agentLabel}: complete with --params branch_type=feature (default) or branch_type=hotfix. OR self-completes with branch_type=feature unless context indicates a hotfix.`;
     if (step === 'CREATE_BRANCH_Q') params.hint = `${agentLabel}: create the branch using <branch_type> as prefix: git checkout -b <branch_type>/<name> (or <branch_type>/<card_num>-<name> if card_num is set). Default branch_type=feature if missing. Do NOT inject a placeholder like NO-JIRA when card_num is empty. Complete with --params branch=<branch_name>.`;
     if (step === 'SPAWN_TEAM') {
-      params.hint = `${agentLabel}: NOOP — complete immediately. The wf-<name> team was created by the wf-new skill before bootstrap. Other agents (PO, TL, RV, QA, DS, DV) are spawned on demand via OR's spawn_request — do not invoke TeamCreate here. Complete with --params team_name=wf-<name>.`;
-      params.team_name = 'wf-' + name;
+      const teamName = 'session-' + String(state.session_id || '').slice(0, 8);
+      params.hint = `${agentLabel}: NOOP — complete immediately. The agent team forms IMPLICITLY when PM spawns the first teammate via the Agent tool (CLI v2.1.178+: no TeamCreate). Team name is session-derived (${teamName}). PO, TL, RV, QA, DS, DV are spawned via PM on demand. Complete with --params team_name=${teamName}.`;
+      params.team_name = teamName;
     }
     break;
   case 'REQUIREMENTS':
@@ -998,7 +999,7 @@ switch(phase) {
     if (step === 'CLEANUP') {
       const sid = state.session_id || 'default';
       params.session_id = sid;
-      params.hint = `${agentLabel}: 1) read ~/.claude/teams/<team_name>/config.json to list all members. 2) Send shutdown_request to each (TeamDelete itself is PM-owned — request it from PM). 3) Wait for confirmations. 4) Remove session markers: rm -f ~/.claude/plans/*.md (current session), rm -f $HOME/.claude/wf-session-active.${sid}`;
+      params.hint = `${agentLabel}: the agent team is cleaned up AUTOMATICALLY at session end (CLI v2.1.178+: no TeamDelete, no manual teammate shutdown). Just remove session markers: rm -f ~/.claude/plans/*.md (current session), rm -f $HOME/.claude/wf-session-active.${sid}`;
     }
     if (step === 'PR_TRIAGE') params.hint = `${agentLabel}: read PR comments via gh api. Classify: decision=minor (code fixes only) or decision=major (specs/arch changes). Complete with --params decision=<minor|major>.`;
     break;
@@ -1015,7 +1016,7 @@ if (agent && !['pm', 'or'].includes(agent)) {
     const fs = await import('node:fs');
     const path = await import('node:path');
     const os = await import('node:os');
-    const teamName = state.team_name || ('wf-' + name);
+    const teamName = 'session-' + String(state.session_id || '').slice(0, 8);
     const cfgPath = path.join(os.homedir(), '.claude', 'teams', teamName, 'config.json');
     if (fs.existsSync(cfgPath)) {
       const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
@@ -3221,13 +3222,12 @@ handle_timeline() {
     emit_error "State file not found at $state_file" "NO_STATE"
   fi
 
-  local team_name
-  team_name=$(jq -r '.team_name // ("wf-" + .name // empty)' "$state_file")
-  if [[ -z "$team_name" || "$team_name" == "null" ]]; then
-    team_name="wf-$name"
-  fi
+  # Team name is session-derived (CLI v2.1.178+): session-<first 8 chars of sid>.
+  local sid team_name
+  sid=$(jq -r '.session_id // empty' "$state_file" | tr -d '\r\n')
+  team_name="session-${sid:0:8}"
   local inbox_dir="$HOME/.claude/teams/$team_name/inboxes"
-  if [[ ! -d "$inbox_dir" ]]; then
+  if [[ -z "$sid" || ! -d "$inbox_dir" ]]; then
     emit_error "Inbox dir not found: $inbox_dir" "NO_INBOX"
   fi
 
@@ -3339,7 +3339,7 @@ const contract = {
   ],
 
   commands: [
-    { command: "<name> --init --team <team_name>", args: "[--session <sid>] [--desc text] [--card-num KEY]",   description: "Initialize a need: create wf/needs/<name>/, copy templates, create .wf-state.json with session_id extracted from team config. REQUIRED at bootstrap. --session $CLAUDE_SESSION_ID is required to scope worktrees.", example: "bash scripts/wf-orchestrate.sh my-need --init --team wf-my-need --session \"$CLAUDE_SESSION_ID\"" },
+    { command: "<name> --init --session <sid>", args: "[--desc text] [--card-num KEY] [--agent-mode m] [--dark-factory on|off]",   description: "Initialize a need: create wf/needs/<name>/, copy templates, create .wf-state.json. --session $CLAUDE_SESSION_ID is REQUIRED — it scopes worktrees and derives the implicit team name (session-<8c>). The team forms when PM spawns the first teammate via the Agent tool (CLI v2.1.178+: no TeamCreate). A legacy --team flag is tolerated but IGNORED.", example: "bash scripts/wf-orchestrate.sh my-need --init --session \"$CLAUDE_SESSION_ID\"" },
     { command: "<name> --query",    args: "",                                  description: "Return current step as JSON: { phase, step, agent, action, expected_params, params, hint, should_stop, session_id }. Call this BEFORE every --complete.", example: "bash scripts/wf-orchestrate.sh my-need --query" },
     { command: "<name> --complete <PHASE:STEP>", args: "[--params k=v ...]", description: "Mark step completed, validate params, advance state. Identity enforced by PreToolUse hook hooks/wf-auth.sh (agent_id → registry → STEP_AGENT match).", example: "bash scripts/wf-orchestrate.sh my-need --complete BOOTSTRAP:DETERMINE_NAME --params need_name=my-need" },
     { command: "<name> --abort",    args: '--reason "<text>"',                description: "Force-abort a need (sets status=aborted, cleans markers/worktrees). PM-only.", example: 'bash scripts/wf-orchestrate.sh my-need --abort --reason "HO cancelled"' },
@@ -3363,7 +3363,7 @@ const contract = {
   typical_bootstrap_flow: [
     "1. OR receives bootstrap_need brief from PM.",
     "2. OR runs: bash scripts/wf-orchestrate.sh --help  (reads THIS contract — do not skip).",
-    "3. OR runs: bash scripts/wf-orchestrate.sh <name> --init --team <team_name>  → creates state file.",
+    "3. OR runs: bash scripts/wf-orchestrate.sh <name> --init --session $CLAUDE_SESSION_ID  → creates state file (team name derived = session-<8c>).",
     "4. OR runs: bash scripts/wf-orchestrate.sh <name> --query  → returns first step with agent=pm (DETERMINE_NAME).",
     "5. OR sends SendMessage to PM (PLEASE_COMPLETE_STEP) — OR does NOT call --complete for agent=pm steps.",
     "6. PM runs --complete, returns step_advanced to OR.",

@@ -29,28 +29,25 @@ If the file **exists**: read its content to obtain the `need_name`:
 need_name=$(cat ~/.claude/wf-session-active.<session_id>)
 ```
 
-## Step 2 — Load the team config
+## Step 2 — Load the team config (implicit team, session-derived)
 
-Build the config path:
+The team name is **session-derived** (CLI v2.1.178+): `session-<first 8 chars of sid>`. Read the need's `session_id` and build the path:
+```bash
+sid=$(jq -r .session_id "wf/needs/$need_name/.wf-state.json" | tr -d '\r\n')
+team_cfg="$HOME/.claude/teams/session-${sid:0:8}/config.json"
+teammates=$(jq -r '.members[]?.name | select(. != "team-lead")' "$team_cfg" 2>/dev/null)
 ```
-~/.claude/teams/wf-<need_name>/config.json
-```
 
-Read the JSON to enumerate active teammates (field `teammates` or equivalent depending on harness format).
-
-If the file is missing or corrupted: continue with an empty teammates list (R4 fallback — markers will be deleted anyway, teammates will time out on the harness side).
+If the file is missing (`subagent-light`, or no team formed): continue with an empty list (R4 fallback — the platform cleans up teammates at session end anyway).
 
 ## Step 3 — Send shutdown_request to each teammate
 
-For each active teammate identified in step 2, send via `SendMessage` (plain text):
+For each teammate from step 2, send a graceful `shutdown_request` via `SendMessage`, referencing the teammate by name:
 ```
-to: <teammate_name>
-message: |
-  type: shutdown_request
-  request_id: wf-quit-<session_id>
+SendMessage(to: <teammate_name>, message: { type: "shutdown_request", reason: "wf-quit" })
 ```
 
-Send messages in parallel if possible. Do not wait for a response (`shutdown_response`) — the shutdown is unilateral.
+Best-effort: teammates are also cleaned up **automatically at session end**, so do not block waiting for `shutdown_response`.
 
 ## Step 3.bis — Close the active segment (ADR-008)
 

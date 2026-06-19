@@ -1,8 +1,8 @@
 ---
 name: wf-resume
-description: Resumes an interrupted waterfall workflow — preflight, need lookup, Agent Teams team re-creation, OR handoff with resume brief.
+description: Resumes an interrupted waterfall workflow — preflight, need lookup, agent re-spawn (implicit team), OR handoff with resume brief.
 user-invocable: false
-allowed-tools: Read, Grep, Glob, Bash, AskUserQuestion, Skill, TeamCreate
+allowed-tools: Read, Grep, Glob, Bash, AskUserQuestion, Skill, Agent, SendMessage
 ---
 
 # wf-resume — Resume an interrupted workflow
@@ -119,23 +119,16 @@ Read `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query` to kn
 | VALIDATION            | OR + QA                                              |
 | CLOTURE               | OR (PM handles alone)                                |
 
-### Step 5 — Team re-creation and OR spawn
+### Step 5 — Agent re-spawn and OR handoff
 
-1. Load the `wf-pm` skill via `Skill({name: "wf-pm"})`. **The main conversation thus adopts PM responsibilities** — PM is never spawned as a separate agent (aligned with `wf-new` step 3). The team-lead created by `TeamCreate` IS the main.
-2. PM (= main) executes TeamCreate according to `agent_mode`:
-   ```bash
-   if [[ "$WF_AGENT_MODE" == "team" ]]; then
-     TeamCreate wf-<name>
-   else
-     # Subagent mode: spawn OR via Agent tool, no TeamCreate
-   fi
-   ```
+1. Load the `wf-pm` skill via `Skill({name: "wf-pm"})`. **The main conversation thus adopts PM responsibilities** — PM is never spawned as a separate agent (aligned with `wf-new` step 3). The main IS the team lead.
+2. PM (= main) re-spawns agents — **no `TeamCreate`** (CLI v2.1.178+). The implicit team re-forms (`session-<8c>`) when PM spawns the first teammate via the Agent tool. In `subagent-light` there is no team. (The legacy named-team re-creation step is gone.)
 3. PM (= main) may **clear the traceability registry** (optional, DEC-001):
    ```bash
    bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-registry.sh clear <name>
    ```
    > **DEC-001**: traceability only — enforcement uses `agent_type` from the harness payload. Skipping this step does not prevent teammates from completing their steps.
-4. PM (= main) spawns OR first via `Agent` (subagent_type=`waterfall:wf-or`, name=`or`, team_name=`wf-<name>`). For traceability (optional):
+4. PM (= main) spawns OR first via `Agent` (subagent_type=`waterfall:wf-or`, name=`or`, run_in_background=true — this first spawn re-forms the implicit team). For traceability (optional):
    ```bash
    bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-registry.sh add <name> <or_agent_id> or
    ```
@@ -183,6 +176,6 @@ If disagreement detected → OR returns `NEED_PM_DECISION` with details, PM asks
 - **Mandatory consistency check** — prevents resuming on a corrupted state
 - **Silent recovery preferred** — only disturb HO if the state is genuinely corrupted
 - **One question at a time** to HO (need selection, worktree cleanup)
-- **Agent Teams model only** — no legacy subagent model. Use `TeamCreate` + `SendMessage` exclusively.
+- **Implicit team (CLI v2.1.178+)** — no `TeamCreate`. The team re-forms when PM spawns the first teammate via `Agent` ; teammates coordinate via `SendMessage`. `subagent-light` has no team.
 
 > **IMPORTANT — SendMessage plain text obligatoire** : le paramètre `message` de `SendMessage` n'accepte que `string`. Utiliser le format plain text `clé: valeur` — jamais d'objet `{...}`, jamais `JSON.stringify()`.
