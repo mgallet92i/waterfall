@@ -661,7 +661,16 @@ Aucune chirurgie archi : le surcoût de relais n'existe que dans le path team-é
 - `wf-orchestrate.sh` : suppression des 4 commandes `--ack-register/confirm/query/escalate` (handlers, dispatch, `--help`, message UNKNOWN_COMMAND) + création `ack-registry.json` à l'init. bash -n + `--help` OK.
 - `wf-pm.md` + `skills/wf-pm` : section watchdog refondue (conso `watchdog.alert` HEARTBEAT/HISTORY + `phase_stalled` ; retrait scrutiny `ack-registry`, heuristique H2 « mailbox unconsumed », `ack_expired`/`inbox_unread`, `pending_dms`) ; H1 (idle_repeat) et paliers d'escalade H1/H2/ask_ho **gardés**.
 - Mentions cosmétiques `ack-registry.json` → `.team-registry.json` (`wf-check-jq`, `wf-new`, `wf-resume`, README).
-Tests : bash -n + doc-drift 5/5 + orchestrate smoke/query/contract/complete/skip ; aucun test ne référençait les tokens retirés. **Reste** : Thème C (fusion modes team+subagent).
+Tests : bash -n + doc-drift 5/5 + orchestrate smoke/query/contract/complete/skip ; aucun test ne référençait les tokens retirés.
+
+**Lot 2b — Thème C : fusion modes team+subagent (2026-06-19, livré)** : `subagent` (mécanique synchrone) n'a plus de fondement avec l'API Agent Teams native → **fusionné dans `team`**. `subagent-light` reste distinct.
+- `wf-read-config.sh` : `subagent` accepté comme **alias déprécié** → mappé sur `team` (`WF_AGENT_MODE_DEPRECATED`) ; **défaut basculé sur `team`**. Zéro config consommateur cassée (vérifié : subagent→team, team→team, light→light).
+- `wf-new` : branche spawn subagent (synchrone) retirée ; Step 4.quater pré-complete BOOTSTRAP étendu à **tous modes** (PM=main partout — évite deadlock F-035) ; Step 5.ter watchdog tourne en `team` (la branche skip-subagent était morte) ; `[T_STATUS]`/output-parse → `t_status_update`.
+- Personas : `wf-or` (retrait polling subagent + interdiction SendMessage subagent + branches comm/ctx-count/spawn mode-dépendantes) ; `wf-pm` + `skills/wf-pm` (dispatcher spawn unifié, section `[T_STATUS]` fusionnée dans `t_status_update`) ; `wf-dv`/`wf-tl` (émission status → `t_status_update` SendMessage) ; hint `DV_IMPLEMENT` (orchestrate) unifié.
+- Docs : `.wf-config.example`, README, AGENTS.md (2 modes + alias déprécié).
+Tests : bash -n + doc-drift 5/5 + skip 7/7 (matrice modes ARCH-05) + bats complet.
+
+**F-039 — état** : ✅ migration livrée (Phase 0 + Thèmes A/B/C). Reste à **valider sur run live** avant de reclasser F-035→F-038 en résolus-par-F-039.
 
 ---
 

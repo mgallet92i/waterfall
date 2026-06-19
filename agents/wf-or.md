@@ -130,11 +130,9 @@ OR reads `config.agent_mode` **once at bootstrap**, from the `bootstrap_need` br
 
 **Post-context-clear fallback**: if OR starts in resume mode (`/waterfall:resume`) or detects a pre-existing `.wf-state.json`, OR re-reads `config.agent_mode` from `.wf-state.json` (field `config.agent_mode`) before resuming the loop — see §Resume Sequence.
 
-**Polling in subagent mode**: in `subagent` mode, teammates are not reachable via `SendMessage`. OR infers each teammate's progress via polling:
-```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --query
-```
-The step transition in `--query` confirms completion of the subagent teammate (which calls `wf-orchestrate.sh --complete` from its isolated agent context). OR does not receive `brief_complete` from subagent teammates — it detects completion via step advancement.
+> OR n'opère qu'en mode `team` (en `subagent-light` il n'y a pas d'OR). Les teammates
+> sont des coéquipiers persistants joignables directement via `SendMessage` ; leurs
+> `brief_complete` sont livrés automatiquement (F-039) — pas de polling.
 
 ---
 
@@ -164,7 +162,6 @@ If the hook returns `wf-auth: OR cannot write artifact <X>.md ...`, this is a **
 3. **Delegate** via the proper channel — see `agents/_shared/constitution.md §Mapping artefacts → owners`.
 4. **Wait** for the owner's `brief_complete` before resuming.
 
-**In `subagent` mode**: OR must **never** emit `SendMessage` to PO, TL, RV, QA, DS or DV. Only PM (`team-lead`) is authorized. Check: `IF config.agent_mode == "subagent" AND to ∉ {pm, team-lead} → FORBIDDEN`.
 
 ## Codewrite bypass contract
 
@@ -250,9 +247,7 @@ Examples of PM-only steps (non-exhaustive list, the `agent` field of `--query` i
 
 ## Watchdog — belt-and-suspenders
 
-**`subagent` mode**: OR MUST NOT call `CronCreate` and MUST NOT touch `.watchdog-cron-active`. Watchdog is skipped entirely.
-
-**`team` mode only**: PM creates the cron (primary). OR is a safety net: at each phase start, if `.watchdog-cron-active` marker is absent, OR creates the cron via `CronCreate` and logs `[WATCHDOG] OR fallback: cron created`. If marker present → do nothing.
+PM creates the cron (primary). OR is a safety net: at each phase start, if `.watchdog-cron-active` marker is absent, OR creates the cron via `CronCreate` and logs `[WATCHDOG] OR fallback: cron created`. If marker present → do nothing. (The watchdog detects **crash/heartbeat/history** stalls only — idle is notified natively, F-039.)
 
 ---
 
@@ -361,7 +356,7 @@ OR **must** include a `config` field in every `initial_brief` of every `spawn_re
   "need": "<name>",
   "config": {
     "dark_factory": "on",
-    "agent_mode": "subagent"
+    "agent_mode": "team"
   },
   "brief": "<instructions>"
 }
@@ -453,7 +448,7 @@ Toute évolution de spec ou de tâche se matérialise **uniquement** par l'édit
 6. (only when step 4 dispatched to a teammate) Wait for brief_complete (timeout 5 min → retry 1× → ERROR_UNRECOVERABLE). Before advancing, run [FS-CHECK] per §INV-001 (Auto-test filesystem).
    [CTX-CHECK] À réception de brief_complete d'un teammate, OR vérifie consolidate_pending :
      result=$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ctx-count \
-       --teammate <role> --mode team|subagent)
+       --teammate <role> --mode team)
      pending=$(echo "$result" | jq -r '.consolidate_pending')
      if [[ "$pending" == "true" ]]; then
        # 1. Appeler --ctx-consolidate-respawn AVANT le respawn (reset compteur + log)
@@ -471,24 +466,15 @@ Toute évolution de spec ou de tâche se matérialise **uniquement** par l'édit
 
 ### Annotation ctx-count — appel obligatoire à chaque SendMessage vers un teammate (EX-005, EX-009)
 
-À chaque `SendMessage` émis par OR vers un teammate (mode team), OR DOIT appeler `--ctx-count` immédiatement après l'émission :
+À chaque `SendMessage` émis par OR vers un teammate, OR DOIT appeler `--ctx-count` immédiatement après l'émission :
 
 ```bash
-# [CTX] — après chaque SendMessage vers un teammate en mode team
+# [CTX] — après chaque SendMessage vers un teammate
 msg_kb=$(echo -n "$msg_content" | wc -c | awk '{printf "%.2f", $1/1024}')
 result=$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh $NEED --ctx-count \
   --teammate <role> --mode team --kb "$msg_kb")
 just_triggered=$(echo "$result" | jq -r '.just_triggered')
 # Si just_triggered=true : OR logge [CTX] consolidate_pending et attend le prochain brief_complete pour respawner
-```
-
-En mode subagent, l'appel `--ctx-count` est effectué lors de chaque `spawn_request` (taille du `initial_brief` comme estimation KB) :
-
-```bash
-# [CTX] — lors de chaque spawn_request (mode subagent)
-brief_kb=$(echo -n "$initial_brief" | wc -c | awk '{printf "%.2f", $1/1024}')
-result=$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh $NEED --ctx-count \
-  --teammate <role> --mode subagent --kb "$brief_kb")
 ```
 
 **Règle consolidate_pending à brief_complete (EX-005, EX-009)** : OR ne doit jamais respawner un teammate en cours de tâche. Le respawn nominal est uniquement déclenché au moment de la réception d'un `brief_complete` (frontière naturelle — la tâche est terminée). Si `consolidate_pending=true` à ce moment, OR prépare le brief consolidé minimal (cf. `design.md §3.5`) et émet un nouveau `spawn_request` AVANT de compléter le step courant.
@@ -519,7 +505,7 @@ fi
 **Invariants** :
 - **INV-OR-HANDOFF-01** : à `phase_boundary:true`, l'OR courant **termine sa vie** après l'émission du `or_recycle_request`. Il ne re-query pas, ne dispatche rien de la nouvelle phase — c'est le rôle du nouvel OR. Continuer la boucle = bug (annule le bénéfice de contexte léger).
 - **INV-OR-HANDOFF-02** : le nouvel OR démarre via un brief `resume` minimal de PM, exécute la **Resume sequence** (re-lecture `config.agent_mode`/`dark_factory` depuis `.wf-state.json`), puis `--query` → pilote `new_phase`. Aucune synthèse métier/technique héritée.
-- **INV-OR-HANDOFF-03** : le handoff ne s'applique **qu'en mode `team`/`subagent`**. En `subagent-light` il n'y a pas d'OR (PM+TL solo) — le flag est ignoré de fait.
+- **INV-OR-HANDOFF-03** : le handoff ne s'applique qu'en mode `team`. En `subagent-light` il n'y a pas d'OR (PM+TL solo) — le flag est ignoré de fait.
 - **INV-OR-HANDOFF-04** (idempotence) : si l'OR neuf, au `--query`, retombe sur un step dont la phase == `new_phase` attendue, il pilote normalement ; aucun second `or_recycle_request` n'est émis pour la même frontière (le flag n'apparaît qu'au `--complete` traversant, pas au `--query`).
 
 ---
@@ -775,7 +761,7 @@ Triggered when PM sends a brief with `action: bootstrap_need`.
 1. Run `--help` (see §Session INV).
 2. Check non-collision — if `wf/needs/<name>/` already exists → escalate to PM (`NEED_PM_DECISION`).
 3. Initialize the OR log: `touch wf/needs/<name>/or.log` + first entry (if not yet present).
-4. In `subagent` mode, the team fixe (PO, TL, RV, QA, plus DS si `has_ui:true`) is already pre-spawned by PM. OR n'émet PAS de `spawn_request` pour ces rôles. In `team` mode, OR émet `spawn_request` à PM uniquement si un rôle manque dans `.team-registry.json`. DS: **lazy** — spawned only if `has_ui:true` in TECHNICAL_DESIGN.
+4. The team fixe (PO, TL, RV, QA, plus DS si `has_ui:true`) is pre-spawned by PM at bootstrap (`wf-new` Step 5). OR n'émet PAS de `spawn_request` pour ces rôles tant qu'ils sont présents dans `.team-registry.json`. OR émet un `spawn_request` à PM **uniquement** si le guard ADR-004 signale un rôle manquant (`must_spawn_first`). DS: **lazy** — spawned only if `has_ui:true` in TECHNICAL_DESIGN.
 5. Do **not** send direct briefs to spawned agents — `initial_brief` is transmitted by PM. OR does not contact the teammate directly post-spawn.
 6. Advance state via the standard loop: `--query`, then `--complete` the current step exactly as instructed by its `hint`/`expected_params` (never a step name from memory — an invented bootstrap step name used to live here and did not exist in the machine). Log and notify PM.
 

@@ -30,7 +30,7 @@ For steps where `--query` returns `agent=tl`, the order is **STRICT** and **NON-
 3. SendMessage to=or `{type:brief_complete, ...}`
 4. Only then return control / go idle
 
-**Why this order matters (subagent mode)**: if you skip step 2 and notify OR before firing `--complete`, PM is blocked by the auth hook (INV-005 — only `agent_type=tl` may `--complete` your step) and has to wake you again via SendMessage just to re-run `--complete`. That's one wasted round-trip per step. **Always `--complete` BEFORE `brief_complete`.**
+**Why this order matters**: if you skip step 2 and notify OR before firing `--complete`, PM is blocked by the auth hook (INV-005 — only `agent_type=tl` may `--complete` your step) and has to wake you again via SendMessage just to re-run `--complete`. That's one wasted round-trip per step. **Always `--complete` BEFORE `brief_complete`.**
 
 ## Phase responsibilities
 
@@ -231,9 +231,9 @@ If TL stops sending heartbeats > 10 minutes → OR suspects a stall and escalate
 
 ### Relay t_status_update (EX-004 / EX-005)
 
-> **Exclusion** : mode `subagent-light` (EX-006) — cette section ne s'applique qu'aux modes `subagent` et `team`.
+> **Exclusion** : mode `subagent-light` (EX-006) — ne s'applique pas (pas de DV/TL relay).
 
-**Mode team** : à réception d'un `SendMessage` de type `t_status_update` depuis un DV :
+À réception d'un `SendMessage` de type `t_status_update` depuis un DV :
 1. Relayer immédiatement à PM via `SendMessage` avec le même payload :
    ```
    type: t_status_update
@@ -242,13 +242,7 @@ If TL stops sending heartbeats > 10 minutes → OR suspects a stall and escalate
    ```
 2. Ne pas modifier ni transformer le champ `status` — relay sans transformation.
 
-**Mode subagent** : à la fin de chaque appel Agent DV (lecture du résultat) :
-1. Parser les lignes `[T_STATUS] t_id=T-xxx status=<val>` dans l'output texte DV.
-2. Réémettre chaque marqueur dans l'output text TL avant de rendre la main à PM :
-   `[T_STATUS] t_id=T-xxx status=<val>`
-3. Réémettre TOUS les marqueurs trouvés — un par ligne, en fin de réponse TL.
-
-**Règle EX-007** : TL ne crée pas de tasks CC avec `metadata.t_id`. Les `TaskCreate` et `TaskUpdate` sont réservés à PM (INV-002). Les marqueurs `[T_STATUS]` et les `SendMessage t_status_update` sont des signaux de transport — TL ne les interprète pas, il les relaie uniquement.
+**Règle EX-007** : TL ne crée pas de tasks CC avec `metadata.t_id`. Les `TaskCreate` et `TaskUpdate` sont réservés à PM (INV-002). Les `SendMessage t_status_update` sont des signaux de transport — TL ne les interprète pas, il les relaie uniquement.
 
 ### Worktree merge (ADR-002)
 

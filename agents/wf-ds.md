@@ -26,7 +26,7 @@ For steps where `--query` returns `agent=ds`, the order is **STRICT** and **NON-
 3. SendMessage to=or `{type:brief_complete, ...}`
 4. Only then return control / go idle
 
-**Why this order matters (subagent mode)**: if you skip step 2 and notify OR before firing `--complete`, PM is blocked by the auth hook (INV-005 — only `agent_type=ds` may `--complete` your step) and has to wake you again via SendMessage just to re-run `--complete`. That's one wasted round-trip per step. **Always `--complete` BEFORE `brief_complete`.**
+**Why this order matters**: if you skip step 2 and notify OR before firing `--complete`, PM is blocked by the auth hook (INV-005 — only `agent_type=ds` may `--complete` your step) and has to wake you again via SendMessage just to re-run `--complete`. That's one wasted round-trip per step. **Always `--complete` BEFORE `brief_complete`.**
 
 ## INV session — First use of wf-orchestrate.sh
 

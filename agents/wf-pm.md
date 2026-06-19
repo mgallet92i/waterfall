@@ -194,7 +194,7 @@ otherwise:
 
 ---
 
-## spawn_request dispatcher — agent_mode branch
+## spawn_request dispatcher
 
 PM reads `config.agent_mode` once at bootstrap. On context clear, PM re-reads from `.wf-state.json`.
 
@@ -221,14 +221,10 @@ VALID_SPAWN_ROLES = { or, po, tl, rv, qa, ds, dv } (+ alias dv1..dv9)
 OR doit corriger son `role` à réception d'un `spawn_denied` (lire `.expected_artifact`/dispatch matrix), jamais ré-émettre le même rôle.
 
 ```
-IF config.agent_mode == "subagent":
-  Agent(subagent_type: wf-<role>, prompt: initial_brief)
-  → NO TeamCreate  → NO initial SendMessage to the teammate
-  Reply to OR: spawn_confirmed { request_id, teammate_name, model, channel: "subagent" }
-
-IF config.agent_mode == "team" (default):
-  Agent via team + SendMessage(teammate_name, initial_brief)
-  Reply to OR: spawn_confirmed { request_id, teammate_name, model }
+# Spawn du teammate — équipe implicite, pas de TeamCreate (CLI v2.1.178+).
+# Le brief passe dans le prompt du spawn (livré nativement au teammate).
+Agent(name: <role>, subagent_type: waterfall:wf-<role>, prompt: initial_brief, run_in_background: true)
+Reply to OR: spawn_confirmed { request_id, teammate_name, model }
 ```
 
 ---
@@ -251,9 +247,8 @@ IF config.agent_mode == "team" (default):
 7. Log obligatoire (UNE seule ligne) :
      bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --log \
        --msg "[DV-LAZY] N=<N> justification=<critical_path_width=K|max_dv=K> tasks=<count>"
-8. Émettre UN SEUL batch de spawn :
-     - mode subagent : N appels Agent() en un seul tour PM
-     - mode team    : un seul SendMessage au plugin/team manager pour le batch
+8. Émettre UN SEUL batch de spawn : N appels `Agent()` nommés
+     (name=dv1..dvN, subagent_type=waterfall:wf-dv, run_in_background) en un seul tour PM.
 9. Update tracking.md avec la composition de la team DV.
 10. Notify OR via step_advanced.
 ```
@@ -282,7 +277,7 @@ IF config.agent_mode == "team" (default):
 ```
 
 **Critères opposables** (TF-001) :
-- Après le DV-lazy batch (modes subagent et team), la TaskList PM contient N tasks `pending`, chacune avec `metadata.t_id` unique.
+- Après le DV-lazy batch (mode `team`), la TaskList PM contient N tasks `pending`, chacune avec `metadata.t_id` unique.
 - Aucune `TaskCreate` émise avant `PLANNING:CHECKPOINT_TASKS` (INV-003).
 - En mode `subagent-light` : aucune `TaskCreate` émise (EX-006).
 - Le store `{t_id → taskId}` est en mémoire PM (volatile — reconstruit au resume via §Resume après context clear).
@@ -302,7 +297,7 @@ intent: <1 phrase ≤ 200 caractères>
 context_files:
   - wf/needs/<name>/PRD.md
 config:
-  agent_mode: <subagent|team>
+  agent_mode: team
   dark_factory: <on|off>
   language: <fr|en>
 # corps libre ≤ 20 lignes
@@ -426,32 +421,7 @@ DEC-<num>: <decision> (dark_factory auto, <ISO8601 now>)
 
 Before transitioning to `VALIDATION:QA_ACCEPTANCE_TEST`, PM verifies that QA is active. If QA is not spawned → PM asks OR via SendMessage to spawn QA before continuing.
 
-## Parse [T_STATUS] — mode subagent (EX-005 / EX-002 / EX-009)
-
-> **Exclusion** : mode `subagent-light` (EX-006) — ne pas exécuter dans ce mode.
-> **Déclencheur** : après chaque retour d'appel `Agent(TL)` pendant la phase IMPLEMENTATION.
-
-PM lit l'output texte retourné par l'appel Agent TL et extrait tous les marqueurs `[T_STATUS]` :
-
-```
-regex: /\[T_STATUS\] t_id=(T-\d+) status=(\w+)/g
-```
-
-Pour chaque marqueur trouvé `{t_id, status}` :
-1. Mapper le status INV-007 → CC status via la table EX-002 :
-   - TODO → `pending` / IN_PROGRESS → `in_progress` / IMPLEMENTED → `in_progress`
-   - UNIT_TESTS_OK → `in_progress` / CODE_REVIEW_OK → `in_progress` / DONE → `completed`
-2. Vérifier idempotence (EX-009) : si `store[t_id]` n'a pas changé de CC status, ignorer.
-3. Sinon appeler `TaskUpdate({ taskId: store[t_id], status: cc_status })`.
-
-**Critères opposables** (TF-003, TF-004) :
-- Chaque marqueur `[T_STATUS]` dans l'output TL déclenche exactement un `TaskUpdate` (si status CC change).
-- Les transitions IMPLEMENTED, UNIT_TESTS_OK, CODE_REVIEW_OK ne changent pas le status CC (tous → `in_progress`).
-- Idempotence : double marqueur même status → 0 `TaskUpdate` redondant (EX-009).
-
----
-
-## Handler t_status_update — mode team (EX-004 / EX-002 / EX-009)
+## Handler t_status_update (EX-004 / EX-002 / EX-009)
 
 > **Exclusion** : mode `subagent-light` (EX-006) — ne pas exécuter dans ce mode.
 > **Déclencheur** : réception d'un `SendMessage` de TL avec `type: t_status_update`.
@@ -463,7 +433,7 @@ t_id: T-xxx
 status: <INV-007 value>
 ```
 
-1. Mapper `status` INV-007 → CC status via la table EX-002 (cf. §Parse [T_STATUS]).
+1. Mapper `status` INV-007 → CC status (table EX-002) : TODO → `pending` ; IN_PROGRESS / IMPLEMENTED / UNIT_TESTS_OK / CODE_REVIEW_OK → `in_progress` ; DONE → `completed`.
 2. Vérifier idempotence (EX-009) : si status CC inchangé pour `store[t_id]`, ignorer.
 3. Sinon appeler `TaskUpdate({ taskId: store[t_id], status: cc_status })`.
 

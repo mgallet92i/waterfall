@@ -156,7 +156,7 @@ flowchart LR
 
 ## Modes
 
-3 `agent_mode` (`team` / `subagent` / `subagent-light`) × `dark_factory` on/off — config `.wf-config.json` racine du projet consommateur. En light, les steps des rôles absents sont auto-skippés (`_wf_auto_skip_light`) et REVIEW/CODE_REVIEW sont court-circuités. La combinatoire est le point fragile du moteur (ARCH-05) : toute modif de skip/short-circuit doit passer la matrice de tests `wf-orchestrate-skip.bats`.
+2 `agent_mode` (`team` défaut / `subagent-light`) × `dark_factory` on/off — config `.wf-config.json` racine du projet consommateur. `subagent` est un **alias déprécié de `team`** (F-039 — fusion : l'ancienne mécanique synchrone subagent n'a plus lieu d'être avec l'API Agent Teams native, `wf-read-config.sh` le mappe sur `team`). En light, les steps des rôles absents sont auto-skippés (`_wf_auto_skip_light`) et REVIEW/CODE_REVIEW sont court-circuités. La combinatoire est le point fragile du moteur (ARCH-05) : toute modif de skip/short-circuit doit passer la matrice de tests `wf-orchestrate-skip.bats`.
 
 ## Règles de dev
 

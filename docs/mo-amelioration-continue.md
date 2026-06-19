@@ -25,7 +25,7 @@ Issus directement de la revue d'architecture (cf. `backlog.md` § Revue d'archit
 3. **MO propose, il ne décide pas.** Tout finding passe par un **gate** (PM ou HO) avant d'atterrir dans le backlog. La revue a montré que les agents hallucinent des findings (F-029) et que des « non-bugs » peuvent générer des recos nuisibles (F-028). MO ne doit jamais écrire un finding nu.
 4. **MO ne hot-patche JAMAIS le framework pendant un run actif.** Modifier `wf-orchestrate.sh` ou un persona pendant qu'un need l'utilise = changer les règles au milieu de la partie (cf. F-030, l'état fantôme). Les fixes atterrissent **entre needs**.
 5. **Persona lean.** MO parle de dette de prose (ARCH-07) — il ne doit pas en devenir une. Son job est quasi-mécanique (lire → cluster → dédup → proposer). Persona court, hint-driven, pas une décharge défensive accumulée.
-6. **Mode-agnostique.** MO est spawné par le PM, qui existe dans tous les modes (`team`, `subagent`, `subagent-light`). Donc MO marche partout sans cas spécial par mode.
+6. **Mode-agnostique.** MO est spawné par le PM, qui existe dans tous les modes (`team`, `subagent-light`). Donc MO marche partout sans cas spécial par mode.
 
 ## 3. MO-CLOSURE — déclencheur par need
 
@@ -41,7 +41,7 @@ MO se greffe dans `CLOSURE:BILAN` (PM-owned, inchangé). Le PM y fait déjà la 
         │      brief = { need_dir, backlog_path, "lis la trace, propose, ne touche pas le backlog" }
         │
         ├─ 2. MO lit la TRACE (artefacts, pas le chat) :
-        │      or.log [OBS-NNN] · .wf-state.json:history · ack-registry.json
+        │      or.log [OBS-NNN] · .wf-state.json:history
         │      · inboxes/*.json (via --timeline) · watchdog.alert · retro.md
         │      + pour dédup : backlog.md + Momento (memoria_search tag waterfall)
         │
@@ -99,9 +99,9 @@ Détermine *où* les fixes peuvent atterrir. Commande de reload : **`/reload-plu
 
 ## 6. Prérequis : la télémétrie doit marcher d'abord
 
-**MO se nourrit de la télémétrie — or elle est partiellement morte :**
-- **F-031 (ARCH-02)** : la détection `ACTOR_IDLE` via ack-registry ne se déclenche jamais en prod (schéma producteur/consommateur incompatible).
-- **F-032 (ARCH-01)** : le watchdog surveille le mauvais arbre (`script_dir/..` = clone plugin).
+**MO se nourrit de la télémétrie :**
+- **F-031 (ARCH-02)** : ~~détection `ACTOR_IDLE` via ack-registry~~ — **sans objet depuis F-039** : `ACTOR_IDLE`/ack-registry retirés (livraison + idle natifs). MO se base sur or.log/state history/`--timeline`/watchdog.alert.
+- **F-032 (ARCH-01)** : le watchdog surveille le mauvais arbre (`script_dir/..` = clone plugin) — résolu.
 
 Bâtir MO sur ces signaux aujourd'hui = bâtir sur du sable. **Ordre logique** : fixer la télémétrie (F-031/F-032, durcir `--timeline`) → MO ensuite.
 

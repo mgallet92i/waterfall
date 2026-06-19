@@ -133,7 +133,7 @@ A reference example is shipped at the plugin root: [`.wf-config.example.md`](./.
 | `review_loops.artifacts` | Max RV cycles on artifacts (PRD, specs, design, ui) | `2` | integer ≥ 1 |
 | `review_loops.code` | Max TL cycles on delivered code | `3` | integer ≥ 1 |
 | `watchdog.interval` | Watchdog cron cadence (PM wakeup to detect STUCK agents) | `3min` | `off`, `3min`, `5min`, `10min` |
-| `agent_mode` | Agent spawn mechanism | `subagent` | `subagent` (Agent tool, no inter-agent messaging — more reliable, slightly cheaper in tokens), `team` (Agent Teams + inter-agent SendMessage), `subagent-light` (PM+TL only, 3 artefacts specs/design/tasks, 3 HO interactions — for small needs where the full pipeline is overkill) |
+| `agent_mode` | Agent spawn mechanism | `team` | `team` (Agent Teams — implicit team via Agent spawn + inter-agent SendMessage, native delivery/idle, CLI v2.1.178+), `subagent-light` (PM+TL only, 3 artefacts specs/design/tasks, 3 HO interactions — for small needs where the full pipeline is overkill). `subagent` is a **deprecated alias of `team`** (F-039). |
 | `dark_factory` | Autonomy mode for checkpoints | `off` | `on` (auto-validate, log decision), `off` (escalate to HO via AskUserQuestion) |
 | `statusline` | Waterfall statusline state — managed by `scripts/wf-statusline-apply.sh`, do not edit manually | `false` | `true`, `false` |
 | `tools.semgrep` | Run Semgrep static analysis during TL code review (auto-detects native CLI or Docker, silent skip if neither) | `off` | `on`, `off` |
@@ -146,7 +146,7 @@ A reference example is shipped at the plugin root: [`.wf-config.example.md`](./.
   "models": { "pm": "sonnet", "or": "sonnet", "po": "sonnet", "tl": "opus", "rv": "sonnet", "qa": "sonnet", "dv": "sonnet", "ds": "sonnet" },
   "review_loops": { "artifacts": 2, "code": 3 },
   "watchdog": { "interval": "3min" },
-  "agent_mode": "subagent",
+  "agent_mode": "team",
   "dark_factory": "off",
   "statusline": false,
   "tools": { "semgrep": "off" }

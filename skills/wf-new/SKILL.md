@@ -117,7 +117,7 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-registry.sh init <name>
 > Au moment où l'agent reçoit son brief, `.wf-state.json` existe déjà.
 
 ```bash
-# Mode team / subagent — le nom d'équipe est dérivé de --session (session-<8c>),
+# Mode team — le nom d'équipe est dérivé de --session (session-<8c>),
 # plus de --team (CLI v2.1.178+ : team implicite). --session est la seule clé.
 bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> \
   --init --session "${CLAUDE_SESSION_ID}" \
@@ -142,22 +142,20 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> \
 **Critère opposable** (TF-010) : après cette étape, `wf/needs/<name>/.wf-state.json`
 existe et contient `phase`, `step`, `session_id` non nul.
 
-### Step 4.quater — Pré-complete des steps BOOTSTRAP pm-owned (subagent + subagent-light)
+### Step 4.quater — Pré-complete des steps BOOTSTRAP pm-owned (tous modes)
 
-> **Subagent et subagent-light**. En mode team, ces 2 steps sont complétés par le PM
-> teammate après que OR ait émis `PLEASE_COMPLETE_STEP`. En mode subagent/subagent-light,
-> PM = main agent (hors team), donc OR ne peut pas le contacter via
-> `SendMessage` → deadlock au BOOTSTRAP. PM doit donc pré-compléter ces steps
-> **avant** le spawn de l'agent suivant (OR en subagent, TL en subagent-light).
+> **PM = main dans tous les modes** (jamais un teammate). Ces 2 steps sont `agent=pm` ;
+> comme PM pilote la conversation principale, il les **pré-complète avant le spawn**
+> de l'agent suivant (OR en `team`, TL en `subagent-light`) plutôt que d'attendre un
+> aller-retour OR→PM. Évite le deadlock BOOTSTRAP (cause F-035) et un round-trip inutile.
 
 ```bash
-if [[ "$WF_AGENT_MODE" == "subagent" || "$WF_AGENT_MODE" == "subagent-light" ]]; then
-  bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete BOOTSTRAP:DETERMINE_NAME
-  bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete BOOTSTRAP:RUN_BOOTSTRAP
-fi
+# team / subagent-light — PM (main) pré-complète les 2 steps pm-owned du BOOTSTRAP
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete BOOTSTRAP:DETERMINE_NAME
+bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --complete BOOTSTRAP:RUN_BOOTSTRAP
 ```
 
-En mode **subagent** : après ces 2 `--complete`, le state machine arrive à
+En mode **team** : après ces 2 `--complete`, le state machine arrive à
 `BOOTSTRAP:COLLECT_CARD_NUM` (agent=or). OR pilote à partir de là.
 
 En mode **subagent-light** : après ces 2 `--complete`, `_wf_auto_skip_light`
@@ -172,11 +170,11 @@ PM-light pilote directement sans OR intermédiaire.
 > **Sauter ce step en mode subagent-light** et laisser PM-light piloter.
 
 > **PM pré-spawne en UN SEUL BATCH** la team fixe avant de transférer le
-> pilotage à OR (modes team et subagent uniquement). OR ne pilote plus le spawn
+> pilotage à OR (mode `team`). OR ne pilote plus le spawn
 > (cf. EX-004 — tool `Agent` retiré du frontmatter d'OR). Aucun `spawn_request`
 > n'est émis par OR pour ces rôles fixes durant la totalité du workflow (TF-005).
 
-**Team fixe (toujours, team/subagent)** : `or, po, tl, rv, qa`.
+**Team fixe (mode `team`)** : `or, po, tl, rv, qa`.
 **DS conditionnel** : ajouté au batch **ssi** `PRD.md` frontmatter porte `has_ui: true` (TF-004).
 **DV** : **non** spawné ici. Émission lazy après `PLANNING:CHECKPOINT_TASKS` (cf. Step 9).
 
@@ -188,16 +186,8 @@ Spawn each role as a NAMED background teammate via the Agent tool in a single PM
   turn (5 ou 6 spawns), with name=<role>, subagent_type=waterfall:wf-<role>,
   model=$WF_MODEL_<role>, run_in_background=true. The FIRST spawn forms the implicit
   team (session-<8c>) — no TeamCreate. Teammates are addressable via SendMessage(to:<role>).
-
-# Mode subagent
-Single PM turn with N parallel Agent() calls:
-  Agent(subagent_type: wf-or, prompt: <bootstrap_need>)
-  Agent(subagent_type: wf-po, prompt: <stand-by — wait for OR brief>)
-  Agent(subagent_type: wf-tl, prompt: <stand-by>)
-  Agent(subagent_type: wf-rv, prompt: <stand-by>)
-  Agent(subagent_type: wf-qa, prompt: <stand-by>)
-  # if PRD.has_ui == true:
-  Agent(subagent_type: wf-ds, prompt: <stand-by>)
+  OR pilots; PO/TL/RV/QA stand by until OR's brief (delivered automatically).
+  # if PRD.has_ui == true: also spawn ds.
 ```
 
 **Critère opposable** (TF-003 / TF-004) : à la sortie de `BOOTSTRAP:SPAWN_TEAM`,
@@ -206,14 +196,10 @@ Single PM turn with N parallel Agent() calls:
 
 ### Step 5.ter — Conditional watchdog (belt-and-suspenders)
 
-**System-critical (team mode only)**: the cron wakes PM up to detect STUCK teammates. Skipped in `subagent` mode — subagents are not idle between messages (they resume on each `SendMessage`), so there is no "idle-muet teammate" to repoke; PM stays in charge of every spawn and already knows the workflow state.
+**System-critical (team mode)**: the cron wakes PM up to detect **crashed/stalled** teammates (heartbeat/history stall — idle is notified natively, F-039). Not applicable in `subagent-light` (no team).
 
 ```bash
-if [[ "$WF_AGENT_MODE" == "subagent" ]]; then
-  # No watchdog in subagent mode (no idle teammates to wake up).
-  # HO message: "Watchdog skipped (agent_mode=subagent)"
-  :
-elif [[ "$WF_WATCHDOG_INTERVAL" != "off" ]]; then
+if [[ "$WF_WATCHDOG_INTERVAL" != "off" ]]; then
   DELAY_MIN="${WF_WATCHDOG_INTERVAL//min/}"  # "3min" → "3"
   # 1. PM invokes CronCreate (harness tool)
   CronCreate(cron: "*/${DELAY_MIN} * * * *", prompt: "watchdog tick wf-<name>", recurring: true)
@@ -247,7 +233,7 @@ intent: <1 phrase ≤ 200 caractères — la mission HO synthétisée>
 context_files:
   - wf/needs/<name>/PRD.md
 config:
-  agent_mode: <subagent|team>
+  agent_mode: team
   dark_factory: <on|off>
   language: <fr|en>
   watchdog_interval: <WF_WATCHDOG_INTERVAL>
@@ -285,7 +271,7 @@ pas de double-init côté OR).
 - 0 spawn DV avant `PLANNING:CHECKPOINT_TASKS`.
 - Une et une seule ligne `[DV-LAZY] N=<N>` dans `or.log` après le checkpoint.
 
-### Step 9.bis — Dashboard TaskCreate (EX-001 dv-tasks-dashboard, modes team + subagent)
+### Step 9.bis — Dashboard TaskCreate (EX-001 dv-tasks-dashboard, mode team)
 
 > **Déclencheur** : juste après le DV-lazy batch (Step 9), avant que les DVs
 > commencent à implémenter. Cette étape est portée par PM (cf.
@@ -306,8 +292,7 @@ pas de double-init côté OR).
    ```
 
 Les status sont ensuite mis à jour par PM via `TaskUpdate` au fil des
-`t_status_update` reçus (relay mode team) ou des marqueurs `[T_STATUS]`
-trouvés dans l'output des Agent calls (mode subagent). Mapping
+`t_status_update` reçus des teammates (livraison native). Mapping
 INV-007 → CC status défini dans `agents/wf-pm.md §Dashboard TaskCreate batch`.
 
 **Critère opposable** : après cette étape, la TaskList de la conversation PM

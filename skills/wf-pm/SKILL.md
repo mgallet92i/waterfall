@@ -79,14 +79,9 @@ OR → PM:
   teammate_name: <name>
   initial_brief: <instruction>
 
-PM validates, then branches on config.agent_mode:
+PM validates, then spawns the teammate (implicit team, no TeamCreate — CLI v2.1.178+):
 
-  IF "subagent":
-    Agent(subagent_type: wf-<role>, prompt: initial_brief)
-    PM → OR: spawn_confirmed { request_id, teammate_name, model, channel: subagent }
-
-  IF "team" (default):
-    Agent(subagent_type: wf-<role>) via team + SendMessage(teammate_name, initial_brief)
+    Agent(name: <role>, subagent_type: waterfall:wf-<role>, prompt: initial_brief, run_in_background: true)
     PM → OR: spawn_confirmed { request_id, teammate_name, model }
 
   On failure (max 3 retries):

@@ -30,7 +30,7 @@ For steps where `--query` returns `agent=dv`, the order is **STRICT** and **NON-
 3. SendMessage to=or (or to=tl per the per-task review pipeline) `{type:brief_complete, ...}`
 4. Only then return control / go idle
 
-**Why this order matters (subagent mode)**: if you skip step 2 and notify before firing `--complete`, PM is blocked by the auth hook (INV-005 — only `agent_type=dv` may `--complete` your step) and has to wake you again via SendMessage just to re-run `--complete`. That's one wasted round-trip per step. **Always `--complete` BEFORE `brief_complete`.**
+**Why this order matters**: if you skip step 2 and notify before firing `--complete`, PM is blocked by the auth hook (INV-005 — only `agent_type=dv` may `--complete` your step) and has to wake you again via SendMessage just to re-run `--complete`. That's one wasted round-trip per step. **Always `--complete` BEFORE `brief_complete`.**
 
 ## Phase responsibilities
 
@@ -61,15 +61,13 @@ Référence : `INV-BRIEF-DISCIPLINE` dans `agents/_shared/constitution.md`.
 
 - **Compteur mental** : tenir compte du nombre d'itérations d'une même tâche T-xxx reçues dans le contexte courant (brief initial = itération 1, chaque retour REJECTED = +1).
 - **Seuil dur : 2 itérations max** d'une même T-xxx dans un même contexte.
-- **Au-delà de 2** : ne pas continuer. Émettre à la place :
-  - En mode subagent (texte) :
+- **Au-delà de 2** : ne pas continuer. Émettre à la place un `SendMessage` à TL :
     ```
     type: request_respawn
     reason: brief_discipline_threshold
     task_id: T-xxx
     iterations_received: <n>
     ```
-  - En mode team (SendMessage) : même contenu envoyé à TL.
 - **Effet** : TL ou OR spawne un nouveau contexte DV et transmet la tâche depuis zéro. Le respawn fresh est la règle à partir du 3e passage, pas l'exception.
 
 ## Role
@@ -213,20 +211,9 @@ WHY: worktrees are destroyed at CLOSURE:CLEANUP_WORKTREES. Any uncommitted chang
 
 ## Dashboard status relay (EX-004 / EX-005 / EX-007)
 
-> **Exclusion** : mode `subagent-light` (EX-006) — cette section ne s'applique qu'aux modes `subagent` et `team`.
+> **Exclusion** : mode `subagent-light` (EX-006) — ne s'applique pas (pas de DV).
 
-À chaque transition de status INV-007 sur la tâche en cours, émettre un signal de relay vers PM :
-
-**Mode subagent** : émettre dans l'output texte de la réponse DV finale :
-
-```
-[T_STATUS] t_id=T-xxx status=<INV-007-value>
-```
-
-Exemple : `[T_STATUS] t_id=T-003 status=IN_PROGRESS`
-TL agrège ces marqueurs et les réémet dans son propre output (cf. `agents/wf-tl.md §Relay t_status_update`).
-
-**Mode team** : envoyer un `SendMessage` à TL :
+À chaque transition de status INV-007 sur la tâche en cours, envoyer un `SendMessage` à TL :
 
 ```
 type: t_status_update
