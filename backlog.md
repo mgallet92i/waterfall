@@ -40,8 +40,8 @@ Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Ch
 | F-034 | * (doc) | Noms d'artefacts legacy `tf.md`/`tech.md`/`taches.md` dans 16 fichiers doc — hook/moteur ne connaissent que les canoniques | P2 — issu de [ARCH-06] — ✅ résolu (renommage + garde CI doc-drift, 2026-06-09) |
 | F-035 | BOOTSTRAP / * (harness) | Harness Claude Code **sans tool `TeamCreate`** → mode `team` (Flow Z) inexécutable tel quel ; PM doit substituer des `Agent(run_in_background)` nommés | P0 — ✅ résolu (gate hard-fail niveau LLM dans wf-new/wf-resume, 2026-06-18) |
 | F-036 | * (team/harness) | Background-agents run-to-completion puis idle : **stall mid-phase (~2h30)** sans auto-resume ; watchdog cron inopérant sur ce modèle | P1 — ✅ résolu (dissous par F-035 : path background-team-emulation interdit ; subagent synchrone) |
-| F-037 | * (team) | Teammates notifient `main`/PM au lieu d'OR → relais `MISROUTED_TO_PM` manuel à **chaque** step (overhead PM) | P2 |
-| F-038 | * (UX/HO) | Aucune visibilité HO sur l'activité des subagents background — ne voit que les relais PM | P3 |
+| F-037 | * (team) | Teammates notifient `main`/PM au lieu d'OR → relais `MISROUTED_TO_PM` manuel à **chaque** step (overhead PM) | P2 — ✅ résolu (dissous par F-035 : relais systématique = artefact team-émulé ; OR gardé séparé, décision HO) |
+| F-038 | * (UX/HO) | Aucune visibilité HO sur l'activité des subagents background — ne voit que les relais PM | P3 — ✅ résolu (dissous par F-035 : sous-agents `Agent` visibles inline en subagent ; dashboard + mini-status déjà en place) |
 
 > **Revue d'architecture globale (2026-06-07)** : 10 causes racines `ARCH-01..10` consolidées en fin de fichier — voir section dédiée. Chaque `ARCH-xx` agrège plusieurs F-xxx symptômes.
 >
@@ -608,11 +608,18 @@ Le plugin étant installé depuis un clone (ex. `C:\projets\waterfall`) mais con
 **Impact** : PM passe son temps à faire tampon OR↔teammates ; multiplie les tours de boucle (chaque relai = une réinvocation PM).
 **Recommandation** : en mode named-agents, **fusionner les rôles OR et PM** (PM=main pilote directement la state machine, plus besoin d'un OR séparé qui ne peut de toute façon pas être joint par les teammates autrement que via main). OR séparé n'apporte de la valeur que si les teammates peuvent l'adresser directement — impossible quand PM=main est l'unique destinataire `main`.
 
+**Résolution (2026-06-18)** — **dissous par F-035, pas de fusion OR/PM** (décision HO : garder OR séparé). Le relais **systématique** `MISROUTED_TO_PM` est un artefact du mode **team-émulé** (teammates briefés à notifier `main` faute de team native) :
+- En mode `team` **authentique** (tool `TeamCreate` réellement exposé), les teammates adressent OR **directement** via `SendMessage(to:or)` — `MISROUTED_TO_PM` redevient ce qu'il est censé être : un **filet de sécurité** ponctuel (mauvais routage occasionnel), pas le chemin nominal. Mécanisme correct, conservé tel quel.
+- En mode `subagent` (vers lequel F-035 oriente quand `TeamCreate` manque) : exécution **synchrone**, **aucun** `SendMessage` inter-agent — donc zéro relais. PM lit les marqueurs `[T_STATUS]` dans l'output des appels `Agent`.
+Aucune chirurgie archi : le surcoût de relais n'existe que dans le path team-émulé, désormais interdit (F-035).
+
 ## F-038 — Aucune visibilité HO sur l'activité des subagents background **[P3, UX]**
 
 **Phase** : transverse.
 **Constat** : le HO ("je ne vois pas l'activité des subagents dans Claude Code ???") ne perçoit que les `teammate-message` relayés dans le fil PM ; le travail réel des agents background (éditions, tests) se déroule dans des contextes séparés non streamés à la vue principale. Couplé à F-036, l'absence de signal visible a fait douter le HO que quoi que ce soit tourne.
 **Recommandation** : surface de statut consolidée (dashboard `TaskCreate`/`TaskUpdate` — utilisé ici, utile) + mini-status PM réguliers ancrés sur l'**état disque réel** (pas sur les pings agents). Documenter pour le HO que l'absence d'activité streamée est normale en mode background, et que le dashboard est la source de vérité.
+
+**Résolution (2026-06-18)** — **dissous par F-035**. L'invisibilité provenait du `run_in_background:true` de l'émulation team (contextes séparés non streamés). Ce path est interdit (F-035) ; on bascule en `subagent`, où les appels `Agent` (synchrones) **s'affichent inline dans le fil principal** — le HO voit l'activité des sous-agents. Les deux surfaces recommandées **existent déjà** et couvrent subagent + team : dashboard `TaskCreate`/`TaskUpdate` (`agents/wf-pm.md §Dashboard TaskCreate`, déclenché post-`PLANNING:CHECKPOINT_TASKS`) et **mini-status HO** ancrés sur les artefacts disque (`agents/wf-pm.md §Mini-status HO`). README clarifié (option `team` = pré-requis tool `TeamCreate`, sinon hard-stop vers `subagent`). Aucune nouvelle machinerie : prose minimale (ARCH-07).
 
 ---
 
