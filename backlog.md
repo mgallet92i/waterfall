@@ -38,10 +38,11 @@ Findings issues du rodage in vivo du workflow waterfall sur des needs réels. Ch
 | F-032 | * (paths) | `PROJECT_ROOT` résolu de 3 façons : orchestrate cwd-walk (F-030 OK) mais watchdog/registry `script_dir/..` = clone plugin → surveillent/écrivent le mauvais arbre | P0 — ✅ résolu (issu de [ARCH-01]) |
 | F-033 | REVIEW/CR | Nommage artefact de revue incohérent : `rv.md`/`code-review.md` (personas) vs `review.md` (script/template/hints) | P2 — issu de [ARCH-06] — ✅ résolu (review.md unifié, 2026-06-09) |
 | F-034 | * (doc) | Noms d'artefacts legacy `tf.md`/`tech.md`/`taches.md` dans 16 fichiers doc — hook/moteur ne connaissent que les canoniques | P2 — issu de [ARCH-06] — ✅ résolu (renommage + garde CI doc-drift, 2026-06-09) |
-| F-035 | BOOTSTRAP / * (harness) | Harness Claude Code **sans tool `TeamCreate`** → mode `team` (Flow Z) inexécutable tel quel ; PM doit substituer des `Agent(run_in_background)` nommés | P0 — ✅ résolu (gate hard-fail niveau LLM dans wf-new/wf-resume, 2026-06-18) |
-| F-036 | * (team/harness) | Background-agents run-to-completion puis idle : **stall mid-phase (~2h30)** sans auto-resume ; watchdog cron inopérant sur ce modèle | P1 — ✅ résolu (dissous par F-035 : path background-team-emulation interdit ; subagent synchrone) |
-| F-037 | * (team) | Teammates notifient `main`/PM au lieu d'OR → relais `MISROUTED_TO_PM` manuel à **chaque** step (overhead PM) | P2 — ✅ résolu (dissous par F-035 : relais systématique = artefact team-émulé ; OR gardé séparé, décision HO) |
-| F-038 | * (UX/HO) | Aucune visibilité HO sur l'activité des subagents background — ne voit que les relais PM | P3 — ✅ résolu (dissous par F-035 : sous-agents `Agent` visibles inline en subagent ; dashboard + mini-status déjà en place) |
+| F-035 | BOOTSTRAP / * (harness) | Harness Claude Code **sans tool `TeamCreate`** → mode `team` (Flow Z) inexécutable tel quel ; PM doit substituer des `Agent(run_in_background)` nommés | P0 — ⚠ **mauvais diagnostic** (cf. Correction transverse 2026-06-19) → vrai correctif = **F-039** (migration API v2.1.178+) ; hard-fail 2026-06-18 **reverté** |
+| F-036 | * (team/harness) | Background-agents run-to-completion puis idle : **stall mid-phase (~2h30)** sans auto-resume ; watchdog cron inopérant sur ce modèle | P1 — ⚠ symptôme de F-035 (mauvais diag) → résolu nativement par la nouvelle API (auto-idle-notify), cf. **F-039** |
+| F-037 | * (team) | Teammates notifient `main`/PM au lieu d'OR → relais `MISROUTED_TO_PM` manuel à **chaque** step (overhead PM) | P2 — ⚠ symptôme de F-035 → résolu nativement (auto-delivery + adressage direct OR), cf. **F-039** |
+| F-038 | * (UX/HO) | Aucune visibilité HO sur l'activité des subagents background — ne voit que les relais PM | P3 — ⚠ symptôme de F-035 → résolu nativement (task list partagée + livraison auto), cf. **F-039** |
+| F-039 | BOOTSTRAP / * (architecture) | Flow Z bâti sur l'**API Agent Teams pré-v2.1.178** (`TeamCreate`/`TeamDelete` + équipe nommée + pré-spawn batch) ; ces outils **n'existent plus** depuis v2.1.178 → migrer vers la mécanique tool-less (spawn coéquipiers via `Agent`, auto-delivery, auto-idle, nettoyage auto). Cause racine réelle de F-035→F-038 | P0 — ouvert (Lot 2, à cadrer) |
 
 > **Revue d'architecture globale (2026-06-07)** : 10 causes racines `ARCH-01..10` consolidées en fin de fichier — voir section dédiée. Chaque `ARCH-xx` agrège plusieurs F-xxx symptômes.
 >
@@ -580,6 +581,16 @@ Le plugin étant installé depuis un clone (ex. `C:\projets\waterfall`) mais con
 
 > Findings issus d'un run réel en mode **team** sur un build Claude Code **dépourvu du tool `TeamCreate`**. Le PM était la **conversation principale** (pas un teammate), les "teammates" = `Agent(run_in_background)` nommés, coordonnés par `SendMessage`. Étude+conception+plan menés à bien (PRD/specs/design/acceptance/tasks + 1 boucle REVIEW→CONVERGE), puis stall en IMPLEMENTATION.
 
+> ## ⚠ Correction transverse (2026-06-19) — F-035→F-038 mal diagnostiqués
+>
+> **Les résolutions datées 2026-06-18 ci-dessous (hard-fail + « dissous par F-035 ») sont CADUQUES.** Vérification faite sur la [doc officielle Agent Teams](https://code.claude.com/docs/fr/agent-teams#enable-agent-teams) (CLI **v2.1.183**, flag `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`) :
+>
+> - Le mode team **n'est pas cassé**. Agent Teams a **changé d'API en v2.1.178** : `TeamCreate`/`TeamDelete` ont été **supprimés** (l'entrée `team_name` sur l'outil `Agent` est désormais acceptée mais ignorée ; nom d'équipe dérivé de la session ; nettoyage auto). On crée une équipe en **spawnant directement des coéquipiers via le tool `Agent`** — l'équipe se forme au 1er spawn.
+> - **Cause racine réelle** : le **Flow Z de waterfall est écrit pour l'API pré-v2.1.178** (TeamCreate + équipe nommée + pré-spawn batch persistant). Sur v2.1.183 ce path est obsolète ; le PM a bricolé une émulation `run_in_background` avec relais/idle **manuels** → F-036/F-037/F-038 en cascade.
+> - **F-036/F-037/F-038 sont des symptômes**, pas des findings indépendants : la nouvelle API les règle **nativement** — notification d'idle auto (F-036), livraison de messages auto + adressage direct d'OR par les coéquipiers (F-037), task list partagée + livraison auto au chef (F-038).
+> - **Décision (HO, 2026-06-19, option B)** : (1) **revert** des correctifs erronés 2026-06-18/06-19 (hard-fail `wf-new`/`wf-resume`, message `wf-check-teams.sh`, note README) — fait ; (2) la vraie correction = **migration Flow Z → API v2.1.178+**, portée par **F-039**, à cadrer (design avant code) en Lot 2.
+> - `SWIPE_REPORT_GEN/.wf-config.json` reste en `subagent` pour l'instant : le mode team de waterfall ne redeviendra fiable qu'après F-039.
+
 ## F-035 — Harness sans tool `TeamCreate` : mode `team` (Flow Z) inexécutable tel quel **[P0]**
 
 **Phase** : BOOTSTRAP (Step 4 wf-new).
@@ -620,6 +631,19 @@ Aucune chirurgie archi : le surcoût de relais n'existe que dans le path team-é
 **Recommandation** : surface de statut consolidée (dashboard `TaskCreate`/`TaskUpdate` — utilisé ici, utile) + mini-status PM réguliers ancrés sur l'**état disque réel** (pas sur les pings agents). Documenter pour le HO que l'absence d'activité streamée est normale en mode background, et que le dashboard est la source de vérité.
 
 **Résolution (2026-06-18)** — **dissous par F-035**. L'invisibilité provenait du `run_in_background:true` de l'émulation team (contextes séparés non streamés). Ce path est interdit (F-035) ; on bascule en `subagent`, où les appels `Agent` (synchrones) **s'affichent inline dans le fil principal** — le HO voit l'activité des sous-agents. Les deux surfaces recommandées **existent déjà** et couvrent subagent + team : dashboard `TaskCreate`/`TaskUpdate` (`agents/wf-pm.md §Dashboard TaskCreate`, déclenché post-`PLANNING:CHECKPOINT_TASKS`) et **mini-status HO** ancrés sur les artefacts disque (`agents/wf-pm.md §Mini-status HO`). README clarifié (option `team` = pré-requis tool `TeamCreate`, sinon hard-stop vers `subagent`). Aucune nouvelle machinerie : prose minimale (ARCH-07).
+> ⚠ **Caduc** — voir Correction transverse (2026-06-19) en tête de section : F-038 est un symptôme de F-035 mal diagnostiqué, résolu nativement par la nouvelle API (F-039).
+
+## F-039 — Flow Z écrit pour l'API Agent Teams pré-v2.1.178 (obsolète) **[P0]**
+
+**Phase** : BOOTSTRAP (transverse Flow Z).
+**Constat** : le bootstrap waterfall (`skills/wf-new`, `skills/wf-resume`, personas OR/PM, `wf-orchestrate.sh --init --team`, `wf-check-teams.sh`, `.team-registry.json`) suppose l'**ancienne API Agent Teams** : créer/nommer une équipe via `TeamCreate`, pré-spawn batch de coéquipiers persistants, `TeamDelete`/cleanup explicite. Or depuis **CLI v2.1.178** (constaté sur **v2.1.183**, [doc officielle](https://code.claude.com/docs/fr/agent-teams)) : `TeamCreate`/`TeamDelete` **supprimés** ; l'équipe se forme implicitement au **1er coéquipier spawné via `Agent`** ; `team_name` accepté mais **ignoré** (nom dérivé `session-<8c>`) ; livraison de messages **auto** ; notification d'**idle auto** au chef ; **nettoyage auto** à la fin de session ; task list partagée `~/.claude/tasks/{team}/`.
+**Impact** : sur tout build ≥ v2.1.178, le mode `team` part en émulation bricolée (`Agent(run_in_background)` + relais/idle manuels) → **cause racine réelle de F-035→F-038**. Le pré-spawn batch, le `--team wf-<name>`, le watchdog cron et la matrice de respawn `wf-resume` sont tous à revoir.
+**Recommandation (Lot 2, à cadrer — design avant code)** :
+- `wf-new`/`wf-resume` : **drop `TeamCreate`** ; team implicite au 1er spawn `Agent` ; `--team` = label informatif (ou nom dérivé de session) ; supprimer l'étape cleanup/TeamDelete.
+- Personas OR/PM : décrire le modèle **auto-delivery + auto-idle** ; retirer les contournements manuels (relais `MISROUTED_TO_PM` redevient filet ponctuel ; plus de re-poke manuel).
+- `wf-check-teams.sh` : reste un check de **flag** (suffisant — l'API tool-less ne dépend que du flag) ; ne plus prétendre à un check de tool.
+- Hooks `TaskCreated`/`TaskCompleted`/`TeammateIdle` : `team_name` déprécié (nom dérivé session) — vérifier que rien n'en dépend pour l'auth/traçabilité.
+- Reclasser F-035→F-038 en **résolus par F-039** une fois la migration livrée et validée sur run live.
 
 ---
 
