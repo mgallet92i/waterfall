@@ -537,15 +537,10 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-registry.sh clear <name>
 
 - `idle_log`: history of idles per agent → `[(ts, summary, tool_calls_since_last_idle)]`
 - `incidents`: registry per agent → `{agent: [{started_at, reason, respawn_count}]}`
-- ACK source of truth: `wf-orchestrate.sh --ack-query --to <target>`
 
-### ack-registry scrutiny
-
-On each reactive loop turn:
-```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name> --ack-query
-```
-If a `pending` entry has `now - last_sent_at > 180s`, PM pokes the sender.
+> Le watchdog ne détecte plus l'idle via un ACK applicatif (retiré, F-039). La livraison
+> et la notification d'idle sont natives. Le watchdog ne traite plus que les **vrais
+> blocages** : crash / idle répété sans progrès (H1), et `phase_stalled` (history figée).
 
 ### Heuristic H1 — repeated idle, same summary
 
@@ -556,22 +551,16 @@ IF idle_log[agent] contains >= 2 consecutive recent entries
 THEN agent is BLOCKED (reason: idle_repeat)
 ```
 
-### Heuristic H2 — OR mailbox unconsumed
-
-```
-IF last OR idle_notification has empty OR passive summary
-   AND --ack-query --to or returns >= 1 entry status=pending, (now - first_sent_at) >= 60s
-   AND status != "acked"
-THEN OR is BLOCKED (reason: mailbox_unread)
-```
-
 ### Reaction on `stuck_peer`
 
+> `stuck_peer` est émis par OR (INV-OR-POLL) quand un subordonné reste silencieux
+> alors qu'un output est attendu. La livraison étant native, c'est un **vrai blocage**.
+
 ```
-1. Re-query ack-registry: --ack-query --to <target>
-2. Apply H1 and H2 → {blocked, reason} or {not_blocked}
+1. Read the target's last idle/progress from idle_log + or.log
+2. Apply H1 → {blocked, reason} or {not_blocked}
 3. If not_blocked:
-     → re-poke target: short DM "Can you address <msg_id>? (pending for Ns)"
+     → re-poke target: short DM "Can you address <expected output>?"
 4. If blocked AND incidents[target].respawn_count == 0:
      → shutdown + enriched re-spawn
 5. If blocked AND respawn_count >= 1:
@@ -583,15 +572,14 @@ THEN OR is BLOCKED (reason: mailbox_unread)
 
 ```
 1. SendMessage shutdown_request to <target>
-2. Collect non-ACK DMs: --ack-query --to <target>
-3. Read current step: --query
-4. Build XML brief + <recovery_context>
-5. Agent(subagent_type: wf-<role>, prompt: brief + recovery_context)
-6. incidents[target].respawn_count += 1
-7. Log the watchdog decision
+2. Read current step + context: --query + or.log (last dispatch/expected output for <target>)
+3. Build XML brief + <recovery_context>
+4. Agent(subagent_type: wf-<role>, prompt: brief + recovery_context)
+5. incidents[target].respawn_count += 1
+6. Log the watchdog decision
 ```
 
-**INV-006**: `<pending_dms>` must list **all** non-ACK DMs to target — no truncation.
+**INV-006**: `<recovery_context>` must capture the target's expected-but-missing output (from `--query` + `or.log`) — no truncation.
 
 **Idempotence**: `incidents[target].respawn_count` persisted via `--log`. On PM restart, PM re-reads `or.log` to reconstitute `incidents[]` before any re-spawn decision. Max 1 automatic re-spawn per incident.
 
@@ -669,20 +657,18 @@ else:
 <!-- WATCHDOG-LOOP-SCAN-START -->
 ## Watchdog loop — scan-disk
 
-`scan-disk` reads 3 sources of truth and produces a transient `scan_result`. No message emitted, no write.
+`scan-disk` reads the workflow state + the watchdog alert and produces a transient `scan_result`. No message emitted, no write. **Message delivery and idle are native (F-039)** — no inbox or ACK scanning.
 
-### The 3 sources
+### Sources
 
-1. **Agent inboxes**: `~/.claude/teams/<team>/inboxes/<agent>.json` — read `read: false` messages.
-2. **ACK registry**: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <need> --ack-query` — returns pending ACKs with `elapsed`.
-3. **Workflow state**: `wf/needs/<need>/.wf-state.json` — read `phase` and `last_transition_at`.
+1. **Workflow state**: `wf/needs/<need>/.wf-state.json` — read `phase` and `last_transition_at`.
+2. **Watchdog alert**: `wf/needs/<need>/watchdog.alert` — emitted by `wf-watchdog.sh` for **real stalls only** (`HEARTBEAT_STALE` / `HISTORY_STAGNANT` / `HEARTBEAT_MISSING`).
 
 ### `scan_result` object
 
 ```json
 {
-  "inboxes_unread": [{ "agent": "or", "age_seconds": 240, "msg_id": "msg-abc123" }],
-  "acks_pending": [{ "from": "tl", "to": "or", "elapsed_seconds": 200, "msg_id": "ack-xyz456" }],
+  "alert": { "reason": "HISTORY_STAGNANT", "elapsed_s": 0 },
   "phase_info": { "phase": "IMPLEMENTATION", "step": "...", "last_transition_age_seconds": 180 }
 }
 ```
@@ -691,9 +677,8 @@ else:
 
 | Constraint | Rule |
 |------------|-------|
-| **CNF-006** | `test -f <inbox>` before any `jq`. Inbox absent → skip. |
-| **INV-003** | Cost ≤ 300 tokens per scan. Only `id`, `read`, `timestamp` extracted. |
-| **INV-002** | Read-only on inboxes. |
+| **INV-003** | Cost ≤ 300 tokens per scan. Only the alert reason + phase transition age. |
+| **INV-002** | Read-only. |
 <!-- WATCHDOG-LOOP-SCAN-END -->
 
 ---
@@ -703,35 +688,23 @@ else:
 
 `decide` is a pure function: consumes `scan_result`, returns `anomaly | null`. No side effects.
 
-### Detection rules (threshold 180s)
+### Detection rules
 
 | Priority | Type | Condition |
 |----------|------|-----------|
-| 1 | `ack_expired` | entry in `acks_pending` with `elapsed_seconds > 180` |
-| 2 | `inbox_unread` | entry in `inboxes_unread` with `age_seconds > 180` |
-| 3 | `phase_stalled` | `last_transition_age_seconds > 600` AND inboxes_unread empty AND acks_pending empty |
-
-If multiple entries match → take **the oldest** (max age).
+| 1 | crash stall (`HEARTBEAT_STALE` / `HISTORY_STAGNANT` / `HEARTBEAT_MISSING`) | `scan_result.alert` present |
+| 2 | `phase_stalled` | `last_transition_age_seconds > 600` |
 
 ### Pseudo-code
 
 ```
 function decide(scan_result):
-  # Priority 0 — idle_post_step_advanced
-  alert = read_json("wf/needs/<name>/watchdog.alert")
-  if alert and alert.reason == "idle_post_step_advanced":
-    return { type: "idle_post_step_advanced", target: "or", age_seconds: alert.elapsed_sec }
+  # Priority 1 — real stall reported by wf-watchdog.sh (crash / heartbeat / history)
+  if scan_result.alert and scan_result.alert.reason in {HEARTBEAT_STALE, HISTORY_STAGNANT, HEARTBEAT_MISSING}:
+    return { type: scan_result.alert.reason, target: "or", age_seconds: scan_result.alert.elapsed_s }
 
-  # Priority 1 — ack_expired
-  expired = max_by(age, acks_pending where elapsed_seconds > 180)
-  if expired: return { type: "ack_expired", target: expired.to, age_seconds: expired.elapsed_seconds }
-
-  # Priority 2 — inbox_unread
-  unread = max_by(age, inboxes_unread where age_seconds > 180)
-  if unread: return { type: "inbox_unread", target: unread.agent, age_seconds: unread.age_seconds }
-
-  # Priority 3 — phase_stalled
-  if last_transition_age_seconds > 600 AND inboxes_unread empty AND acks_pending empty:
+  # Priority 2 — phase has not advanced for > 600s
+  if last_transition_age_seconds > 600:
     return { type: "phase_stalled", target: "or", age_seconds: last_transition_age_seconds }
 
   return null
@@ -795,10 +768,9 @@ Log poke event, `SendMessage(to: "<agent_Y>", message: "Can you resume <phase:st
 
 ```
 1. Log respawn event
-2. Collect pending_dms: --ack-query --to <agent>
-3. Read current step: --query
-4. Build enriched brief with <recovery_context> (full <pending_dms> — INV-006)
-5. Agent(subagent_type: wf-<role>, prompt: brief + recovery_context)
+2. Read current step + the target's expected-but-missing output: --query + or.log
+3. Build enriched brief with <recovery_context> (INV-006)
+4. Agent(subagent_type: wf-<role>, prompt: brief + recovery_context)
 ```
 
 ### Branch D — `escalate`
@@ -809,14 +781,6 @@ Log poke event, `SendMessage(to: "<agent_Y>", message: "Can you resume <phase:st
 3. AskUserQuestion: "Agent <agent> blocked despite re-spawn (count: <n>). Do you want to intervene manually?"
 ```
 
-### Handler idle_post_step_advanced
-
-Si `decide` retourne `type: idle_post_step_advanced` :
-```
-1. Log idle_post_step_advanced_detected
-2. SendMessage to OR: type: watchdog_repoke, reason: idle_post_step_advanced, action: re-query --json
-3. Vider watchdog.alert, mettre status=ALERT
-```
 <!-- WATCHDOG-LOOP-ACT-END -->
 
 ---
@@ -880,7 +844,7 @@ Each watchdog event: `bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-orchestrate.sh <name
 ```json
 {"ts":"...","tag":"[WATCHDOG]","event":"loop_started","need":"<name>","interval_s":180}
 {"ts":"...","tag":"[WATCHDOG]","event":"tick_silent","tick_n":2}
-{"ts":"...","tag":"[WATCHDOG]","event":"anomaly_detected","anomaly_type":"inbox_unread","target":"or","age_seconds":240}
+{"ts":"...","tag":"[WATCHDOG]","event":"anomaly_detected","anomaly_type":"phase_stalled","target":"or","age_seconds":640}
 {"ts":"...","tag":"[WATCHDOG]","event":"ping_sent","target":"or","msg_id":"watchdog-ping-or-1745898281-001"}
 {"ts":"...","tag":"[WATCHDOG]","event":"respawn","target":"po","respawn_count":1}
 ```

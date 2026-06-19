@@ -8,7 +8,6 @@
 # Output: JSON on stdout, human messages on stderr
 #
 # Reserved log tags in or.log:
-#   [ACK]      — application-level ACK registry (OR / agents)
 #   [WATCHDOG] — emitted exclusively by the HO watchdog (PM / Mathieu via /loop).
 #                Do not use this tag in agent code. See agents/wf-pm.md §"convention log [WATCHDOG]".
 #
@@ -2267,12 +2266,6 @@ process.stdout.write(JSON.stringify({
 }) + '\n');
 ENDJS
 
-  # T-01: Create ack-registry.json (idempotent — do not overwrite if exists)
-  local ack_registry="$need_dir/ack-registry.json"
-  if [[ ! -f "$ack_registry" ]]; then
-    printf '{"entries":[]}\n' > "$ack_registry"
-    log "ack-registry.json created at $ack_registry"
-  fi
 
   # Create scoped session marker — write need_name so resolve_need can read it (DEC-003)
   echo "$name" > "$HOME/.claude/wf-session-active.$session_id"
@@ -2457,229 +2450,6 @@ handle_append() {
   local artifact="$PROJECT_ROOT/wf/needs/$name/${APPEND_TARGET_FILE[$target]}"
   printf '\n%s\n' "$msg" >> "$artifact"
   printf '{"ok":true,"appended_to":"%s","step":"%s"}\n' "${APPEND_TARGET_FILE[$target]}" "$cur_step"
-}
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Section 6c3 : ACK REGISTRY (T-02 / T-03 / T-04)
-# ─────────────────────────────────────────────────────────────────────────────
-
-_ack_registry_path() {
-  printf '%s/wf/needs/%s/ack-registry.json' "$PROJECT_ROOT" "$1"
-}
-
-_ack_check_jq() {
-  if ! command -v jq &>/dev/null; then
-    printf '[wf-orchestrate] ERROR: jq is required for ACK registry commands but was not found in PATH\n' >&2
-    exit 1
-  fi
-}
-
-# --ack-register  --from <role> --to <role> --msg-id <id> --type <t> [--digest <sha>]
-# --ack-register  --retry --msg-id <id>
-handle_ack_register() {
-  local name="$1"; shift
-  _ack_check_jq
-
-  local retry=false from="" to="" msg_id="" type="" digest=""
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --retry)   retry=true; shift ;;
-      --from)    from="${2:-}"; shift 2 ;;
-      --to)      to="${2:-}"; shift 2 ;;
-      --msg-id)  msg_id="${2:-}"; shift 2 ;;
-      --type)    type="${2:-}"; shift 2 ;;
-      --digest)  digest="${2:-}"; shift 2 ;;
-      *)         shift ;;
-    esac
-  done
-
-  if [[ -z "$msg_id" ]]; then
-    printf '[ack-register] ERROR: --msg-id is required\n' >&2; exit 1
-  fi
-
-  local registry; registry=$(_ack_registry_path "$name")
-  if [[ ! -f "$registry" ]]; then
-    printf '{"entries":[]}\n' > "$registry"
-  fi
-
-  local now; now=$(date +%s)
-
-  if [[ "$retry" == true ]]; then
-    # Retry mode: entry must exist and be pending
-    local exists; exists=$(jq --arg id "$msg_id" '.entries[] | select(.msg_id==$id) | .status' "$registry" 2>/dev/null || true)
-    if [[ -z "$exists" ]]; then
-      printf '[ack-register --retry] ERROR: msg_id "%s" not found in registry\n' "$msg_id" >&2; exit 1
-    fi
-    if [[ "$exists" != '"pending"' ]]; then
-      printf '[ack-register --retry] ERROR: msg_id "%s" has status %s (must be pending)\n' "$msg_id" "$exists" >&2; exit 1
-    fi
-    local updated
-    updated=$(jq --arg id "$msg_id" --argjson now "$now" '
-      .entries = [.entries[] | if .msg_id==$id then
-        .attempts += 1 | .last_sent_at=$now
-      else . end]
-    ' "$registry")
-    printf '%s\n' "$updated" > "$registry"
-    local now_iso; now_iso=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    echo "[$now_iso] [ACK-REGISTER] action=retry msg_id=$msg_id" >> "$PROJECT_ROOT/wf/needs/$name/or.log" 2>/dev/null || true
-    printf '{"ok":true,"action":"retry","msg_id":"%s"}\n' "$msg_id"
-  else
-    # New entry mode
-    if [[ -z "$from" || -z "$to" || -z "$type" ]]; then
-      printf '[ack-register] ERROR: --from, --to, --type are required for new entry\n' >&2; exit 1
-    fi
-    local updated
-    updated=$(jq --arg id "$msg_id" --arg from "$from" --arg to "$to" \
-                 --arg type "$type" --arg digest "$digest" --argjson now "$now" '
-      .entries += [{
-        "msg_id": $id,
-        "from": $from,
-        "to": $to,
-        "type": $type,
-        "first_sent_at": $now,
-        "last_sent_at": $now,
-        "attempts": 1,
-        "status": "pending",
-        "content_digest": $digest
-      }]
-    ' "$registry")
-    printf '%s\n' "$updated" > "$registry"
-    local now_iso; now_iso=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    echo "[$now_iso] [ACK-REGISTER] action=new from=$from to=$to type=$type msg_id=$msg_id" >> "$PROJECT_ROOT/wf/needs/$name/or.log" 2>/dev/null || true
-    printf '{"ok":true,"action":"register","msg_id":"%s"}\n' "$msg_id"
-  fi
-}
-
-# --ack-confirm --msg-id <id>  (idempotent)
-handle_ack_confirm() {
-  local name="$1"; shift
-  _ack_check_jq
-
-  local msg_id=""
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --msg-id) msg_id="${2:-}"; shift 2 ;;
-      *)        shift ;;
-    esac
-  done
-
-  if [[ -z "$msg_id" ]]; then
-    printf '[ack-confirm] ERROR: --msg-id is required\n' >&2; exit 1
-  fi
-
-  local registry; registry=$(_ack_registry_path "$name")
-  if [[ ! -f "$registry" ]]; then
-    printf '[ack-confirm] ERROR: ack-registry.json not found for need "%s"\n' "$name" >&2; exit 1
-  fi
-
-  local current_status
-  current_status=$(jq -r --arg id "$msg_id" '.entries[] | select(.msg_id==$id) | .status' "$registry" 2>/dev/null || true)
-
-  if [[ -z "$current_status" ]]; then
-    printf '[ack-confirm] WARN: msg_id "%s" not found — no-op\n' "$msg_id" >&2
-    printf '{"ok":true,"action":"noop","msg_id":"%s","reason":"not_found"}\n' "$msg_id"
-    return
-  fi
-
-  # Idempotent: already acked or escalated → no-op
-  if [[ "$current_status" == "acked" || "$current_status" == "escalated" ]]; then
-    printf '{"ok":true,"action":"noop","msg_id":"%s","status":"%s"}\n' "$msg_id" "$current_status"
-    return
-  fi
-
-  local updated
-  updated=$(jq --arg id "$msg_id" '
-    .entries = [.entries[] | if .msg_id==$id then .status="acked" else . end]
-  ' "$registry")
-  printf '%s\n' "$updated" > "$registry"
-  local now_iso; now_iso=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  echo "[$now_iso] [ACK-CONFIRM] msg_id=$msg_id" >> "$PROJECT_ROOT/wf/needs/$name/or.log" 2>/dev/null || true
-  printf '{"ok":true,"action":"confirmed","msg_id":"%s"}\n' "$msg_id"
-}
-
-# --ack-query [--from <role>] [--to <role>]
-handle_ack_query() {
-  local name="$1"; shift
-  _ack_check_jq
-
-  local filter_from="" filter_to=""
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --from) filter_from="${2:-}"; shift 2 ;;
-      --to)   filter_to="${2:-}"; shift 2 ;;
-      *)      shift ;;
-    esac
-  done
-
-  local registry; registry=$(_ack_registry_path "$name")
-  if [[ ! -f "$registry" ]]; then
-    printf '{"entries":[]}\n'
-    return
-  fi
-
-  local now; now=$(date +%s)
-
-  export _ACK_QUERY_FROM="$filter_from"
-  export _ACK_QUERY_TO="$filter_to"
-  export _ACK_QUERY_NOW="$now"
-  export _ACK_QUERY_REGISTRY
-  _ACK_QUERY_REGISTRY="$(winpath "$registry")"
-
-  node --input-type=module <<'ENDJS'
-import { readFileSync } from 'fs';
-const registry = JSON.parse(readFileSync(process.env._ACK_QUERY_REGISTRY, 'utf8'));
-const from = process.env._ACK_QUERY_FROM || '';
-const to   = process.env._ACK_QUERY_TO   || '';
-const now  = parseInt(process.env._ACK_QUERY_NOW, 10);
-
-let entries = registry.entries.filter(e => e.status === 'pending');
-if (from) entries = entries.filter(e => e.from === from);
-if (to)   entries = entries.filter(e => e.to   === to);
-
-entries = entries.map(e => ({ ...e, elapsed: now - e.last_sent_at }));
-process.stdout.write(JSON.stringify({ entries }, null, 2) + '\n');
-ENDJS
-}
-
-# --ack-escalate --msg-id <id>
-handle_ack_escalate() {
-  local name="$1"; shift
-  _ack_check_jq
-
-  local msg_id=""
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --msg-id) msg_id="${2:-}"; shift 2 ;;
-      *)        shift ;;
-    esac
-  done
-
-  if [[ -z "$msg_id" ]]; then
-    printf '[ack-escalate] ERROR: --msg-id is required\n' >&2; exit 1
-  fi
-
-  local registry; registry=$(_ack_registry_path "$name")
-  if [[ ! -f "$registry" ]]; then
-    printf '[ack-escalate] ERROR: ack-registry.json not found for need "%s"\n' "$name" >&2; exit 1
-  fi
-
-  local current_status
-  current_status=$(jq -r --arg id "$msg_id" '.entries[] | select(.msg_id==$id) | .status' "$registry" 2>/dev/null || true)
-
-  if [[ -z "$current_status" ]]; then
-    printf '[ack-escalate] ERROR: msg_id "%s" not found in registry\n' "$msg_id" >&2; exit 1
-  fi
-
-  if [[ "$current_status" != "pending" ]]; then
-    printf '[ack-escalate] ERROR: msg_id "%s" has status "%s" (must be pending to escalate)\n' "$msg_id" "$current_status" >&2; exit 1
-  fi
-
-  local updated
-  updated=$(jq --arg id "$msg_id" '
-    .entries = [.entries[] | if .msg_id==$id then .status="escalated" else . end]
-  ' "$registry")
-  printf '%s\n' "$updated" > "$registry"
-  printf '{"ok":true,"action":"escalated","msg_id":"%s"}\n' "$msg_id"
 }
 
 handle_list() {
@@ -3349,10 +3119,6 @@ const contract = {
     { command: "--list",            args: "",                                  description: "List all needs as JSON array [{name,status,phase,step}].", example: "bash scripts/wf-orchestrate.sh --list" },
     { command: "<name> --validate", args: "",                                  description: "Check that expected artifacts for the current step exist and have been modified (git diff).", example: "bash scripts/wf-orchestrate.sh my-need --validate" },
     { command: "<name> --reactivate", args: "",                                 description: "Recreate session marker for a need in in_progress status. Used by /waterfall:resume.", example: "bash scripts/wf-orchestrate.sh my-need --reactivate" },
-    { command: "<name> --ack-register --from <role> --to <role> --msg-id <id> --type <t>", args: "[--digest <sha>]", description: "Register a new pending ACK entry in ack-registry.json after a SendMessage actionnable. Use --retry --msg-id <id> to increment attempts on an existing pending entry.", example: "bash scripts/wf-orchestrate.sh my-need --ack-register --from po --to or --msg-id po-step_complete-COLLECT_PRD-1713340800-001 --type step_complete" },
-    { command: "<name> --ack-confirm --msg-id <id>", args: "",                  description: "Mark an ACK entry as 'acked' (idempotent — no-op if already acked or escalated). Called by emitter on reception of ack:<msg_id>, or by receiver after emitting the ACK.", example: "bash scripts/wf-orchestrate.sh my-need --ack-confirm --msg-id po-step_complete-COLLECT_PRD-1713340800-001" },
-    { command: "<name> --ack-query",  args: "[--from <role>] [--to <role>]",   description: "Return JSON of pending ACK entries, filtered by from/to role. Each entry includes elapsed=now-last_sent_at. Call BEFORE every significant action (check-before-act pattern).", example: "bash scripts/wf-orchestrate.sh my-need --ack-query --from po" },
-    { command: "<name> --ack-escalate --msg-id <id>", args: "",                description: "Mark a pending ACK entry as 'escalated' after 3 failed retries. Precondition: status must be pending.", example: "bash scripts/wf-orchestrate.sh my-need --ack-escalate --msg-id po-step_complete-COLLECT_PRD-1713340800-001" },
     { command: "<name> --ctx-count --teammate <role> --mode team|subagent", args: "[--kb <estimated_kb>]", description: "Increment context budget counter for a teammate. Returns JSON: { msgs, kb, threshold_msgs, threshold_kb, consolidate_pending, just_triggered }. Reads thresholds from .wf-config.json (default: msgs=40, kb=80). Idempotent: if consolidate_pending already true, just_triggered=false. Logs [CTX] entry to or.log. Updates tracking.md §context_budget.", example: "bash scripts/wf-orchestrate.sh my-need --ctx-count --teammate dv1 --mode team" },
     { command: "<name> --ctx-overflow --teammate <role>", args: "[--task <T-xxx>]", description: "Reactive overflow handler — triggered when 'Context limit reached' is detected for a teammate. Sets mode=degraded and consolidate_pending=true in tracking.md §context_budget. Logs [CTX] context_overflow detected to or.log. Returns JSON: { action: 'respawn_degraded', teammate, logged: true, task_interrupted }. OR/PM must then shutdown and respawn the teammate with a consolidated brief.", example: "bash scripts/wf-orchestrate.sh my-need --ctx-overflow --teammate dv1 --task T-006bis" },
     { command: "<name> --ctx-consolidate-respawn --teammate <role>", args: "[--mode nominal|degraded] [--trigger brief_complete|threshold|other]", description: "Reset context budget for a teammate after a successful consolidate-and-respawn cycle. Logs [CTX] consolidate_respawn to or.log. Resets tracking.md §context_budget row: msgs=0, kb=0, consolidate_pending=false, mode=nominal. Returns JSON: { action: 'consolidate_respawn', teammate, mode, trigger, logged: true }. Idempotent — safe to call twice. Call BEFORE spawning the fresh teammate instance.", example: "bash scripts/wf-orchestrate.sh my-need --ctx-consolidate-respawn --teammate dv1 --mode nominal --trigger brief_complete" },
@@ -3505,17 +3271,6 @@ MODES:
   --complete    Mark a step as completed and advance to next step
   --abort       Force-abort a need from any step (sets status=aborted)
   --help        Show this help message
-
-ACK REGISTRY (applicative ACK tracking — ack-watchdog):
-  --ack-register --from <role> --to <role> --msg-id <id> --type <t> [--digest <sha>]
-                Register a new pending ACK entry after a SendMessage actionnable.
-                --ack-register --retry --msg-id <id>  → increment attempts on existing pending entry.
-  --ack-confirm --msg-id <id>
-                Mark entry as 'acked' (idempotent). Called by emitter on ack:<msg_id> reception.
-  --ack-query [--from <role>] [--to <role>]
-                Return JSON of pending entries with elapsed field. Call BEFORE every action.
-  --ack-escalate --msg-id <id>
-                Mark pending entry as 'escalated' after 3 failed retries.
 
 PHASES & STEPS (10 phases, 48 steps):
   BOOTSTRAP:         DETERMINE_NAME → RUN_BOOTSTRAP → STORE_PATH → COLLECT_CARD_NUM → COLLECT_BRANCH_TYPE → CREATE_BRANCH_Q → SPAWN_TEAM
@@ -3686,22 +3441,6 @@ case "$MODE" in
     shift
     handle_reactivate "$NAME" "$@"
     ;;
-  --ack-register)
-    shift
-    handle_ack_register "$NAME" "$@"
-    ;;
-  --ack-confirm)
-    shift
-    handle_ack_confirm "$NAME" "$@"
-    ;;
-  --ack-query)
-    shift
-    handle_ack_query "$NAME" "$@"
-    ;;
-  --ack-escalate)
-    shift
-    handle_ack_escalate "$NAME" "$@"
-    ;;
   --fast-path-skip)
     shift
     handle_fast_path_skip "$NAME" "$@"
@@ -3719,6 +3458,6 @@ case "$MODE" in
     handle_ctx_consolidate_respawn "$NAME" "$@"
     ;;
   *)
-    emit_error "Unknown command: $MODE. Use --init, --query, --complete, --abort, --fast-path-skip, --status, --log, --list, --validate, --reactivate, --ack-register, --ack-confirm, --ack-query, --ack-escalate, --ctx-count, --ctx-overflow, --ctx-consolidate-respawn, or --help." "UNKNOWN_COMMAND"
+    emit_error "Unknown command: $MODE. Use --init, --query, --complete, --abort, --fast-path-skip, --status, --log, --list, --validate, --reactivate, --ctx-count, --ctx-overflow, --ctx-consolidate-respawn, or --help." "UNKNOWN_COMMAND"
     ;;
 esac

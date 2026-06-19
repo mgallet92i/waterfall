@@ -25,7 +25,7 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-check-teams.sh
 
 If the `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` flag is missing → the script fails with an explicit message. STOP.
 
-**jq verification** (used by all wf scripts to parse `.wf-state.json`, `ack-registry.json`, etc.):
+**jq verification** (used by all wf scripts to parse `.wf-state.json`, `.team-registry.json`, etc.):
 
 ```bash
 INSTALL_CMD=$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-check-jq.sh) || JQ_RC=$?

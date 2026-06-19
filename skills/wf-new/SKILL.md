@@ -25,7 +25,7 @@ If exit ≠ 0: display the error to HO and **stop**. The flag `CLAUDE_CODE_EXPER
 
 ### Step 1.bis — jq verification
 
-`jq` is used by all wf scripts to parse `.wf-state.json`, `ack-registry.json`, etc.
+`jq` is used by all wf scripts to parse `.wf-state.json`, `.team-registry.json`, etc.
 
 ```bash
 INSTALL_CMD=$(bash ${CLAUDE_PLUGIN_ROOT}/scripts/wf-check-jq.sh) || JQ_RC=$?

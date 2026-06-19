@@ -106,17 +106,10 @@ fi
 
 last_history_ts=""
 stuck_ticks=0
-# EX-004 — ACTOR_IDLE state (fallback to 0/"" for v2 backward compat — EX-009)
-actor_idle_ticks=0
-last_actor=""
-last_actor_ack_ts=""
 
 if [[ -f "$watchdog_state_file" ]]; then
   last_history_ts="$(jq -r '.last_history_ts // ""' "$watchdog_state_file" 2>/dev/null || echo "")"
   stuck_ticks="$(jq -r '.stuck_ticks // 0' "$watchdog_state_file" 2>/dev/null || echo "0")"
-  actor_idle_ticks="$(jq -r '.actor_idle_ticks // 0' "$watchdog_state_file" 2>/dev/null || echo "0")"
-  last_actor="$(jq -r '.last_actor // ""' "$watchdog_state_file" 2>/dev/null || echo "")"
-  last_actor_ack_ts="$(jq -r '.last_actor_ack_ts // ""' "$watchdog_state_file" 2>/dev/null || echo "")"
 fi
 
 # ─── Case: heartbeat.log missing ─────────────────────────────────────────────
@@ -126,10 +119,7 @@ if [[ ! -f "$heartbeat_log" ]]; then
   jq -n \
     --arg lts "$history_last_ts" \
     --argjson st "$stuck_ticks" \
-    --argjson ait "$actor_idle_ticks" \
-    --arg la "$last_actor" \
-    --arg lats "$last_actor_ack_ts" \
-    '{"last_history_ts":$lts,"stuck_ticks":$st,"actor_idle_ticks":$ait,"last_actor":$la,"last_actor_ack_ts":$lats}' \
+    '{"last_history_ts":$lts,"stuck_ticks":$st}' \
     > "$watchdog_state_file"
 
   fallback_elapsed="$(_fallback_elapsed)"
@@ -159,10 +149,7 @@ if [[ -z "$last_epoch" ]]; then
   jq -n \
     --arg lts "$history_last_ts" \
     --argjson st "$stuck_ticks" \
-    --argjson ait "$actor_idle_ticks" \
-    --arg la "$last_actor" \
-    --arg lats "$last_actor_ack_ts" \
-    '{"last_history_ts":$lts,"stuck_ticks":$st,"actor_idle_ticks":$ait,"last_actor":$la,"last_actor_ack_ts":$lats}' \
+    '{"last_history_ts":$lts,"stuck_ticks":$st}' \
     > "$watchdog_state_file"
 
   fallback_elapsed="$(_fallback_elapsed)"
@@ -180,58 +167,6 @@ fi
 now_epoch="$(date +%s)"
 elapsed_s=$(( now_epoch - last_epoch ))
 elapsed_min=$(( elapsed_s / 60 ))
-
-# ─── EX-007/EX-009: Detect OR idle post step_advanced (seuil 120s) ──────────
-# Si le dernier step_advanced dans or.log date de > 120s
-# ET aucun PLEASE_COMPLETE_STEP ne lui est postérieur → alert idle_post_step_advanced
-
-or_log="$need_dir/or.log"
-idle_post_step_advanced=false
-
-if [[ -f "$or_log" ]]; then
-  # Dernière ligne contenant step_advanced
-  last_sa_line="$(grep 'step_advanced' "$or_log" | tail -1 || true)"
-  # Dernière ligne contenant PLEASE_COMPLETE_STEP
-  last_pcs_line="$(grep 'PLEASE_COMPLETE_STEP' "$or_log" | tail -1 || true)"
-
-  if [[ -n "$last_sa_line" ]]; then
-    # Extraire timestamp ISO depuis la ligne (format {"ts":"<iso>",...} ou [<iso>] ...)
-    last_sa_ts="$(echo "$last_sa_line" | grep -oP '"ts"\s*:\s*"\K[^"]+' | head -1)"
-    if [[ -z "$last_sa_ts" ]]; then
-      last_sa_ts="$(echo "$last_sa_line" | grep -oP '\[\K[^\]]+' | head -1)"
-    fi
-
-    if [[ -n "$last_sa_ts" ]]; then
-      last_sa_epoch="$(date -d "$last_sa_ts" +%s 2>/dev/null || true)"
-
-      if [[ -n "$last_sa_epoch" ]]; then
-        elapsed_since_sa=$(( now_epoch_early - last_sa_epoch ))
-
-        if [[ "$elapsed_since_sa" -gt 120 ]]; then
-          # Vérifier si un PLEASE_COMPLETE_STEP est postérieur au step_advanced
-          pcs_after=false
-          if [[ -n "$last_pcs_line" ]]; then
-            last_pcs_ts="$(echo "$last_pcs_line" | grep -oP '"ts"\s*:\s*"\K[^"]+' | head -1)"
-            if [[ -z "$last_pcs_ts" ]]; then
-              last_pcs_ts="$(echo "$last_pcs_line" | grep -oP '\[\K[^\]]+' | head -1)"
-            fi
-            if [[ -n "$last_pcs_ts" ]]; then
-              last_pcs_epoch="$(date -d "$last_pcs_ts" +%s 2>/dev/null || true)"
-              if [[ -n "$last_pcs_epoch" && "$last_pcs_epoch" -gt "$last_sa_epoch" ]]; then
-                pcs_after=true
-              fi
-            fi
-          fi
-
-          if ! $pcs_after; then
-            idle_post_step_advanced=true
-            idle_post_sa_elapsed="$elapsed_since_sa"
-          fi
-        fi
-      fi
-    fi
-  fi
-fi
 
 # ─── T-003/T-002: Compute heartbeat_stale + history_stagnant ─────────────────
 
@@ -260,120 +195,18 @@ else
   stuck_ticks=0
 fi
 
-# ─── ACTOR_IDLE detection (EX-001..EX-005, EX-010, INV-003, INV-004) ────────
-
-WF_WATCHDOG_ACTOR_IDLE_THRESHOLD="${WF_WATCHDOG_ACTOR_IDLE_THRESHOLD:-480}"
-actor_idle=false
-actor_idle_elapsed_s=0
-last_ack_ts=""
-
-# EX-001 — Resolution and skip rules
-skip_actor_idle=false
-if [[ "$WF_WATCHDOG_ACTOR_IDLE_THRESHOLD" -eq 0 ]]; then skip_actor_idle=true; fi
-if [[ "$step_phase" == "BOOTSTRAP" ]];              then skip_actor_idle=true; fi
-if [[ "$step_agent" == "null" ]];                   then skip_actor_idle=true; fi
-if [[ "$step_agent" == "or" ]];                     then skip_actor_idle=true; fi  # INV-003
-if [[ "$step_agent" == dv* ]];                      then skip_actor_idle=true; fi  # EX-010
-
-if ! $skip_actor_idle; then
-  # EX-002 — Collect 3 reference timestamps
-  ack_registry="$need_dir/ack-registry.json"
-  last_ack_ts=""
-  if [[ -f "$ack_registry" ]]; then
-    last_ack_ts="$(jq -r --arg a "$step_agent" \
-      '[.entries[] | select(.from==$a and .status!="escalated") | .last_sent_at] | max // ""' \
-      "$ack_registry" 2>/dev/null || echo "")"
-  fi
-
-  # Q-002: [IDLE] lines with ts= field may be absent in current orchestrate.sh — graceful fallback
-  last_idle_ts=""
-  if [[ -f "$or_log" ]]; then
-    last_idle_ts="$(grep -oP "\[IDLE\] actor=${step_agent}[^\n]*?ts=\K[^ ]+" "$or_log" \
-      2>/dev/null | tail -1 || echo "")"
-  fi
-
-  step_entered_ts="$history_last_ts"
-
-  # EX-002 — actor_reference_ts = max of available sources
-  # last_idle_ts (or.log) and step_entered_ts (state history) are ISO → date -d.
-  ref_epoch=0
-  for ts in "$last_idle_ts" "$step_entered_ts"; do
-    [[ -z "$ts" ]] && continue
-    e=$(date -d "$ts" +%s 2>/dev/null || echo 0)
-    (( e > ref_epoch )) && ref_epoch=$e
-  done
-  # F-031: last_ack_ts (ack-registry last_sent_at) is EPOCH seconds, not ISO.
-  # Compare it numerically — the ^[0-9]+$ guard skips empty/non-epoch values.
-  if [[ "$last_ack_ts" =~ ^[0-9]+$ ]] && (( last_ack_ts > ref_epoch )); then
-    ref_epoch=$last_ack_ts
-  fi
-
-  if (( ref_epoch > 0 )); then
-    actor_idle_elapsed_s=$(( now_epoch_early - ref_epoch ))
-  fi
-
-  # EX-004 / INV-004 — Reset if actor changed or ACK progressed
-  if [[ "$last_actor" != "$step_agent" ]] || [[ "$last_ack_ts" != "$last_actor_ack_ts" ]]; then
-    actor_idle_ticks=0
-  fi
-
-  # EX-003 — Increment / detect
-  if (( actor_idle_elapsed_s > WF_WATCHDOG_ACTOR_IDLE_THRESHOLD )); then
-    actor_idle_ticks=$(( actor_idle_ticks + 1 ))
-    # N-003 / ADR-05 — cap at 2 (threshold_ticks=1, cap=threshold_ticks+1)
-    (( actor_idle_ticks > 2 )) && actor_idle_ticks=2
-    actor_idle=true
-  else
-    actor_idle_ticks=0
-  fi
-fi
-
 # ─── Persist .watchdog-state.json (INV-012 — always write) ──────────────────
 
 new_history_ts="${history_last_ts:-}"
 jq -n \
   --arg lts "$new_history_ts" \
   --argjson st "$stuck_ticks" \
-  --argjson ait "$actor_idle_ticks" \
-  --arg la "${step_agent:-}" \
-  --arg lats "${last_ack_ts:-}" \
-  '{"last_history_ts":$lts,"stuck_ticks":$st,"actor_idle_ticks":$ait,"last_actor":$la,"last_actor_ack_ts":$lats}' \
+  '{"last_history_ts":$lts,"stuck_ticks":$st}' \
   > "$watchdog_state_file"
 
 # ─── T-004: Emit structured JSON watchdog.alert ──────────────────────────────
 
-if $idle_post_step_advanced; then
-  # EX-007/EX-009 — OR idle after step_advanced (priority alert)
-  jq -cn \
-    --arg ts "$now_iso" \
-    --arg role "or" \
-    --arg reason "idle_post_step_advanced" \
-    --argjson elapsed "${idle_post_sa_elapsed:-0}" \
-    '{"ts":$ts,"role":$role,"reason":$reason,"elapsed_sec":$elapsed}' \
-    > "$alert_file"
-elif $actor_idle; then
-  # EX-007 / EX-008 — ACTOR_IDLE (priority 2)
-  poke_sent=true
-  [[ "$step_agent" == "pm" ]] && poke_sent=false
-
-  # NF-002 — Observability log before alert emission
-  echo "[$now_iso] [WATCHDOG-ACTOR-IDLE] actor=$step_agent step=$step_phase:$step_name elapsed=$actor_idle_elapsed_s" >> "$or_log"
-
-  # EX-005 — PM special case: log only, no SendMessage (OR reads alert and handles poke)
-  if [[ "$step_agent" == "pm" ]]; then
-    echo "[$now_iso] [WATCHDOG-POKE-PM] step=$step_phase:$step_name idle_elapsed_s=$actor_idle_elapsed_s" >> "$or_log"
-  fi
-
-  # N-002 — poke_sent must be bare true/false (not quoted) for --argjson → JSON boolean
-  jq -cn \
-    --arg ts "$now_iso" \
-    --arg actor "$step_agent" \
-    --arg step "$step_phase:$step_name" \
-    --argjson elapsed "$actor_idle_elapsed_s" \
-    --argjson poke "$poke_sent" \
-    '{"ts":$ts,"reason":"ACTOR_IDLE","actor":$actor,"step":$step,"idle_elapsed_s":$elapsed,"poke_sent":$poke}' \
-    > "$alert_file"
-elif $heartbeat_stale || $history_stagnant; then
+if $heartbeat_stale || $history_stagnant; then
   # Compute reason
   if $heartbeat_stale && $history_stagnant; then
     reason="BOTH"

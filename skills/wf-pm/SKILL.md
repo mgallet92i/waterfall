@@ -143,7 +143,7 @@ PM runs `wf-orchestrate.sh --complete` **ONLY** for PM-only steps. All other ste
 3. **Strict pipeline.** PM **never dispatches** an implementation task directly to a DV. Only TL assigns T-xxx to DVs.
 4. **`tasks.md` trumps all.** Before any escalation or commit: `Read` the state files.
 
-> **ANO-014** : écrire "ack" dans ton output texte ne compte **pas** — seul `SendMessage type: ack_received` OU `--ack-confirm` est un ACK valide.
+> **Livraison native (F-039)** : les messages sont livrés automatiquement, PM traite directement à réception — pas d'ACK applicatif.
 
 ### PM handler stuck_peer
 
@@ -212,7 +212,7 @@ When PM receives `brief_complete` / `step_complete` from a specialized agent (PO
 
 Triggered by `request_codewrite_bypass` from OR. PM is the **sole gatekeeper** for OR writes outside `wf/needs/<name>/`.
 
-1. ACK immediately: `--ack-confirm --msg-id <or_msg_id>`
+1. Process directly (delivered automatically — no applicative ACK)
 2. Reformulate OR's technical justification as a human-readable business intent (never relay verbatim)
 3. `AskUserQuestion` HO: reformulated intent + target files + size + binary choice (authorize / refuse)
 4. If HO approves: `Write .or-codewrite-bypass` sentinel (content: `granted_by`, `ts`, `in_reply_to`) **then** SendMessage `bypass_granted` to OR — sentinel MUST precede the message
@@ -429,20 +429,18 @@ Triggered when PM receives a **stale** message relative to current state machine
 > This handler **ignores** `config.dark_factory`. HO escalation (if `respawn_count >= 1`) is mandatory even if `dark_factory == "on"`.
 
 ```
-1. Extract {target, msg_id, attempts, first_sent_at}
-2. Re-query: --ack-query --to <target>
-3. Apply H1 (repeated idle same summary, zero tool call) → blocked_h1
-4. Apply H2 (passive idle OR + entry pending acked=false >= 60s) → blocked_h2
-5. blocked = blocked_h1 OR blocked_h2
+1. Extract {target, expected output, since}
+2. Read the target's last idle/progress from idle_log + or.log
+3. Apply H1 (repeated idle same summary, zero tool call) → blocked
 
 If NOT blocked:
-   → SendMessage to target: "Can you address <msg_id>? (pending for Ns)"
+   → SendMessage to target: "Can you address <expected output>?"
    → Log: watchdog:{decision:repoke,agent:<target>,reason:not_blocked}
 
 If blocked AND respawn_count == 0:
    → SendMessage shutdown_request to target
-   → Collect: --ack-query --to <target>
-   → Build brief + <recovery_context> (full pending_dms — no truncation)
+   → Read current step + expected-but-missing output: --query + or.log
+   → Build brief + <recovery_context> (no truncation)
    → Agent(subagent_type: wf-<role>, prompt: enriched brief)
    → respawn_count += 1
    → Log: watchdog:{decision:respawn,agent:<target>,respawn_count:1}
@@ -454,7 +452,7 @@ If blocked AND respawn_count >= 1:
 
 Watchdog log format (JSON-like):
 ```
-watchdog:{decision:<repoke|respawn|ask_ho>,agent:<name>,reason:<idle_repeat|mailbox_unread|not_blocked>,respawn_count:<n>,ts:<iso8601>}
+watchdog:{decision:<repoke|respawn|ask_ho>,agent:<name>,reason:<idle_repeat|phase_stalled|not_blocked>,respawn_count:<n>,ts:<iso8601>}
 ```
 
 ---
