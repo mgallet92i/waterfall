@@ -30,17 +30,14 @@ Built on Claude Code's experimental **[Agent Teams](https://code.claude.com/docs
 
 ## Installation
 
-Marketplace listing coming soon. In the meantime, clone the repo and install it as a local marketplace.
-
-1. Clone the repository locally to `<path-to-repo>` (e.g. `C:\repo\waterfall` on Windows, `~/repo/waterfall` on macOS/Linux).
-2. Register the clone as a local marketplace, then install the plugin:
+From a Claude Code session, register the marketplace then install the plugin:
 
 ```
-/plugin marketplace add <path-to-repo>
-/plugin install waterfall@waterfall-local
+/plugin marketplace add mgallet92i/waterfall
+/plugin install waterfall@waterfall
 ```
 
-3. Verify the plugin is active:
+Verify the plugin is active:
 
 ```
 /plugin

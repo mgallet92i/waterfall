@@ -5,6 +5,12 @@ All notable changes to the `waterfall` plugin are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Installation depuis le marketplace GitHub** : plus besoin de cloner le repo. Le marketplace est renomme `waterfall-local` -> `waterfall`, l'install devient `/plugin marketplace add mgallet92i/waterfall` puis `/plugin install waterfall@waterfall` (README + page de presentation mis a jour).
+
 ## [1.4.0] - 2026-06-10
 
 Campagne de durcissement issue de la revue d'architecture globale (causes racines `ARCH-01..10` du backlog). Fil rouge : tout ce qui peut être décidé par le script l'est par le script — les personas deviennent *hint-driven* et le chemin d'écriture des artefacts devient gouverné et décidable.
