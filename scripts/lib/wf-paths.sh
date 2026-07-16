@@ -23,19 +23,25 @@ _wf_resolve_project_root() {
     echo "$WF_PROJECT_ROOT"
     return
   fi
-  local start p
+  local start p parent
   start="$(pwd)"
+  # Windows/Git Bash: dirname converges on "C:" (never "/") — stop when
+  # dirname stops making progress (filesystem root reached on any OS).
   if [[ -n "$name" ]]; then
     p="$start"
     while [[ -n "$p" && "$p" != "/" ]]; do
       [[ -f "$p/wf/needs/$name/.wf-state.json" ]] && { echo "$p"; return; }
-      p="$(dirname "$p")"
+      parent="$(dirname "$p")"
+      [[ "$parent" == "$p" ]] && break
+      p="$parent"
     done
   fi
   p="$start"
   while [[ -n "$p" && "$p" != "/" ]]; do
     [[ -f "$p/.wf-config.json" || -d "$p/wf/needs" ]] && { echo "$p"; return; }
-    p="$(dirname "$p")"
+    parent="$(dirname "$p")"
+    [[ "$parent" == "$p" ]] && break
+    p="$parent"
   done
   echo "$start"
 }
